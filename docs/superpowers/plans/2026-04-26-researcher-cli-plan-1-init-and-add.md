@@ -149,8 +149,12 @@ Edit `package.json` to set:
 ```bash
 npm i commander zod execa simple-git js-yaml
 npm i -D typescript @types/node @types/js-yaml vitest @vitest/coverage-v8 \
-  eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin prettier
+  eslint@^8.57.0 @typescript-eslint/parser@^7 @typescript-eslint/eslint-plugin@^7 prettier
 ```
+
+> **Note:** eslint is pinned to v8 because v9 dropped support for legacy
+> `.eslintrc.json` config; switching to flat `eslint.config.js` would be a
+> larger plan rewrite. Stick with v8 for Plan 1.
 
 - [ ] **Step 3: Create `tsconfig.json`**
 
