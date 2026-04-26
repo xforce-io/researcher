@@ -9,6 +9,7 @@ import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { packageStage } from '../pipeline/package.js';
 import { Seen } from '../state/seen.js';
+import { withLock } from '../state/lock.js';
 import type { RunContext } from '../pipeline/context.js';
 
 export interface AddOptions { input: string; cwd: string; }
@@ -23,17 +24,19 @@ export async function runAdd(opts: AddOptions): Promise<void> {
   }
   const adapter = new ClaudeCodeAdapter();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
-  let ctx: RunContext;
-  await runStages(runDir, [
-    {
-      name: 'bootstrap',
-      fn: async () => {
-        ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addArxivId: id });
+  await withLock(join(researcherDir, 'state/.lock'), async () => {
+    let ctx: RunContext;
+    await runStages(runDir, [
+      {
+        name: 'bootstrap',
+        fn: async () => {
+          ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addArxivId: id });
+        },
       },
-    },
-    { name: 'read',        fn: async () => read(ctx!) },
-    { name: 'synthesize',  fn: async () => synthesize(ctx!) },
-    { name: 'package',     fn: async () => packageStage(ctx!) },
-  ] as const);
+      { name: 'read',        fn: async () => read(ctx!) },
+      { name: 'synthesize',  fn: async () => synthesize(ctx!) },
+      { name: 'package',     fn: async () => packageStage(ctx!) },
+    ] as const);
+  });
   process.stdout.write(`done. run id: ${runDir.id}\n`);
 }

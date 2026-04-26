@@ -2,8 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-export const STAGES = ['bootstrap', 'read', 'synthesize', 'package'] as const;
-export type Stage = (typeof STAGES)[number];
+export type Stage = 'bootstrap' | 'read' | 'synthesize' | 'package';
 
 export function newRunId(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');

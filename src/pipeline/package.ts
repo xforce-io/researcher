@@ -14,6 +14,19 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
   if (!ctx.addArxivId) throw new Error('package (Plan 1, add mode) requires addArxivId');
 
+  // 0. fail fast if user has unrelated uncommitted changes — otherwise they get
+  //    swept into the researcher branch when we git-add notes/ + .researcher/.
+  const dirty = await gitops.dirtyPathsOutside({
+    cwd: ctx.projectRoot,
+    allowedPrefixes: ['notes/', '.researcher/'],
+  });
+  if (dirty.length > 0) {
+    throw new Error(
+      `working tree has uncommitted changes outside notes/ and .researcher/:\n  ${dirty.join('\n  ')}\n` +
+      `commit or stash them before running researcher add.`,
+    );
+  }
+
   // 1. devil's-advocate / run summary via adapter
   const runSummaryPath = ctx.runDir.path('run-summary.md');
   const userPrompt = renderTemplate(loadPromptTemplate('stage-package.md'), {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { newRunId, RunDir, STAGES } from '../../src/state/runs.js';
+import { newRunId, RunDir } from '../../src/state/runs.js';
 
 describe('runs', () => {
   it('newRunId is unique-ish', () => {
@@ -10,9 +10,6 @@ describe('runs', () => {
     const b = newRunId();
     expect(a).not.toBe(b);
     expect(a).toMatch(/^r-/);
-  });
-  it('STAGES contains the four Plan-1 stages in order', () => {
-    expect(STAGES).toEqual(['bootstrap', 'read', 'synthesize', 'package']);
   });
   it('RunDir creates start/done markers', () => {
     const base = mkdtempSync(join(tmpdir(), 'r-runs-'));

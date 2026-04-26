@@ -1,22 +1,19 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execaSync } from 'execa';
 import { resolvePackageRoot, resolveProjectResearcherDir } from '../paths.js';
 
 export interface InitOptions {
   targetDir: string;
 }
 
-function isGitRepo(dir: string): boolean {
-  // walk up looking for .git
-  let cur = dir;
-  let parent = join(cur, '..');
-  while (parent !== cur) {
-    if (existsSync(join(cur, '.git'))) return true;
-    cur = parent;
-    parent = join(cur, '..');
+function gitToplevel(dir: string): string | null {
+  try {
+    const { stdout } = execaSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir });
+    return stdout.trim();
+  } catch {
+    return null;
   }
-  // Check the final (root) directory
-  return existsSync(join(cur, '.git'));
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
@@ -24,9 +21,17 @@ export async function runInit(opts: InitOptions): Promise<void> {
   if (existsSync(target)) {
     throw new Error(`${target} already exists`);
   }
-  if (!isGitRepo(opts.targetDir)) {
+  const toplevel = gitToplevel(opts.targetDir);
+  if (toplevel === null) {
     throw new Error(
       `${opts.targetDir} is not inside a git repo (run \`git init\` first)`
+    );
+  }
+  // realpath both sides — on macOS /tmp -> /private/tmp etc., and git canonicalizes.
+  const targetReal = realpathSync(opts.targetDir);
+  if (targetReal !== toplevel) {
+    throw new Error(
+      `init must be run at the repo root (${toplevel}), not ${targetReal}`
     );
   }
   const pkg = resolvePackageRoot();

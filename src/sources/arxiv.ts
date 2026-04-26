@@ -26,18 +26,35 @@ export interface ArxivMetadata {
 }
 
 export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMetadata> {
-  const absUrl = arxivAbsUrl(canonicalId);
-  const html = await (await fetch(absUrl)).text();
-  const title = (/<meta name="citation_title" content="([^"]+)"/.exec(html)?.[1] ?? '').trim();
-  const abstract = (/<meta name="citation_abstract" content="([^"]+)"/.exec(html)?.[1] ?? '').trim();
-  const authors = [...html.matchAll(/<meta name="citation_author" content="([^"]+)"/g)].map((m) => m[1]);
-  if (!title) throw new Error(`could not parse title from ${absUrl}`);
+  const bareId = canonicalId.replace(/^arxiv:/, '');
+  const apiUrl = `https://export.arxiv.org/api/query?id_list=${bareId}`;
+  const res = await fetch(apiUrl);
+  if (!res.ok) throw new Error(`arxiv api ${res.status} for ${bareId}`);
+  const xml = await res.text();
+  const entry = /<entry>([\s\S]*?)<\/entry>/.exec(xml)?.[1];
+  if (!entry) throw new Error(`no entry for ${bareId} in arxiv api response`);
+  const title = decodeXml(/<title>([\s\S]*?)<\/title>/.exec(entry)?.[1] ?? '');
+  const abstract = decodeXml(/<summary>([\s\S]*?)<\/summary>/.exec(entry)?.[1] ?? '');
+  const authors = [...entry.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/g)]
+    .map((m) => decodeXml(m[1]));
+  if (!title) throw new Error(`empty title for ${bareId} in arxiv api response`);
   return {
     id: canonicalId,
     title,
     authors,
     abstract,
-    abs_url: absUrl,
+    abs_url: arxivAbsUrl(canonicalId),
     pdf_url: arxivPdfUrl(canonicalId),
   };
+}
+
+function decodeXml(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

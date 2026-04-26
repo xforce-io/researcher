@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -30,5 +30,11 @@ describe('init', () => {
   it('refuses if not in a git repo', async () => {
     const noGit = mkdtempSync(join(tmpdir(), 'r-nogit-'));
     await expect(runInit({ targetDir: noGit })).rejects.toThrow(/git repo/);
+  });
+  it('refuses when run from a subdir of a git repo (must be at repo root)', async () => {
+    const sub = join(dir, 'pkg');
+    mkdirSync(sub);
+    await expect(runInit({ targetDir: sub })).rejects.toThrow(/repo root|toplevel|root of/i);
+    expect(existsSync(join(sub, '.researcher'))).toBe(false);
   });
 });

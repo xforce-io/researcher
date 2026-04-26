@@ -2,7 +2,10 @@ import { execa } from 'execa';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from './interface.js';
 
 const CLAUDE_BIN = process.env.RESEARCHER_CLAUDE_BIN ?? 'claude';
-const ALLOWED_TOOLS = 'Read,Write,Edit,Bash,WebFetch,WebSearch';
+// Bash intentionally omitted — paper content from arxiv is untrusted input that
+// reaches the agent prompt. WebFetch/WebSearch remain because the methodology
+// requires the agent to corroborate claims against external sources.
+const ALLOWED_TOOLS = 'Read,Write,Edit,WebFetch,WebSearch';
 
 export class ClaudeCodeAdapter implements AgentRuntime {
   readonly id = 'claude-code';

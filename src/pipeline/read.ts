@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execa } from 'execa';
 import { fetchArxivMetadata } from '../sources/arxiv.js';
@@ -60,10 +61,14 @@ function slugify(title: string): string {
     .split('_').slice(0, 6).join('_');
 }
 
-async function tryPdfToText(url: string): Promise<string> {
-  // pull pdf to temp, run pdftotext
-  const tmp = `/tmp/r-${Date.now()}.pdf`;
-  await execa('curl', ['-sSL', '-o', tmp, url], { timeout: 60_000 });
-  const { stdout } = await execa('pdftotext', [tmp, '-'], { timeout: 60_000 });
-  return stdout;
+export async function tryPdfToText(url: string): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'researcher-pdf-'));
+  const tmp = join(dir, 'p.pdf');
+  try {
+    await execa('curl', ['-sSL', '-o', tmp, url], { timeout: 60_000 });
+    const { stdout } = await execa('pdftotext', [tmp, '-'], { timeout: 60_000 });
+    return stdout;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
