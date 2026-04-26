@@ -172,12 +172,20 @@ npm i -D typescript @types/node @types/js-yaml vitest \
     "declaration": false,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "lib": ["ES2022"]
+    "lib": ["ES2022"],
+    "types": ["node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]
 }
 ```
+
+> **Note:** `types: ["node"]` is required for `process` and other Node.js
+> globals to type-check. Without it, `tsc` reports "Cannot find name 'process'".
+> This is a TypeScript+NodeNext interaction with how ambient @types/* are
+> auto-picked. Other type-only packages (e.g. @types/js-yaml) work without
+> listing because they're resolved via the package's own `types` field, not
+> ambiently.
 
 - [ ] **Step 4: Create `vitest.config.ts`**
 
