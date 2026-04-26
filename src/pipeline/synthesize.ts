@@ -1,0 +1,50 @@
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { execa } from 'execa';
+import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
+import type { RunContext } from './context.js';
+
+const TIMEOUT_MS = 15 * 60 * 1000;
+const LANDSCAPE = 'notes/00_research_landscape.md';
+
+export async function synthesize(ctx: RunContext): Promise<void> {
+  if (!ctx.newNoteFilename || !ctx.newNoteContent) {
+    throw new Error('synthesize requires newNoteFilename and newNoteContent in context');
+  }
+  const landscapePath = join(ctx.projectRoot, LANDSCAPE);
+  if (!existsSync(landscapePath)) {
+    mkdirSync(dirname(landscapePath), { recursive: true });
+    writeFileSync(landscapePath, '# Research landscape\n\n_(empty — will be populated by researcher)_\n');
+  }
+  const landscapeBefore = readFileSync(landscapePath, 'utf8');
+
+  const contradictionsPath = ctx.runDir.path('contradictions.md');
+  ctx.contradictionsPath = contradictionsPath;
+
+  const userPrompt = renderTemplate(loadPromptTemplate('stage-synthesize.md'), {
+    methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
+    methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
+    thesis: ctx.thesis.body,
+    landscape_current: landscapeBefore,
+    new_note_filename: ctx.newNoteFilename,
+    new_note_content: ctx.newNoteContent,
+    contradictions_path: contradictionsPath,
+  });
+  const systemPrompt = loadPromptTemplate('system-preamble.md');
+
+  const result = await ctx.adapter.invoke({
+    cwd: ctx.projectRoot,
+    systemPrompt,
+    userPrompt,
+    timeoutMs: TIMEOUT_MS,
+  });
+  if (result.exitCode !== 0) throw new Error(`synthesize stage agent exited ${result.exitCode}`);
+
+  // capture diff
+  try {
+    const { stdout } = await execa('git', ['diff', '--', LANDSCAPE], { cwd: ctx.projectRoot });
+    ctx.landscapeDiff = stdout;
+  } catch {
+    ctx.landscapeDiff = `(diff unavailable; landscape now reads:\n${readFileSync(landscapePath, 'utf8')})`;
+  }
+}
