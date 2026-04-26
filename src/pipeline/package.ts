@@ -75,7 +75,9 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   // (otherwise main's seen.jsonl would be stale until the PR merges, breaking
   // dedup for back-to-back runs of the same paper).
   const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
-  const branch = `researcher/${ctx.runDir.id}`;
+  // Branch name = the note filename (without .md). Readable PR titles when the
+  // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
+  const branch = `researcher/${ctx.newNoteFilename.replace(/\.md$/, '')}`;
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
   await gitops.commit({
     cwd: ctx.projectRoot,

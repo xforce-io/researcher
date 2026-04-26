@@ -65,8 +65,9 @@ describe('package stage', () => {
     await packageStage(ctx);
 
     // packageStage stays on the researcher branch after exit.
+    // Branch name uses the note filename (not the runDir.id) for human-readable PR titles.
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
-      .toMatch(/^researcher\//);
+      .toBe('researcher/01_stub');
 
     const log = execaSync('git', ['log', '--oneline'], { cwd: proj }).stdout;
     const lines = log.split('\n').filter(Boolean);
