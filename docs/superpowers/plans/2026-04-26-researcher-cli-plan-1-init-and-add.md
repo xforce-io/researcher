@@ -148,7 +148,7 @@ Edit `package.json` to set:
 
 ```bash
 npm i commander zod execa simple-git js-yaml
-npm i -D typescript @types/node @types/js-yaml vitest @vitest/coverage-v8 \
+npm i -D typescript @types/node @types/js-yaml vitest \
   eslint@^8.57.0 @typescript-eslint/parser@^7 @typescript-eslint/eslint-plugin@^7 prettier
 ```
 
