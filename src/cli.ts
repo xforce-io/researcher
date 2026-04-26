@@ -22,6 +22,14 @@ methodology.command('install').action(async () => (await import('./commands/meth
 methodology.command('show').action(async () => { await (await import('./commands/methodology.js')).runMethodologyShow(); });
 methodology.command('edit <name>').action(async (name: string) => (await import('./commands/methodology.js')).runMethodologyEdit(name));
 
+program
+  .command('add <input>')
+  .description('Manually add a paper (arxiv id, URL, or PDF path) to the current topic')
+  .action(async (input: string) => {
+    const { runAdd } = await import('./commands/add.js');
+    await runAdd({ input, cwd: process.cwd() });
+  });
+
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exitCode = 1;
