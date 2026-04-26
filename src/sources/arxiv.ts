@@ -28,7 +28,7 @@ export interface ArxivMetadata {
 export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMetadata> {
   const bareId = canonicalId.replace(/^arxiv:/, '');
   const apiUrl = `https://export.arxiv.org/api/query?id_list=${bareId}`;
-  const res = await fetch(apiUrl);
+  const res = await fetchWithRetry(apiUrl);
   if (!res.ok) throw new Error(`arxiv api ${res.status} for ${bareId}`);
   const xml = await res.text();
   const entry = /<entry>([\s\S]*?)<\/entry>/.exec(xml)?.[1];
@@ -46,6 +46,17 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
     abs_url: arxivAbsUrl(canonicalId),
     pdf_url: arxivPdfUrl(canonicalId),
   };
+}
+
+async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
+  let last: Response | undefined;
+  for (let i = 0; i < attempts; i++) {
+    last = await fetch(url);
+    if (last.ok) return last;
+    if (last.status < 500) return last; // 4xx — don't retry, the id is wrong
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1))); // 0.5s, 1s
+  }
+  return last as Response;
 }
 
 function decodeXml(s: string): string {

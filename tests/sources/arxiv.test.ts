@@ -69,6 +69,43 @@ describe('fetchArxivMetadata', () => {
     await expect(fetchArxivMetadata('arxiv:9999.99999')).rejects.toThrow(/arxiv api/i);
   });
 
+  it('retries on transient 5xx and succeeds when the next attempt returns ok', async () => {
+    const ok = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2604.17658v1</id>
+    <title>Towards Self-Improving Error Diagnosis</title>
+    <summary>abstract</summary>
+    <author><name>X</name></author>
+  </entry>
+</feed>`;
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls++;
+      if (calls < 3) return new Response('Service Unavailable', { status: 503 });
+      return new Response(ok, { status: 200 });
+    }));
+
+    const meta = await fetchArxivMetadata('arxiv:2604.17658');
+    expect(meta.title).toBe('Towards Self-Improving Error Diagnosis');
+    expect(calls).toBe(3); // two retries before success
+  });
+
+  it('gives up after the retry budget is exhausted on persistent 5xx', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream', { status: 503 })));
+    await expect(fetchArxivMetadata('arxiv:2604.17658')).rejects.toThrow(/arxiv api 503/i);
+  });
+
+  it('does not retry on 4xx (no point — the id is wrong)', async () => {
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls++;
+      return new Response('not found', { status: 404 });
+    }));
+    await expect(fetchArxivMetadata('arxiv:9999.99999')).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
   it('throws when entry is missing', async () => {
     const atom = `<?xml version="1.0"?>
 <feed xmlns="http://www.w3.org/2005/Atom"></feed>`;
