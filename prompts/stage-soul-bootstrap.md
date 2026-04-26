@@ -80,11 +80,21 @@ Do NOT touch `project.yaml` or `thesis.md` in case C. End your response with
 - You may only Write to: `.researcher/project.yaml`, `.researcher/thesis.md`,
   `.researcher/open_questions.md`. Touching any other path is a stage
   violation.
-- The drafted `project.yaml` MUST validate against the schema implied by the
-  template (`research_questions[].id` + `text`, `inclusion_criteria[]`,
-  `exclusion_criteria[]`, `sources[].kind|queries|priority`, `paper_axes[]`,
-  `cadence.default_interval_days|backoff_after_empty_runs`). Use the existing
-  template's structure as a guide; replace only its content.
+- The drafted `project.yaml` MUST validate against this schema. The strict
+  enums are non-negotiable — the loader rejects anything else:
+  - `research_questions[]`: `{ id: string, text: string }`
+  - `inclusion_criteria[]`, `exclusion_criteria[]`: `string[]`
+  - `sources[]`: `{ kind, queries?, seed_papers?, follow?, priority }` where
+    - `kind` ∈ `arxiv | semantic_scholar | openreview | github | rss`
+      (no other values; if a source you want isn't in this enum — e.g. an
+      IEEE paywalled paper — fold it into the closest one with a note in the
+      query string, do NOT invent a new kind)
+    - `priority` ∈ `high | normal | low` (no `medium` — use `normal`)
+    - `follow[]` (optional, for semantic_scholar): `citations | references`
+  - `paper_axes[]`: `{ name: string, values: string[] }` (any extra fields
+    like `id` are tolerated but not required)
+  - `cadence`: `{ default_interval_days: positive int,
+    backoff_after_empty_runs: non-negative int }`
 - The drafted `thesis.md` MUST keep these four H2 sections: `## Working
   thesis`, `## Taste`, `## Anti-patterns`, `## Examples`. The thesis-loader
   rejects files missing any of them.
