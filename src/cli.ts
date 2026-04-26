@@ -30,6 +30,14 @@ program
     await runAdd({ input, cwd: process.cwd() });
   });
 
+program
+  .command('run')
+  .description('Autonomous tick: discover + triage + (if deep-read pick) read + synthesize + package')
+  .action(async () => {
+    const { runRun } = await import('./commands/run.js');
+    await runRun({ cwd: process.cwd() });
+  });
+
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exitCode = 1;

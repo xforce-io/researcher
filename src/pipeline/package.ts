@@ -59,7 +59,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
       source: 'arxiv',
       first_seen_run: ctx.runDir.id,
       decision: 'deep-read',
-      reason: 'manual feed via researcher add',
+      reason: ctx.triageReason ?? 'manual feed via researcher add',
     });
   }
   const now = new Date().toISOString();
@@ -79,7 +79,14 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
   await gitops.commit({
     cwd: ctx.projectRoot,
-    paths: [join('notes', ctx.newNoteFilename), LANDSCAPE],
+    // .researcher/{project.yaml,thesis.md} only carry changes when soul_bootstrap drafted them;
+    // git add is a no-op on unchanged files, so they're silently included only when modified.
+    paths: [
+      join('notes', ctx.newNoteFilename),
+      LANDSCAPE,
+      '.researcher/project.yaml',
+      '.researcher/thesis.md',
+    ],
     message: `research: add note on ${ctx.newNoteFilename.replace(/\.md$/, '')} + landscape update`,
   });
   await gitops.commit({

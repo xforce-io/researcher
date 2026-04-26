@@ -13,6 +13,11 @@ export interface RunContext {
   runDir: RunDir;
   // mode-specific
   addArxivId?: string;
+  /** When discover_triage chose this paper, the reason it recorded — used by
+   * package stage when writing seen.jsonl in autonomous mode. */
+  triageReason?: string;
+  /** Set by soul_bootstrap when it punts to the human (open_questions.md). */
+  needsHumanInput?: boolean;
   // carries
   newNoteFilename?: string;
   newNoteContent?: string;
