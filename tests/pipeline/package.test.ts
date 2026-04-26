@@ -50,6 +50,10 @@ describe('package stage', () => {
 
     await packageStage(ctx);
 
+    // packageStage stays on the researcher branch after exit.
+    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
+      .toMatch(/^researcher\//);
+
     const log = execaSync('git', ['log', '--oneline'], { cwd: proj }).stdout;
     const lines = log.split('\n').filter(Boolean);
     // before: 1 commit; after package: +2

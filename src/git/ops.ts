@@ -7,6 +7,15 @@ export async function createBranch(o: CreateBranchOpts): Promise<void> {
   await execa('git', ['checkout', '-b', o.branch], { cwd: o.cwd });
 }
 
+export async function getCurrentBranch(o: { cwd: string }): Promise<string> {
+  const { stdout } = await execa('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: o.cwd });
+  return stdout.trim();
+}
+
+export async function checkout(o: { cwd: string; branch: string }): Promise<void> {
+  await execa('git', ['checkout', o.branch], { cwd: o.cwd });
+}
+
 export async function commit(o: CommitOpts): Promise<void> {
   if (o.paths.length === 0) return;
   await execa('git', ['add', ...o.paths], { cwd: o.cwd });

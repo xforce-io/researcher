@@ -57,7 +57,11 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   };
   writeWatermark(join(ctx.researcherDir, 'state/watermark.json'), wm);
 
-  // 3. git: branch, two commits, push, PR
+  // 3. git: branch, two commits, push, PR. Working tree stays on the new branch
+  // so the next `researcher add` invocation reads the up-to-date seen.jsonl
+  // (otherwise main's seen.jsonl would be stale until the PR merges, breaking
+  // dedup for back-to-back runs of the same paper).
+  const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
   const branch = `researcher/${ctx.runDir.id}`;
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
   await gitops.commit({
@@ -73,4 +77,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   await gitops.pushBranch({ cwd: ctx.projectRoot, branch });
   const prTitle = `research: add ${ctx.newNoteFilename.replace(/\.md$/, '')}`;
   await gitops.ghPrCreate({ cwd: ctx.projectRoot, title: prTitle, bodyFile: runSummaryPath });
+
+  process.stdout.write(`\nworking tree is on branch ${branch}.\n`);
+  process.stdout.write(`when you're done reviewing the PR, switch back: \`git checkout ${baseBranch}\`.\n`);
 }

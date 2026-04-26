@@ -15,7 +15,13 @@ export async function read(ctx: RunContext): Promise<void> {
 
   const notesDir = join(ctx.projectRoot, 'notes');
   const existing = readdirSync(notesDir).filter((f) => /^\d+_.*\.md$/.test(f)).sort();
-  const nextNum = (existing.length + 1).toString().padStart(2, '0');
+  // Pick max paper-note number + 1; skip 00_* (landscape index, not a paper).
+  const maxNum = existing.reduce((m, f) => {
+    if (f.startsWith('00_')) return m;
+    const n = parseInt(f.match(/^(\d+)_/)?.[1] ?? '0', 10);
+    return n > m ? n : m;
+  }, 0);
+  const nextNum = (maxNum + 1).toString().padStart(2, '0');
   const slug = slugify(meta.title);
   const nextFilename = `${nextNum}_${slug}.md`;
 

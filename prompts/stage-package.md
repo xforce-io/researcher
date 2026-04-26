@@ -58,7 +58,9 @@ A bullet list of specific, falsifiable observations that would force revision of
 
 Do NOT modify any other files. Do NOT touch `thesis.md`, `notes/`, or `.researcher/`. Only Write the single file at `{{run_summary_path}}`.
 
-End your response with:
+After the Write call, your final stdout response (NOT inside `{{run_summary_path}}`) MUST end with this exact two-line block:
 
 FILES_MODIFIED:
 {{run_summary_path}}
+
+Do NOT include the `FILES_MODIFIED:` block inside `{{run_summary_path}}` itself — it belongs only in your stdout response, where the runner parses it.
