@@ -1,0 +1,24 @@
+# project.yaml — structured project soul
+# Edit this to declare your topic's research questions, criteria, sources.
+
+research_questions:
+  - id: RQ1
+    text: "Replace this with your first research question."
+
+inclusion_criteria:
+  - "Must address one of the research questions above."
+
+exclusion_criteria:
+  - "Pure benchmark papers without methodological contribution."
+
+sources:
+  - kind: arxiv
+    queries:
+      - "your topic keyword"
+    priority: high
+
+paper_axes: []
+
+cadence:
+  default_interval_days: 7
+  backoff_after_empty_runs: 3

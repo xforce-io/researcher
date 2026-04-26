@@ -1,0 +1,3 @@
+# Local-only run logs (intermediate stage outputs, devil's-advocate drafts).
+# seen.jsonl and watermark.json are committed — see plan 1 §state.
+state/runs/
