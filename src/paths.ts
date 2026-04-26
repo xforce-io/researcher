@@ -11,7 +11,7 @@ export function resolveProjectResearcherDir(projectRoot: string): string {
 }
 
 export function resolvePackageRoot(): string {
-  // src/paths.ts → dist/paths.js at runtime; package root is two levels up
+  // src/paths.ts → dist/paths.js at runtime; package root is one level up.
   const here = dirname(fileURLToPath(import.meta.url));
   return resolve(here, '..');
 }
