@@ -21,11 +21,17 @@ export async function synthesize(ctx: RunContext): Promise<void> {
   const contradictionsPath = ctx.runDir.path('contradictions.md');
   ctx.contradictionsPath = contradictionsPath;
 
+  const readmePath = join(ctx.projectRoot, 'README.md');
+  const papersReadmePath = join(ctx.projectRoot, 'papers/README.md');
   const userPrompt = renderTemplate(loadPromptTemplate('stage-synthesize.md'), {
     methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     thesis: ctx.thesis.body,
     landscape_current: landscapeBefore,
+    readme_current: existsSync(readmePath) ? readFileSync(readmePath, 'utf8') : '(no README.md)',
+    papers_readme_current: existsSync(papersReadmePath)
+      ? readFileSync(papersReadmePath, 'utf8')
+      : '(no papers/README.md — do not create one)',
     new_note_filename: ctx.newNoteFilename,
     new_note_content: ctx.newNoteContent,
     contradictions_path: contradictionsPath,

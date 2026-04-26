@@ -15,15 +15,17 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   if (!ctx.addArxivId) throw new Error('package (Plan 1, add mode) requires addArxivId');
 
   // 0. fail fast if user has unrelated uncommitted changes — otherwise they get
-  //    swept into the researcher branch when we git-add notes/ + .researcher/.
+  //    swept into the researcher branch when we stage workshop docs.
+  //    Allowed: agent territory (notes/, .researcher/) + workshop front-page docs
+  //    (README.md, papers/README.md) which synthesize is now expected to maintain.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
-    allowedPrefixes: ['notes/', '.researcher/'],
+    allowedPrefixes: ['notes/', '.researcher/', 'README.md', 'papers/'],
   });
   if (dirty.length > 0) {
     throw new Error(
-      `working tree has uncommitted changes outside notes/ and .researcher/:\n  ${dirty.join('\n  ')}\n` +
-      `commit or stash them before running researcher add.`,
+      `working tree has uncommitted changes outside the agent's workshop surface:\n  ${dirty.join('\n  ')}\n` +
+      `commit or stash them before running researcher.`,
     );
   }
 
@@ -79,16 +81,22 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
   const branch = `researcher/${ctx.newNoteFilename.replace(/\.md$/, '')}`;
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
+  // README.md / papers/README.md / .researcher/{project.yaml,thesis.md} are workshop docs an
+  // upstream stage may or may not have written. Filter to paths that actually exist on disk —
+  // git add fails fatally on a missing pathspec.
+  const candidatePaths = [
+    join('notes', ctx.newNoteFilename),
+    LANDSCAPE,
+    'README.md',
+    'papers/README.md',
+    '.researcher/project.yaml',
+    '.researcher/thesis.md',
+    '.researcher/.gitignore',
+  ];
+  const researchPaths = candidatePaths.filter((p) => existsSync(join(ctx.projectRoot, p)));
   await gitops.commit({
     cwd: ctx.projectRoot,
-    // .researcher/{project.yaml,thesis.md} only carry changes when soul_bootstrap drafted them;
-    // git add is a no-op on unchanged files, so they're silently included only when modified.
-    paths: [
-      join('notes', ctx.newNoteFilename),
-      LANDSCAPE,
-      '.researcher/project.yaml',
-      '.researcher/thesis.md',
-    ],
+    paths: researchPaths,
     message: `research: add note on ${ctx.newNoteFilename.replace(/\.md$/, '')} + landscape update`,
   });
   await gitops.commit({

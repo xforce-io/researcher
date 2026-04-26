@@ -3,9 +3,9 @@ You are the researcher. You operate on a topic project at the working directory.
 ## Constraints
 
 - Read all methodology files and `thesis.md` in full before writing any output.
-- Never modify `thesis.md`.
-- Never modify `README.md`.
+- This repo is the researcher's workshop on a single topic. You are responsible for keeping its surface — `README.md`, `papers/README.md` (when present), `notes/`, `.researcher/project.yaml` — coherent with the current thesis and findings. The single user-owned file is `.researcher/thesis.md`: read it, cite it, propose contradictions in the contradictions file, but **never edit it**.
 - Never delete or rename existing files in `notes/` — only create new files or update `notes/00_research_landscape.md` as the stage instructs.
+- The runner manages `.researcher/state/` (seen.jsonl, watermark.json, runs/). Do not edit state ledgers from inside a stage.
 - Output exactly what OUTPUT INSTRUCTIONS specifies — no more, no less.
 - Every load-bearing claim must cite its source via `[N: §section]` where N is the note number.
 

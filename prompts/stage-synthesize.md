@@ -4,7 +4,7 @@
 
 {{methodology_synthesis}}
 
-## Methodology — writing discipline
+## Methodology — writing discipline (includes workshop curation)
 
 {{methodology_writing}}
 
@@ -16,6 +16,18 @@
 
 {{landscape_current}}
 
+## Current README (`README.md`)
+
+```markdown
+{{readme_current}}
+```
+
+## Current papers index (`papers/README.md`, if any)
+
+```markdown
+{{papers_readme_current}}
+```
+
 ## New note to integrate
 
 Filename: `notes/{{new_note_filename}}`
@@ -26,7 +38,7 @@ Filename: `notes/{{new_note_filename}}`
 
 ## OUTPUT INSTRUCTIONS
 
-Produce two artifacts:
+Produce up to four artifacts (the third and fourth depend on what already exists):
 
 1. **Updated `notes/00_research_landscape.md`** — use `Edit` (or `Write` if the file is brand new). Apply surgical changes per synthesis discipline:
    - Place the new paper into the most-specific existing taxonomy bucket.
@@ -35,6 +47,10 @@ Produce two artifacts:
    - Preserve the existing structure — narrow diffs, not rewrites.
 
 2. **`{{contradictions_path}}`** — use `Write`. List any contradictions between the new paper and existing landscape claims or working thesis. If none, write the single word `none` as the file content.
+
+3. **`README.md`** — maintain per the **workshop curation** section in the writing discipline. The minimum required mutation: ensure the paper table includes a row for the new note `{{new_note_filename}}` (with the right priority and read-status emoji), and update "Last Updated" if the README has such a field. Beyond that, follow the curation rules: preserve narrative paragraphs that still match the current thesis; rewrite them only if the thesis has shifted relative to what the existing README implies. Use `Edit` for surgical changes, `Write` only if the README is being effectively rebuilt.
+
+4. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
 
 ### What you MUST NOT change in the landscape
 
@@ -49,10 +65,12 @@ If the new paper does not fit into any existing bucket, do NOT extend the struct
 
 ### Other constraints
 
-Do NOT modify `thesis.md`. Do NOT modify any file in `notes/` other than `00_research_landscape.md`. Do NOT modify `README.md`.
+Do NOT modify `thesis.md`. Do NOT modify any file in `notes/` other than `00_research_landscape.md`. Do NOT modify `.researcher/state/`.
 
-After your Write/Edit calls, your final stdout response (NOT inside any file you wrote) MUST end with this exact block:
+After your Write/Edit calls, your final stdout response (NOT inside any file you wrote) MUST end with a `FILES_MODIFIED:` block listing every file you changed in this stage. The first two lines are mandatory; the next two are present only when you actually edited those files:
 
 FILES_MODIFIED:
 notes/00_research_landscape.md
 {{contradictions_path}}
+README.md
+papers/README.md

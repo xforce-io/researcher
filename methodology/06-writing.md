@@ -74,6 +74,55 @@ Example: `state: seen +12, watermark 2026-04-26`
 
 C2 must be the last commit in the PR. The state commit is mechanical; it should not carry research content.
 
+## Workshop curation
+
+A topic repo is **the researcher's workshop on that topic**. The researcher
+owns its surface — every file in the repo except `.researcher/thesis.md`. The
+human edits `thesis.md` to redirect the researcher's stance; the researcher
+keeps everything else coherent with that stance.
+
+The two workshop-facing files that need active maintenance after every
+deep-read:
+
+**`README.md`** — the workshop's front door.
+
+It must answer four questions for a first-time visitor in this order:
+1. What is this topic, in one paragraph (derived from the working thesis).
+2. What's the current set of read papers (a table with #, title, layer/axis,
+   priority, read status).
+3. What does the researcher currently believe (a 2–4 sentence thesis summary,
+   linking to `.researcher/thesis.md` for the full statement).
+4. Where to look for depth (`notes/00_research_landscape.md` for the synthesis,
+   `papers/README.md` for the source index, `.researcher/` for project soul).
+
+The paper table MUST be in sync with `notes/` — if a `09_<slug>.md` exists,
+the table has a row for it. "Last Updated" gets today's date when the README
+is touched in this run.
+
+If `README.md` already has narrative paragraphs that are still consistent
+with the current thesis, preserve them — do not churn prose for cosmetic
+reasons. If the thesis has shifted (you'll know because the working thesis
+text differs from what the existing README implies), rewrite the narrative
+paragraphs to match.
+
+**`papers/README.md`** (only if it exists in the repo).
+
+The source-index counterpart to `notes/`. Maintain its paper table the same
+way: every paper that has a note in `notes/` must have a row here. Don't
+invent the structure if the file doesn't exist; only maintain what's there.
+
+## What you do NOT touch
+
+- `.researcher/thesis.md` — the human's voice. Read it, cite it, propose
+  contradictions to it in `contradictions.md`. Do not edit it.
+- `.researcher/state/seen.jsonl`, `state/watermark.json` — the runner writes
+  these. The agent never edits state ledgers directly.
+
+Everything else in the repo — `notes/`, `papers/` (except PDFs in the
+`.gitignore`), `README.md`, additional markdown the project might add — is
+yours to maintain. Default to surgical updates; rewrite when the thesis
+shift demands it.
+
 ## Diffs explain why
 
 Every substantive edit to landscape.md — meaning any change to existing text, not just appending a new bullet — must be justified. Two acceptable forms:

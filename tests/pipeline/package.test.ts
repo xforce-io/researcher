@@ -37,9 +37,11 @@ describe('package stage', () => {
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
     writeFileSync(join(proj, 'notes/01_stub.md'), '# Stub');
   });
-  it('refuses to run when working tree is dirty outside notes/ and .researcher/', async () => {
+  it('refuses to run when working tree is dirty outside notes/, .researcher/, and the workshop docs', async () => {
     // Simulate a user with uncommitted edits in src/ — those must not get swept into the researcher PR.
-    writeFileSync(join(proj, 'README.md'), 'user-edited readme\n');
+    // Note: README.md and papers/README.md are workshop docs the agent maintains, so they ARE allowed.
+    mkdirSync(join(proj, 'src'), { recursive: true });
+    writeFileSync(join(proj, 'src/unrelated.ts'), 'export const x = 1;\n');
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
@@ -49,6 +51,28 @@ describe('package stage', () => {
     writeFileSync(ctx.contradictionsPath, 'none');
 
     await expect(packageStage(ctx)).rejects.toThrow(/working tree|dirty|uncommitted/i);
+  });
+
+  it('allows README.md and papers/README.md to be dirty (synthesize maintains them)', async () => {
+    // Synthesize edits these workshop docs; the package stage must not flag them.
+    writeFileSync(join(proj, 'README.md'), '# Topic\n\n| # | paper |\n|---|---|\n| 9 | new |\n');
+    mkdirSync(join(proj, 'papers'), { recursive: true });
+    writeFileSync(join(proj, 'papers/README.md'), '| # | paper |\n|---|---|\n| 9 | new |\n');
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+
+    await packageStage(ctx); // must NOT throw
+
+    // README + papers/README rode in alongside the research commit.
+    const last = execaSync('git', ['show', '--stat', 'HEAD~1'], { cwd: proj }).stdout;
+    expect(last).toContain('README.md');
+    expect(last).toContain('papers/README.md');
   });
 
   it('produces 2 commits and updates state files', async () => {
