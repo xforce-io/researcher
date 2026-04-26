@@ -29,11 +29,13 @@ describe('package stage', () => {
     process.env.RESEARCHER_NO_REMOTE = '1';
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
+    // Commit only .researcher/ as the initial main-branch state.
+    // notes/ are created uncommitted so the package stage actually commits them.
+    execaSync('git', ['add', '.researcher'], { cwd: proj });
+    execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
     writeFileSync(join(proj, 'notes/01_stub.md'), '# Stub');
-    execaSync('git', ['add', '.'], { cwd: proj });
-    execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
   });
   it('produces 2 commits and updates state files', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
