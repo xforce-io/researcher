@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
@@ -24,6 +24,18 @@ export async function synthesize(ctx: RunContext): Promise<void> {
   const readmePath = join(ctx.projectRoot, 'README.md');
   const papersReadmePath = join(ctx.projectRoot, 'papers/README.md');
   const reportPath = join(ctx.projectRoot, 'report.md');
+  const referencesDir = join(ctx.projectRoot, 'references');
+  let referencesContext: string;
+  if (existsSync(referencesDir)) {
+    const refFiles = readdirSync(referencesDir)
+      .filter((f) => f.endsWith('.md') || f.endsWith('.txt'))
+      .sort();
+    referencesContext = refFiles.length > 0
+      ? `references/ contains ${refFiles.length} file(s): ${refFiles.join(', ')}\nRead the relevant ones before writing or updating report.md to ground synthesis in project-specific design context.`
+      : '(references/ directory exists but contains no .md or .txt files)';
+  } else {
+    referencesContext = '(no references/ directory — skip this section)';
+  }
   const userPrompt = renderTemplate(loadPromptTemplate('stage-synthesize.md'), {
     methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
@@ -36,6 +48,7 @@ export async function synthesize(ctx: RunContext): Promise<void> {
     report_current: existsSync(reportPath)
       ? readFileSync(reportPath, 'utf8')
       : '(not yet created — create report.md from scratch using the structure in the instructions)',
+    references_context: referencesContext,
     new_note_filename: ctx.newNoteFilename,
     new_note_content: ctx.newNoteContent,
     contradictions_path: contradictionsPath,

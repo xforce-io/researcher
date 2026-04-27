@@ -28,6 +28,10 @@
 {{papers_readme_current}}
 ```
 
+## Project references (`references/` directory)
+
+{{references_context}}
+
 ## Current report (`report.md`) — thesis-driven synthesis across all papers
 
 ```markdown
@@ -71,6 +75,8 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
    **Body structure — your judgment, not a formula.**
    The research questions exist as anchors, not as headings. Organize the body around the actual intellectual problems that have emerged from reading, not around the numbered RQs. Ask yourself: after reading these papers, what are the genuine tensions, open design choices, and actionable insights? Let those drive the sections. A good section title is a claim or a question worth debating, not an RQ label.
+
+   If a `## Design Context` section exists in the thesis, or if `references/` contains product/design documents, the report body should map research findings to *specific design decisions in that context* — not just compare papers to each other. A section that says "paper X implies we should do Y in our component Z because of gap G" is more valuable than one that says "paper X achieves result R."
 
    Required fixed section at the end:
 

@@ -7,9 +7,19 @@
 
 ## Working thesis
 
-State your current best understanding of the topic in 3–6 sentences. Make it
-falsifiable. If a paper proves it wrong you should be able to point at the
-specific claim.
+Write one paragraph per major claim — typically one per research question.
+Each paragraph must:
+- State the claim directly and specifically (name a method, threshold, or architectural choice)
+- Explain the mechanism or evidence base
+- Name what would falsify or substantially revise this claim
+
+Aim for 3–5 paragraphs. This is not a summary of the field — it is your current position.
+
+## Design Context
+
+What are you building or deciding? Name the artifact, the specific gap, and
+what success looks like in concrete terms. Leave blank if this is purely
+exploratory research.
 
 ## Taste
 

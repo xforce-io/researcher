@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
 import type { AgentRuntime } from '../adapter/interface.js';
@@ -70,5 +71,11 @@ export async function runRun(opts: RunOptions): Promise<void> {
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);
     process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addArxivId})\n`);
+    if (ctx!.contradictionsPath && existsSync(ctx!.contradictionsPath)) {
+      const body = readFileSync(ctx!.contradictionsPath, 'utf8').trim();
+      if (body && body.toLowerCase() !== 'none') {
+        process.stdout.write(`\ncontradictions found — consider updating .researcher/thesis.md\n`);
+      }
+    }
   });
 }
