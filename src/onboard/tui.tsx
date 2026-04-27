@@ -1,6 +1,5 @@
 import React, { useState, useLayoutEffect, useRef } from 'react';
 import { Box, Text, useStdin } from 'ink';
-import type { EventEmitter } from 'node:events';
 import type { Question } from './schema.js';
 
 export interface QuestionScreenProps {
@@ -9,7 +8,9 @@ export interface QuestionScreenProps {
   onSkip: () => void;
 }
 
-// Key detection mirrors ink's parseKeypress logic for the keys we care about.
+// Recognises the small set of control bytes QuestionScreen needs (Enter,
+// Esc, Backspace). Everything else is treated as either a printable char
+// or filtered out (escape-prefixed multi-byte sequences like arrow keys).
 function detectKey(raw: string) {
   return {
     return: raw === '\r' || raw === '\n',
@@ -27,18 +28,19 @@ export function QuestionScreen(props: QuestionScreenProps): React.JSX.Element {
   const textRef = useRef(text);
   textRef.current = text;
 
-  const { stdin } = useStdin() as { stdin: EventEmitter & { isTTY?: boolean } };
+  const { stdin, setRawMode } = useStdin();
 
   useLayoutEffect(() => {
     if (!stdin) return;
+    setRawMode(true);
 
     const handler = (chunk: Buffer | string) => {
       const raw = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       const key = detectKey(raw);
 
       if (key.return) {
-        const t = textRef.current;
-        if (t.trim().length > 0) onSubmit(t);
+        const trimmed = textRef.current.trim();
+        if (trimmed.length > 0) onSubmit(trimmed);
         return;
       }
       if (key.escape) {
@@ -60,8 +62,9 @@ export function QuestionScreen(props: QuestionScreenProps): React.JSX.Element {
     stdin.on('data', handler);
     return () => {
       stdin.off('data', handler);
+      setRawMode(false);
     };
-  }, [stdin, q.required, onSubmit, onSkip]);
+  }, [stdin, setRawMode, q.required, onSubmit, onSkip]);
 
   return (
     <Box flexDirection="column" paddingX={1}>

@@ -60,4 +60,15 @@ describe('<QuestionScreen>', () => {
     stdin.write(''); // Esc
     expect(onSkip).toHaveBeenCalled();
   });
+
+  it('trims whitespace before submitting', () => {
+    const onSubmit = vi.fn();
+    const onSkip = vi.fn();
+    const { stdin } = render(
+      <QuestionScreen question={Q} onSubmit={onSubmit} onSkip={onSkip} />
+    );
+    stdin.write('  spaced  ');
+    stdin.write('\r');
+    expect(onSubmit).toHaveBeenCalledWith('spaced');
+  });
 });
