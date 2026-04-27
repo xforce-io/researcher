@@ -147,6 +147,7 @@ export function DiffReview(props: DiffReviewProps): React.JSX.Element {
 
 export interface AppProps {
   questions: Question[];
+  state: OnboardingState;
   onAllAnswered: (answers: SerializedAnswer[]) => Promise<{
     before: { projectYaml: string; thesisMd: string };
     after: { projectYaml: string; thesisMd: string };
@@ -165,7 +166,7 @@ type Phase =
   | { kind: 'errored'; error: string };
 
 export function App(props: AppProps): React.JSX.Element {
-  const stateRef = useRef(new OnboardingState(props.questions));
+  const state = props.state;
   const [phase, setPhase] = useState<Phase>({ kind: 'asking', idx: 0 });
 
   const advanceFrom = (idx: number): void => {
@@ -176,7 +177,7 @@ export function App(props: AppProps): React.JSX.Element {
     setPhase({ kind: 'rewriting' });
     void (async () => {
       try {
-        const { before, after } = await props.onAllAnswered(stateRef.current.serialize());
+        const { before, after } = await props.onAllAnswered(state.serialize());
         setPhase({ kind: 'reviewing', before, after });
       } catch (e) {
         setPhase({ kind: 'errored', error: (e as Error).message });
@@ -190,11 +191,11 @@ export function App(props: AppProps): React.JSX.Element {
       <QuestionScreen
         question={q}
         onSubmit={(text) => {
-          stateRef.current.answer(q.id, text);
+          state.answer(q.id, text);
           advanceFrom(phase.idx);
         }}
         onSkip={() => {
-          stateRef.current.skip(q.id);
+          state.skip(q.id);
           advanceFrom(phase.idx);
         }}
       />
@@ -219,7 +220,7 @@ export function App(props: AppProps): React.JSX.Element {
   }
 
   // reviewing
-  const a1 = stateRef.current.getAnswer('Q1');
+  const a1 = state.getAnswer('Q1');
   const topicOneline = a1?.kind === 'text' ? a1.text : '';
   return (
     <DiffReview

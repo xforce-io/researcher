@@ -38,7 +38,7 @@ researcher onboard
 1. **Pre-flight checks** (sync, fast, fail loud)
    - `claude` CLI resolvable on PATH (or `RESEARCHER_CLAUDE_BIN`)
    - `~/.researcher/methodology/onboarding.md` exists
-   - Current directory is a git repo, OR the user accepts an inline `git init`
+   - Current directory is a git repo (otherwise fail fast with an actionable error telling the user to run `git init` first)
    - No existing `.researcher/` with user content (see §6 for the "all-templates" detection rule)
 
 2. **Scaffold** (idempotent for the all-templates case)
@@ -58,7 +58,7 @@ researcher onboard
 
 5. **Diff review**
    - TUI shows two diffs side-by-side (template → rewritten) for `project.yaml` and `thesis.md`
-   - Three actions: `[a] accept` / `[r] re-answer Q<n>` (jump back into TUI at that question) / `[x] abort`
+   - Three actions: `[a] accept` / `[r] re-answer` (restart the question walk from Q1; previous answers are kept and overwritten as you re-answer) / `[x] abort`
 
 6. **Commit**
    - Write files to disk
@@ -190,7 +190,7 @@ Before entering the TUI, `onboard` runs in this order:
 
 1. Resolve `claude` binary; fail with `error: claude CLI not found; install it or set RESEARCHER_CLAUDE_BIN`.
 2. Check `~/.researcher/methodology/onboarding.md` exists; fail with `error: onboarding methodology missing; run \`researcher methodology install\``.
-3. Resolve git toplevel of cwd. If not a git repo, prompt `not a git repo; run \`git init\` here? [Y/n]`. On `Y` run `git init` in cwd. On `n` exit.
+3. Resolve git toplevel of cwd. If not a git repo, fail with an actionable error: `not a git repo; run \`git init\` first`. (Inline prompt was considered but dropped: most users running `researcher onboard` in a non-git dir would prefer a clear error to an interactive prompt — they may have intended a different cwd.)
 4. If `.researcher/` does not exist → proceed to scaffold.
 5. If `.researcher/` exists → run the **all-templates check** (see 6.2).
 

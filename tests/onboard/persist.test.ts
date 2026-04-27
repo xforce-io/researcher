@@ -32,6 +32,8 @@ describe('writeOnboardArtifacts', () => {
     expect(readFileSync(join(dir, '.researcher/thesis.md'), 'utf8')).toContain('Thesis');
     const log = execaSync('git', ['log', '--oneline'], { cwd: dir }).stdout;
     expect(log).toContain('researcher: onboard decision-agent');
+    const status = execaSync('git', ['status', '--porcelain'], { cwd: dir }).stdout;
+    expect(status).toBe('');
   });
 });
 

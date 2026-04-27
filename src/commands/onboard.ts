@@ -12,7 +12,7 @@ import { isAllTemplates } from '../onboard/all-templates-check.js';
 import { rewriteAnswers, composeUserPrompt, composeSystemPrompt } from '../onboard/rewrite.js';
 import { writeOnboardArtifacts, writeRunLog, makeSlug } from '../onboard/persist.js';
 import { App } from '../onboard/tui.js';
-import type { SerializedAnswer } from '../onboard/state.js';
+import { OnboardingState, type SerializedAnswer } from '../onboard/state.js';
 
 export interface OnboardOptions {
   cwd: string;
@@ -48,6 +48,7 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const templateThesisMd = readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
   const runtime = new ClaudeCodeAdapter();
+  const state = new OnboardingState(onboarding.questions);
 
   // Test path: bypass TUI
   if (opts.answersOverride) {
@@ -68,20 +69,38 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   }
 
   // Real path: render TUI
-  await new Promise<void>((resolve) => {
-    const ink = render(
-      React.createElement(App, {
-        questions: onboarding.questions,
-        onAllAnswered: async (answers) => {
-          const r = await rewriteOrLog(
-            runtime, repoRoot, onboardingMd, onboarding,
-            answers, templateProjectYaml, templateThesisMd
-          );
-          return {
-            before: { projectYaml: templateProjectYaml, thesisMd: templateThesisMd },
-            after: { projectYaml: r.projectYaml, thesisMd: r.thesisMd },
-          };
-        },
+  const sigintHandler = (): void => {
+    try {
+      writeRunLog({
+        repoRoot,
+        answers: state.serialize(),
+        prompt: '',
+        response: '',
+        result: { status: 'user_aborted' },
+      });
+    } catch {
+      // best-effort; don't mask the abort
+    }
+    process.exit(130);
+  };
+  process.once('SIGINT', sigintHandler);
+
+  try {
+    await new Promise<void>((resolve) => {
+      const ink = render(
+        React.createElement(App, {
+          questions: onboarding.questions,
+          state,
+          onAllAnswered: async (answers) => {
+            const r = await rewriteOrLog(
+              runtime, repoRoot, onboardingMd, onboarding,
+              answers, templateProjectYaml, templateThesisMd
+            );
+            return {
+              before: { projectYaml: templateProjectYaml, thesisMd: templateThesisMd },
+              after: { projectYaml: r.projectYaml, thesisMd: r.thesisMd },
+            };
+          },
         onCommit: (rewritten, topicOneline) => {
           void (async () => {
             try {
@@ -107,6 +126,9 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
       })
     );
   });
+  } finally {
+    process.removeListener('SIGINT', sigintHandler);
+  }
 }
 
 async function rewriteOrLog(

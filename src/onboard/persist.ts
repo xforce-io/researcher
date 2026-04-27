@@ -17,7 +17,12 @@ export async function writeOnboardArtifacts(opts: WriteArtifactsOptions): Promis
   writeFileSync(join(dotR, 'thesis.md'), opts.thesisMd);
   await commit({
     cwd: opts.repoRoot,
-    paths: ['.researcher/project.yaml', '.researcher/thesis.md'],
+    paths: [
+      '.researcher/project.yaml',
+      '.researcher/thesis.md',
+      '.researcher/.gitignore',
+      '.researcher/state/seen.jsonl',
+    ],
     message: `researcher: onboard ${opts.slug}`,
   });
 }

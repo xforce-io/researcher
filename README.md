@@ -11,8 +11,9 @@ seen-set — lives in the topic repo as plain files under git.
 
 ## Status
 
-Plan 1 vertical slice: `init` + manual `add <arxiv_id>`. Discover/Triage stages
-and autonomous cron mode are not implemented yet.
+`init`, `onboard` (interactive TUI), `add <arxiv_id>`, and autonomous `run`
+(discover + triage + read + synthesize + package) are implemented. Manual
+focused-instruction mode is not yet wired.
 
 ## Install
 

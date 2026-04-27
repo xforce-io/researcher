@@ -3,6 +3,7 @@ import React from 'react';
 import { render } from 'ink-testing-library';
 import { QuestionScreen, DiffReview, App } from '../../src/onboard/tui.js';
 import type { Question } from '../../src/onboard/schema.js';
+import { OnboardingState } from '../../src/onboard/state.js';
 
 const Q: Question = {
   id: 'Q1', fieldId: 'topic_oneline', required: true,
@@ -117,8 +118,9 @@ describe('<App>', () => {
       before: { projectYaml: 'b', thesisMd: 'b' },
       after: { projectYaml: 'a', thesisMd: 'a' },
     }));
+    const state = new OnboardingState(questions);
     const { stdin } = render(
-      <App questions={questions} onAllAnswered={onAllAnswered} onCommit={() => {}} onAbort={() => {}} />
+      <App questions={questions} state={state} onAllAnswered={onAllAnswered} onCommit={() => {}} onAbort={() => {}} />
     );
     stdin.write('first answer');
     stdin.write('\r'); // submit Q1
@@ -134,9 +136,11 @@ describe('<App>', () => {
 
   it('calls onCommit with rewritten content on accept', async () => {
     const onCommit = vi.fn();
+    const state = new OnboardingState(questions);
     const { stdin } = render(
       <App
         questions={questions}
+        state={state}
         onAllAnswered={async () => ({
           before: { projectYaml: 'b', thesisMd: 'b' },
           after: { projectYaml: 'a', thesisMd: 'a' },
