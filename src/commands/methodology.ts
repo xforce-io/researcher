@@ -11,6 +11,7 @@ const FILES = [
   '05-verification.md',
   '06-writing.md',
   '07-cadence.md',
+  'onboarding.md',
 ];
 
 export async function runMethodologyInstall(): Promise<void> {
