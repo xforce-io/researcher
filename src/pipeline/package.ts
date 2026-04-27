@@ -88,6 +88,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     join('notes', ctx.newNoteFilename),
     LANDSCAPE,
     'README.md',
+    'report.md',
     'papers/README.md',
     '.researcher/project.yaml',
     '.researcher/thesis.md',

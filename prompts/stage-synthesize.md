@@ -28,6 +28,12 @@
 {{papers_readme_current}}
 ```
 
+## Current report (`report.md`) — thesis-driven synthesis across all papers
+
+```markdown
+{{report_current}}
+```
+
 ## New note to integrate
 
 Filename: `notes/{{new_note_filename}}`
@@ -50,7 +56,45 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
 3. **`README.md`** — maintain per the **workshop curation** section in the writing discipline. The minimum required mutation: ensure the paper table includes a row for the new note `{{new_note_filename}}` (with the right priority and read-status emoji), and update "Last Updated" if the README has such a field. Beyond that, follow the curation rules: preserve narrative paragraphs that still match the current thesis; rewrite them only if the thesis has shifted relative to what the existing README implies. Use `Edit` for surgical changes, `Write` only if the README is being effectively rebuilt.
 
-4. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
+4. **`report.md`** (repo root) — thesis-driven synthesis across *all* papers read so far. Update with every new note.
+
+   **Structure** (create from scratch if `{{report_current}}` is empty or marked `(not yet created)`; otherwise update surgically):
+
+   ```
+   # <topic title from thesis>: Research Report
+   
+   > **Version:** vN (N papers)
+   > **Last Updated:** <today>
+   > **Papers:** [01](notes/01_xxx.md), [02](notes/02_yyy.md), …
+   > **Thesis:** [.researcher/thesis.md](.researcher/thesis.md)
+   
+   ---
+   
+   ## 当前判断
+   [One paragraph: what we currently believe. Update every run.]
+   
+   ## 分 RQ 核心发现
+   [One subsection per research question from thesis. Cite papers as [N].]
+   
+   ## 设计启发
+   [Concrete implications for design/build work derived from the literature.]
+   
+   ## 未覆盖的问题
+   [What remains unknown or contradicted.]
+   
+   ## 版本更新日志
+   | 版本 | 日期 | 新增论文 | 关键变化 |
+   |------|------|---------|---------|
+   ```
+
+   **Update rules:**
+   - Increment version number and update "Last Updated" + "Papers" list.
+   - Append a new row to the version log explaining what this paper changed.
+   - Add the new paper's contribution to the relevant RQ subsections (cite as [N]).
+   - Revise "当前判断" and "设计启发" only when the new paper meaningfully shifts the conclusion — otherwise leave them unchanged.
+   - Do NOT rewrite sections wholesale; prefer targeted inserts and rewrites of individual sentences.
+
+5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
 
 ### What you MUST NOT change in the landscape
 
@@ -73,4 +117,5 @@ FILES_MODIFIED:
 notes/00_research_landscape.md
 {{contradictions_path}}
 README.md
+report.md
 papers/README.md
