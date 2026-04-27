@@ -32,7 +32,7 @@ export function validateRepoRoot(targetDir: string): string {
   }
   const targetReal = realpathSync(targetDir);
   if (targetReal !== toplevel) {
-    throw new Error(`init must be run at the repo root (${toplevel}), not ${targetReal}`);
+    throw new Error(`must be run at the repo root (${toplevel}), not ${targetReal}`);
   }
   return toplevel;
 }
@@ -57,7 +57,7 @@ export function scaffoldTopicRepo(opts: ScaffoldOptions): void {
 export async function runInit(opts: InitOptions): Promise<void> {
   const repoRoot = validateRepoRoot(opts.targetDir);
   scaffoldTopicRepo({ repoRoot });
-  const target = resolveProjectResearcherDir(opts.targetDir);
+  const target = resolveProjectResearcherDir(repoRoot);
   process.stdout.write(`initialized ${target}\n`);
   process.stdout.write(`next steps:\n`);
   process.stdout.write(
