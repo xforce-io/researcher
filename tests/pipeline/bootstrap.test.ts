@@ -18,11 +18,11 @@ describe('bootstrap stage', () => {
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
   });
-  it('loads yaml + thesis + 7 methodology files', async () => {
+  it('loads yaml + thesis + 8 methodology files', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new ClaudeCodeAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
     expect(ctx.projectYaml.research_questions.length).toBeGreaterThan(0);
     expect(ctx.thesis.sections.has('Working thesis')).toBe(true);
-    expect(ctx.methodology.size).toBe(7);
+    expect(ctx.methodology.size).toBe(8);
   });
 });
