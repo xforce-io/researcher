@@ -73,6 +73,20 @@ export function parseOnboardingMd(src: string): Onboarding {
   };
 }
 
+function parseOptionalInt(
+  raw: string | undefined,
+  label: string,
+  id: string,
+  baseLine: number,
+): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    throw new Error(`onboarding.md: ${id} (line ${baseLine}) — ${label} must be a number, got "${raw}"`);
+  }
+  return n;
+}
+
 function parseBlock(id: string, fieldId: string, block: string[], baseLine: number): Question {
   const get = (key: string): string | undefined => {
     const m = block.find((l) => l.startsWith(`${key}:`));
@@ -83,6 +97,9 @@ function parseBlock(id: string, fieldId: string, block: string[], baseLine: numb
   if (requiredRaw === undefined) {
     throw new Error(`onboarding.md: ${id} (line ${baseLine}) — missing 'Required:' line`);
   }
+  if (requiredRaw !== 'true' && requiredRaw !== 'false') {
+    throw new Error(`onboarding.md: ${id} (line ${baseLine}) — Required: must be 'true' or 'false', got '${requiredRaw}'`);
+  }
   const required = requiredRaw === 'true';
   const field = get('Field');
   if (!field) throw new Error(`onboarding.md: ${id} (line ${baseLine}) — missing 'Field:' line`);
@@ -90,8 +107,8 @@ function parseBlock(id: string, fieldId: string, block: string[], baseLine: numb
   if (!questionRaw) throw new Error(`onboarding.md: ${id} (line ${baseLine}) — missing 'Question:' line`);
   const question = questionRaw.replace(/^"|"$/g, '');
   const style = get('Style');
-  const min = get('Min') ? Number(get('Min')) : undefined;
-  const max = get('Max') ? Number(get('Max')) : undefined;
+  const min = parseOptionalInt(get('Min'), 'Min', id, baseLine);
+  const max = parseOptionalInt(get('Max'), 'Max', id, baseLine);
 
   const examplesGood = collectExamples(block, 'Examples (good):');
   const examplesBad = collectExamples(block, 'Examples (bad):');
@@ -104,6 +121,7 @@ function collectExamples(block: string[], header: string): string[] {
   if (idx < 0) return [];
   const out: string[] = [];
   for (let i = idx + 1; i < block.length; i++) {
+    if (block[i].trim() === '') continue;
     const m = /^- (.+)$/.exec(block[i]);
     if (!m) break;
     // Strip surrounding quotes if present

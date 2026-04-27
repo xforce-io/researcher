@@ -72,4 +72,26 @@ describe('parseOnboardingMd', () => {
     const bad = VALID.replace('## Q1 — topic_oneline', '## Q1 topic_oneline');
     expect(() => parseOnboardingMd(bad)).toThrow(/header/);
   });
+
+  it('preserves example list across blank lines between bullets', () => {
+    const withBlank = VALID.replace(
+      'Examples (good):\n- "Decision policies in LLM agents."',
+      'Examples (good):\n- "Decision policies in LLM agents."\n\n- "Trace observability for AI agents."'
+    );
+    const r = parseOnboardingMd(withBlank);
+    expect(r.questions[0].examplesGood).toEqual([
+      'Decision policies in LLM agents.',
+      'Trace observability for AI agents.',
+    ]);
+  });
+
+  it('throws on non-numeric Min', () => {
+    const bad = VALID.replace('Min: 2', 'Min: abc');
+    expect(() => parseOnboardingMd(bad)).toThrow(/Min.*number/);
+  });
+
+  it('throws on non-canonical Required value', () => {
+    const bad = VALID.replace('Required: true\nField: project.yaml > meta.topic_oneline', 'Required: yes\nField: project.yaml > meta.topic_oneline');
+    expect(() => parseOnboardingMd(bad)).toThrow(/Required/);
+  });
 });
