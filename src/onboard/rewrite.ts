@@ -50,15 +50,22 @@ export function composeSystemPrompt(methodologyBody: string): string {
 
 export function composeUserPrompt(opts: RewriteOptions): string {
   const lines: string[] = [];
+  const questionById = new Map(opts.onboarding.questions.map((q) => [q.id, q]));
   lines.push('# User answers');
   for (const a of opts.answers) {
+    const q = questionById.get(a.questionId);
     lines.push('');
     lines.push(`## ${a.questionId} (${a.fieldId})`);
+    if (q) {
+      lines.push(`Question: ${q.question}`);
+      if (q.field) lines.push(`Target: ${q.field}`);
+    }
     if (a.kind === 'skipped') {
-      lines.push(
-        'SKIPPED — preserve template default and append `# TODO: revisit after first few papers`.',
-      );
+      lines.push('');
+      lines.push('SKIPPED — preserve template default and append `# TODO: revisit after first few papers`.');
     } else {
+      lines.push('');
+      lines.push('Answer:');
       lines.push(a.text ?? '');
     }
   }
@@ -87,15 +94,19 @@ export function composeUserPrompt(opts: RewriteOptions): string {
 }
 
 export function parseResponse(output: string): { projectYaml: string; thesisMd: string } {
-  const yamlMatch = /<<<PROJECT_YAML>>>\n([\s\S]*?)\n<<<END_PROJECT_YAML>>>/.exec(output);
+  const yamlMatch = /<<<PROJECT_YAML>>>\r?\n([\s\S]*?)\r?\n<<<END_PROJECT_YAML>>>/.exec(output);
   if (!yamlMatch) throw new Error('rewrite response: missing PROJECT_YAML block');
-  const mdMatch = /<<<THESIS_MD>>>\n([\s\S]*?)\n<<<END_THESIS_MD>>>/.exec(output);
+  const mdMatch = /<<<THESIS_MD>>>\r?\n([\s\S]*?)\r?\n<<<END_THESIS_MD>>>/.exec(output);
   if (!mdMatch) throw new Error('rewrite response: missing THESIS_MD block');
   const projectYaml = yamlMatch[1];
   const thesisMd = mdMatch[1];
   try {
-    parseYaml(projectYaml);
+    const parsed = parseYaml(projectYaml);
+    if (parsed === null || parsed === undefined || typeof parsed !== 'object') {
+      throw new Error('rewrite response: project.yaml parsed to empty or non-object — likely blank block');
+    }
   } catch (e) {
+    if ((e as Error).message.startsWith('rewrite response:')) throw e;
     throw new Error(`rewrite response: project.yaml is not valid yaml — ${(e as Error).message}`);
   }
   return { projectYaml, thesisMd };
