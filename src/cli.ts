@@ -31,6 +31,14 @@ program
   });
 
 program
+  .command('onboard')
+  .description('Interactive TUI to scaffold and fill in a new topic')
+  .action(async () => {
+    const { runOnboard } = await import('./commands/onboard.js');
+    await runOnboard({ cwd: process.cwd() });
+  });
+
+program
   .command('run')
   .description('Autonomous tick: discover + triage + (if deep-read pick) read + synthesize + package')
   .action(async () => {
