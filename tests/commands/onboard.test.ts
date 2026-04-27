@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,6 +52,11 @@ describe('runOnboard (integration)', () => {
       join(methHome, 'methodology', 'onboarding.md'),
       readFileSync(join(pkg, 'methodology', 'onboarding.md'))
     );
+  });
+
+  afterEach(() => {
+    delete process.env.RESEARCHER_HOME;
+    delete process.env.RESEARCHER_CLAUDE_BIN;
   });
 
   it('produces a topic repo with project.yaml + thesis.md committed (TUI auto-driver)', async () => {

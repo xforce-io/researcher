@@ -6,6 +6,7 @@ import { render } from 'ink';
 import { resolvePackageRoot, resolveProjectResearcherDir, resolveResearcherHome } from '../paths.js';
 import { scaffoldTopicRepo, validateRepoRoot } from './init.js';
 import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
+import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isAllTemplates } from '../onboard/all-templates-check.js';
 import { rewriteAnswers, composeUserPrompt, composeSystemPrompt } from '../onboard/rewrite.js';
@@ -83,15 +84,20 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
         },
         onCommit: (rewritten, topicOneline) => {
           void (async () => {
-            await writeOnboardArtifacts({
-              repoRoot,
-              projectYaml: rewritten.projectYaml,
-              thesisMd: rewritten.thesisMd,
-              slug: makeSlug(topicOneline),
-            });
-            ink.unmount();
+            try {
+              await writeOnboardArtifacts({
+                repoRoot,
+                projectYaml: rewritten.projectYaml,
+                thesisMd: rewritten.thesisMd,
+                slug: makeSlug(topicOneline),
+              });
+              ink.unmount();
+              await maybeFirstPaper(repoRoot);
+            } catch (e) {
+              ink.unmount();
+              process.stderr.write(`onboard commit failed: ${(e as Error).message}\n`);
+            }
             resolve();
-            await maybeFirstPaper(repoRoot);
           })();
         },
         onAbort: () => {
@@ -104,7 +110,7 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
 }
 
 async function rewriteOrLog(
-  runtime: ClaudeCodeAdapter,
+  runtime: AgentRuntime,
   repoRoot: string,
   methodologyBody: string,
   onboarding: ReturnType<typeof parseOnboardingMd>,
@@ -172,9 +178,11 @@ async function maybeFirstPaper(repoRoot: string): Promise<void> {
 
 function readStdinLine(): Promise<string> {
   return new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
     let buf = '';
-    const onData = (chunk: Buffer): void => {
-      buf += chunk.toString();
+    const onData = (chunk: string | Buffer): void => {
+      buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       if (buf.includes('\n')) {
         process.stdin.removeListener('data', onData);
         resolve(buf.trim());
