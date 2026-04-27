@@ -112,6 +112,9 @@ describe('researcher run (autonomous)', () => {
     process.env.RESEARCHER_NO_REMOTE = '1';
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
+    // Override placeholder query so the `hasRealQueries` check in run.ts passes.
+    const pyPath = join(proj, '.researcher/project.yaml');
+    writeFileSync(pyPath, readFileSync(pyPath, 'utf8').replace('your topic keyword', 'test query'));
     execaSync('git', ['add', '.researcher'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes'), { recursive: true });

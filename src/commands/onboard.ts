@@ -139,6 +139,13 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
           thesisMd: result.thesisMd,
           slug: makeSlug(topicOneline),
         });
+        if (result.projectYaml.includes('your topic keyword')) {
+          process.stdout.write(
+            `\n\x1b[33m⚠️  arxiv keywords not set (Q6 was skipped).\x1b[0m\n` +
+            `   Autodiscovery disabled until you fill in .researcher/project.yaml sources[].queries.\n` +
+            `   You can still add papers manually: \`researcher add <arxiv-id>\`\n`
+          );
+        }
         committed = true;
       } else if (action === 'abort') {
         aborted = true;

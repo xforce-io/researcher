@@ -44,6 +44,17 @@ export async function runRun(opts: RunOptions): Promise<void> {
       return;
     }
 
+    const hasRealQueries = ctx!.projectYaml.sources.some(
+      (s) => s.queries && s.queries.some((q) => q.trim() !== '' && q !== 'your topic keyword')
+    );
+    if (!hasRealQueries) {
+      process.stdout.write(
+        `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
+        `Add queries to .researcher/project.yaml sources[].queries, or use \`researcher add <arxiv-id>\`.\n`
+      );
+      return;
+    }
+
     await runStages(runDir, [
       { name: 'discover', fn: async () => discoverTriage(ctx!) },
     ]);
