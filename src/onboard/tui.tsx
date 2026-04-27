@@ -1,6 +1,7 @@
 import React, { useState, useLayoutEffect, useRef } from 'react';
 import { Box, Text, useStdin } from 'ink';
 import type { Question } from './schema.js';
+import { OnboardingState, type SerializedAnswer } from './state.js';
 
 export interface QuestionScreenProps {
   question: Question;
@@ -141,5 +142,92 @@ export function DiffReview(props: DiffReviewProps): React.JSX.Element {
         <Text dimColor>[a] accept · [r] re-answer · [x] abort</Text>
       </Box>
     </Box>
+  );
+}
+
+export interface AppProps {
+  questions: Question[];
+  onAllAnswered: (answers: SerializedAnswer[]) => Promise<{
+    before: { projectYaml: string; thesisMd: string };
+    after: { projectYaml: string; thesisMd: string };
+  }>;
+  onCommit: (
+    rewritten: { projectYaml: string; thesisMd: string },
+    topicOneline: string
+  ) => void;
+  onAbort: () => void;
+}
+
+type Phase =
+  | { kind: 'asking'; idx: number }
+  | { kind: 'rewriting' }
+  | { kind: 'reviewing'; before: { projectYaml: string; thesisMd: string }; after: { projectYaml: string; thesisMd: string } }
+  | { kind: 'errored'; error: string };
+
+export function App(props: AppProps): React.JSX.Element {
+  const stateRef = useRef(new OnboardingState(props.questions));
+  const [phase, setPhase] = useState<Phase>({ kind: 'asking', idx: 0 });
+
+  const advanceFrom = (idx: number): void => {
+    if (idx < props.questions.length - 1) {
+      setPhase({ kind: 'asking', idx: idx + 1 });
+      return;
+    }
+    setPhase({ kind: 'rewriting' });
+    void (async () => {
+      try {
+        const { before, after } = await props.onAllAnswered(stateRef.current.serialize());
+        setPhase({ kind: 'reviewing', before, after });
+      } catch (e) {
+        setPhase({ kind: 'errored', error: (e as Error).message });
+      }
+    })();
+  };
+
+  if (phase.kind === 'asking') {
+    const q = props.questions[phase.idx];
+    return (
+      <QuestionScreen
+        question={q}
+        onSubmit={(text) => {
+          stateRef.current.answer(q.id, text);
+          advanceFrom(phase.idx);
+        }}
+        onSkip={() => {
+          stateRef.current.skip(q.id);
+          advanceFrom(phase.idx);
+        }}
+      />
+    );
+  }
+
+  if (phase.kind === 'rewriting') {
+    return (
+      <Box paddingX={1}>
+        <Text>Rewriting answers via agent runtime…</Text>
+      </Box>
+    );
+  }
+
+  if (phase.kind === 'errored') {
+    return (
+      <Box paddingX={1} flexDirection="column">
+        <Text color="red">Rewrite failed: {phase.error}</Text>
+        <Text dimColor>Raw answers preserved in /tmp; re-run `researcher onboard`.</Text>
+      </Box>
+    );
+  }
+
+  // reviewing
+  const a1 = stateRef.current.getAnswer('Q1');
+  const topicOneline = a1?.kind === 'text' ? a1.text : '';
+  return (
+    <DiffReview
+      before={phase.before}
+      after={phase.after}
+      onAccept={() => props.onCommit(phase.after, topicOneline)}
+      onReanswer={() => setPhase({ kind: 'asking', idx: 0 })}
+      onAbort={() => props.onAbort()}
+    />
   );
 }

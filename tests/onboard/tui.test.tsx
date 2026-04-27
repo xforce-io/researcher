@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render } from 'ink-testing-library';
-import { QuestionScreen, DiffReview } from '../../src/onboard/tui.js';
+import { QuestionScreen, DiffReview, App } from '../../src/onboard/tui.js';
 import type { Question } from '../../src/onboard/schema.js';
 
 const Q: Question = {
@@ -103,5 +103,56 @@ describe('<DiffReview>', () => {
     );
     stdin.write('x');
     expect(onAbort).toHaveBeenCalled();
+  });
+});
+
+describe('<App>', () => {
+  const questions: Question[] = [
+    { id: 'Q1', fieldId: 'topic_oneline', required: true, field: 'f', question: 'q1?', examplesGood: [], examplesBad: [] },
+    { id: 'Q2', fieldId: 'taste', required: false, field: 'f', question: 'q2?', examplesGood: [], examplesBad: [] },
+  ];
+
+  it('walks all questions then calls onAllAnswered with serialized answers', async () => {
+    const onAllAnswered = vi.fn(async () => ({
+      before: { projectYaml: 'b', thesisMd: 'b' },
+      after: { projectYaml: 'a', thesisMd: 'a' },
+    }));
+    const { stdin } = render(
+      <App questions={questions} onAllAnswered={onAllAnswered} onCommit={() => {}} onAbort={() => {}} />
+    );
+    stdin.write('first answer');
+    stdin.write('\r'); // submit Q1
+    stdin.write('\x1b'); // skip Q2 via Esc
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onAllAnswered).toHaveBeenCalled();
+    const arg = onAllAnswered.mock.calls[0][0];
+    expect(arg).toEqual([
+      { questionId: 'Q1', fieldId: 'topic_oneline', kind: 'text', text: 'first answer' },
+      { questionId: 'Q2', fieldId: 'taste', kind: 'skipped' },
+    ]);
+  });
+
+  it('calls onCommit with rewritten content on accept', async () => {
+    const onCommit = vi.fn();
+    const { stdin } = render(
+      <App
+        questions={questions}
+        onAllAnswered={async () => ({
+          before: { projectYaml: 'b', thesisMd: 'b' },
+          after: { projectYaml: 'a', thesisMd: 'a' },
+        })}
+        onCommit={onCommit}
+        onAbort={() => {}}
+      />
+    );
+    stdin.write('answer');
+    stdin.write('\r');
+    stdin.write('\x1b'); // skip Q2
+    await new Promise((r) => setTimeout(r, 50));
+    stdin.write('a'); // accept in DiffReview
+    expect(onCommit).toHaveBeenCalledWith(
+      { projectYaml: 'a', thesisMd: 'a' },
+      'answer'
+    );
   });
 });
