@@ -96,3 +96,50 @@ export function QuestionScreen(props: QuestionScreenProps): React.JSX.Element {
     </Box>
   );
 }
+
+export interface DiffReviewProps {
+  before: { projectYaml: string; thesisMd: string };
+  after: { projectYaml: string; thesisMd: string };
+  onAccept: () => void;
+  onReanswer: () => void;
+  onAbort: () => void;
+}
+
+export function DiffReview(props: DiffReviewProps): React.JSX.Element {
+  const { stdin, setRawMode } = useStdin();
+
+  useLayoutEffect(() => {
+    if (!stdin) return;
+    setRawMode(true);
+    const handler = (chunk: Buffer | string) => {
+      const raw = chunk.toString();
+      if (raw === 'a') props.onAccept();
+      else if (raw === 'r') props.onReanswer();
+      else if (raw === 'x') props.onAbort();
+    };
+    stdin.on('data', handler);
+    return () => {
+      stdin.off('data', handler);
+      setRawMode(false);
+    };
+  }, [stdin, setRawMode, props.onAccept, props.onReanswer, props.onAbort]);
+
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <Text bold>Review rewritten files</Text>
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan">─── project.yaml (before → after) ───</Text>
+        <Text dimColor>{props.before.projectYaml}</Text>
+        <Text>{props.after.projectYaml}</Text>
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan">─── thesis.md (before → after) ───</Text>
+        <Text dimColor>{props.before.thesisMd}</Text>
+        <Text>{props.after.thesisMd}</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>[a] accept · [r] re-answer · [x] abort</Text>
+      </Box>
+    </Box>
+  );
+}

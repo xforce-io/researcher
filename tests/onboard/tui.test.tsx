@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render } from 'ink-testing-library';
-import { QuestionScreen } from '../../src/onboard/tui.js';
+import { QuestionScreen, DiffReview } from '../../src/onboard/tui.js';
 import type { Question } from '../../src/onboard/schema.js';
 
 const Q: Question = {
@@ -70,5 +70,38 @@ describe('<QuestionScreen>', () => {
     stdin.write('  spaced  ');
     stdin.write('\r');
     expect(onSubmit).toHaveBeenCalledWith('spaced');
+  });
+});
+
+describe('<DiffReview>', () => {
+  const before = { projectYaml: 'old yaml', thesisMd: 'old thesis' };
+  const after = { projectYaml: 'NEW yaml', thesisMd: 'NEW thesis' };
+
+  it('renders both file diffs', () => {
+    const { lastFrame } = render(
+      <DiffReview before={before} after={after} onAccept={() => {}} onReanswer={() => {}} onAbort={() => {}} />
+    );
+    const out = lastFrame() ?? '';
+    expect(out).toContain('project.yaml');
+    expect(out).toContain('thesis.md');
+    expect(out).toContain('NEW yaml');
+  });
+
+  it('calls onAccept on "a"', () => {
+    const onAccept = vi.fn();
+    const { stdin } = render(
+      <DiffReview before={before} after={after} onAccept={onAccept} onReanswer={() => {}} onAbort={() => {}} />
+    );
+    stdin.write('a');
+    expect(onAccept).toHaveBeenCalled();
+  });
+
+  it('calls onAbort on "x"', () => {
+    const onAbort = vi.fn();
+    const { stdin } = render(
+      <DiffReview before={before} after={after} onAccept={() => {}} onReanswer={() => {}} onAbort={onAbort} />
+    );
+    stdin.write('x');
+    expect(onAbort).toHaveBeenCalled();
   });
 });
