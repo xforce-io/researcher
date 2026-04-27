@@ -1,6 +1,9 @@
 # project.yaml — structured project soul
 # Edit this to declare your topic's research questions, criteria, sources.
 
+meta:
+  topic_oneline: ""
+
 research_questions:
   - id: RQ1
     text: "Replace this with your first research question."
