@@ -15,6 +15,14 @@ export async function writeOnboardArtifacts(opts: WriteArtifactsOptions): Promis
   const dotR = resolveProjectResearcherDir(opts.repoRoot);
   writeFileSync(join(dotR, 'project.yaml'), opts.projectYaml);
   writeFileSync(join(dotR, 'thesis.md'), opts.thesisMd);
+  // Bootstrap the notes/ directory so `researcher run` can scan it immediately.
+  const notesDir = join(opts.repoRoot, 'notes');
+  mkdirSync(notesDir, { recursive: true });
+  const landscape = join(notesDir, '00_research_landscape.md');
+  writeFileSync(
+    landscape,
+    '# Research Landscape\n\n> This document tracks the evolving state of the field as researcher reads papers.\n\n## Overview\n\n_No papers ingested yet._\n'
+  );
   await commit({
     cwd: opts.repoRoot,
     paths: [
@@ -22,6 +30,7 @@ export async function writeOnboardArtifacts(opts: WriteArtifactsOptions): Promis
       '.researcher/thesis.md',
       '.researcher/.gitignore',
       '.researcher/state/seen.jsonl',
+      'notes/00_research_landscape.md',
     ],
     message: `researcher: onboard ${opts.slug}`,
   });
