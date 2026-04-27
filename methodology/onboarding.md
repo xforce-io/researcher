@@ -63,4 +63,6 @@ Style: each should be opinionated and falsifiable by a counter-example.
 Required: false
 Field: project.yaml > sources[0].queries[]
 Question: "What arXiv search keywords would surface the right papers?"
+Min: 2
+Max: 6
 Style: 2-6 concrete phrases; avoid single common words.

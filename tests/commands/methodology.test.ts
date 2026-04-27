@@ -10,10 +10,10 @@ describe('methodology install', () => {
     home = mkdtempSync(join(tmpdir(), 'r-mhome-'));
     process.env.RESEARCHER_HOME = home;
   });
-  it('copies all 7 methodology files into ~/.researcher/methodology', async () => {
+  it('copies all 8 methodology files into ~/.researcher/methodology', async () => {
     await runMethodologyInstall();
     const dir = join(home, 'methodology');
-    for (const name of ['01-reading.md','02-source.md','03-filtering.md','04-synthesis.md','05-verification.md','06-writing.md','07-cadence.md']) {
+    for (const name of ['01-reading.md','02-source.md','03-filtering.md','04-synthesis.md','05-verification.md','06-writing.md','07-cadence.md','onboarding.md']) {
       expect(existsSync(join(dir, name))).toBe(true);
       expect(readFileSync(join(dir, name), 'utf8').length).toBeGreaterThan(50);
     }
