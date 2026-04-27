@@ -36,6 +36,17 @@ In a fresh git repo for your research topic:
 
 ```sh
 git init
+researcher onboard
+```
+
+`onboard` walks you through 6 questions (2 required, 4 optional), uses
+the agent runtime to rewrite your answers into `project.yaml` + `thesis.md`,
+shows a diff for review, and creates the initial commit.
+
+For power users who want to fill the templates manually:
+
+```sh
+git init
 researcher init
 # edit .researcher/project.yaml — research questions, sources, scope
 # edit .researcher/thesis.md   — your working hypothesis
@@ -71,6 +82,7 @@ state updates) and opens a draft PR.
 | `researcher methodology install` | Copy methodology files to `~/.researcher/` |
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
+| `researcher onboard` | Interactive TUI to scaffold a topic from scratch |
 | `researcher add <arxiv-id>` | Run the 4-stage pipeline against a paper |
 | `researcher version` | Print version |
 
