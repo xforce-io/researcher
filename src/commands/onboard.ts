@@ -1,22 +1,30 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
-import React from 'react';
-import { render } from 'ink';
-import { resolvePackageRoot, resolveProjectResearcherDir, resolveResearcherHome } from '../paths.js';
+import readline from 'node:readline';
+import {
+  resolvePackageRoot,
+  resolveProjectResearcherDir,
+  resolveResearcherHome,
+} from '../paths.js';
 import { scaffoldTopicRepo, validateRepoRoot } from './init.js';
 import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isAllTemplates } from '../onboard/all-templates-check.js';
-import { rewriteAnswers, composeUserPrompt, composeSystemPrompt } from '../onboard/rewrite.js';
+import {
+  rewriteAnswers,
+  composeUserPrompt,
+  composeSystemPrompt,
+} from '../onboard/rewrite.js';
 import { writeOnboardArtifacts, writeRunLog, makeSlug } from '../onboard/persist.js';
-import { App } from '../onboard/tui.js';
-import { OnboardingState, type SerializedAnswer } from '../onboard/state.js';
+import { OnboardingState } from '../onboard/state.js';
+import { runQuestionFlow, runDiffReview } from '../onboard/cli-flow.js';
+import type { SerializedAnswer } from '../onboard/state.js';
 
 export interface OnboardOptions {
   cwd: string;
-  /** Test-only: bypass TUI and feed answers directly. */
+  /** Test-only: bypass interactive flow and feed answers directly. */
   answersOverride?: SerializedAnswer[];
   /** Test-only: auto-accept diff review. */
   autoAcceptDiff?: boolean;
@@ -24,7 +32,6 @@ export interface OnboardOptions {
 
 export async function runOnboard(opts: OnboardOptions): Promise<void> {
   preFlight();
-
   const repoRoot = validateRepoRoot(opts.cwd);
 
   const dotR = resolveProjectResearcherDir(repoRoot);
@@ -50,11 +57,15 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const runtime = new ClaudeCodeAdapter();
   const state = new OnboardingState(onboarding.questions);
 
-  // Test path: bypass TUI
+  // ===== Test path: bypass interactive flow =====
   if (opts.answersOverride) {
+    for (const a of opts.answersOverride) {
+      if (a.kind === 'text' && a.text !== undefined) state.answer(a.questionId, a.text);
+      else state.skip(a.questionId);
+    }
     const result = await rewriteOrLog(
       runtime, repoRoot, onboardingMd, onboarding,
-      opts.answersOverride, templateProjectYaml, templateThesisMd
+      state.serialize(), templateProjectYaml, templateThesisMd
     );
     if (!opts.autoAcceptDiff) return;
     const q1 = opts.answersOverride.find((a) => a.questionId === 'Q1');
@@ -68,7 +79,9 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
     return;
   }
 
-  // Real path: render TUI
+  // ===== Real path: readline-based flow =====
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
   const sigintHandler = (): void => {
     try {
       writeRunLog({
@@ -81,53 +94,64 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
     } catch {
       // best-effort; don't mask the abort
     }
+    rl.close();
     process.exit(130);
   };
   process.once('SIGINT', sigintHandler);
+  // readline emits 'SIGINT' on Ctrl-C when terminal:true; forward to our handler
+  rl.on('SIGINT', () => process.emit('SIGINT'));
 
   try {
-    await new Promise<void>((resolve) => {
-      const ink = render(
-        React.createElement(App, {
-          questions: onboarding.questions,
-          state,
-          onAllAnswered: async (answers) => {
-            const r = await rewriteOrLog(
-              runtime, repoRoot, onboardingMd, onboarding,
-              answers, templateProjectYaml, templateThesisMd
-            );
-            return {
-              before: { projectYaml: templateProjectYaml, thesisMd: templateThesisMd },
-              after: { projectYaml: r.projectYaml, thesisMd: r.thesisMd },
-            };
-          },
-        onCommit: (rewritten, topicOneline) => {
-          void (async () => {
-            try {
-              await writeOnboardArtifacts({
-                repoRoot,
-                projectYaml: rewritten.projectYaml,
-                thesisMd: rewritten.thesisMd,
-                slug: makeSlug(topicOneline),
-              });
-              ink.unmount();
-              await maybeFirstPaper(repoRoot);
-            } catch (e) {
-              ink.unmount();
-              process.stderr.write(`onboard commit failed: ${(e as Error).message}\n`);
-            }
-            resolve();
-          })();
-        },
-        onAbort: () => {
-          ink.unmount();
-          resolve();
-        },
-      })
-    );
-  });
+    // Create a single async iterator over readline lines, shared across all
+    // prompting functions so each line is consumed exactly once.
+    const lines = rl[Symbol.asyncIterator]();
+
+    // Outer loop allows the diff-review re-answer path to restart from Q1
+    let committed = false;
+    let aborted = false;
+    while (!committed && !aborted) {
+      // Reset state for each pass through the question loop
+      state.reset();
+      const answers = await runQuestionFlow(onboarding.questions, { rl, lines });
+      // Mirror answers into OnboardingState for SIGINT log + serialize() consistency
+      for (const a of answers) {
+        if (a.kind === 'text' && a.text !== undefined) state.answer(a.questionId, a.text);
+        else state.skip(a.questionId);
+      }
+
+      const result = await rewriteOrLog(
+        runtime, repoRoot, onboardingMd, onboarding,
+        state.serialize(), templateProjectYaml, templateThesisMd
+      );
+
+      const action = await runDiffReview(
+        { projectYaml: templateProjectYaml, thesisMd: templateThesisMd },
+        { projectYaml: result.projectYaml, thesisMd: result.thesisMd },
+        { rl, lines }
+      );
+
+      if (action === 'accept') {
+        const q1 = answers.find((a) => a.questionId === 'Q1');
+        const topicOneline = q1?.kind === 'text' ? q1.text ?? '' : '';
+        await writeOnboardArtifacts({
+          repoRoot,
+          projectYaml: result.projectYaml,
+          thesisMd: result.thesisMd,
+          slug: makeSlug(topicOneline),
+        });
+        committed = true;
+      } else if (action === 'abort') {
+        aborted = true;
+      }
+      // 'reanswer' falls through to next iteration
+    }
+
+    if (committed) {
+      await maybeFirstPaper(rl, lines, repoRoot);
+    }
   } finally {
     process.removeListener('SIGINT', sigintHandler);
+    rl.close();
   }
 }
 
@@ -187,29 +211,18 @@ function preFlight(): void {
   }
 }
 
-async function maybeFirstPaper(repoRoot: string): Promise<void> {
+async function maybeFirstPaper(
+  _rl: readline.Interface,
+  lines: AsyncIterator<string>,
+  repoRoot: string
+): Promise<void> {
   process.stdout.write('\nfeed first arxiv id now? (paste id or press enter to skip): ');
-  const id = await readStdinLine();
+  const { value: raw, done } = await lines.next();
+  const id = done ? '' : (raw ?? '').trim();
   if (!id) {
     process.stdout.write('\nonboarded. next: `researcher add <arxiv-id>`\n');
     return;
   }
   const { runAdd } = await import('./add.js');
   await runAdd({ input: id, cwd: repoRoot });
-}
-
-function readStdinLine(): Promise<string> {
-  return new Promise((resolve) => {
-    process.stdin.resume();
-    process.stdin.setEncoding('utf8');
-    let buf = '';
-    const onData = (chunk: string | Buffer): void => {
-      buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      if (buf.includes('\n')) {
-        process.stdin.removeListener('data', onData);
-        resolve(buf.trim());
-      }
-    };
-    process.stdin.on('data', onData);
-  });
 }

@@ -32,6 +32,11 @@ export class OnboardingState {
     return this.answers.get(id);
   }
 
+  /** Clear all collected answers; preserves the question set. */
+  reset(): void {
+    this.answers.clear();
+  }
+
   unansweredRequired(): string[] {
     const out: string[] = [];
     for (const q of this.questions.values()) {

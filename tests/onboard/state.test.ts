@@ -45,4 +45,17 @@ describe('OnboardingState', () => {
       { questionId: 'Q2', fieldId: 'taste', kind: 'skipped' },
     ]);
   });
+
+  it('reset() clears all answers but preserves question set', () => {
+    const s = new OnboardingState([Q1, Q2]);
+    s.answer('Q1', 'topic.');
+    s.skip('Q2');
+    s.reset();
+    expect(s.getAnswer('Q1')).toBeUndefined();
+    expect(s.getAnswer('Q2')).toBeUndefined();
+    expect(s.unansweredRequired()).toEqual(['Q1']);
+    // can answer again after reset
+    s.answer('Q1', 'new topic');
+    expect(s.getAnswer('Q1')).toEqual({ kind: 'text', text: 'new topic' });
+  });
 });
