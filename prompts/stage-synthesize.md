@@ -58,41 +58,34 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
 4. **`report.md`** (repo root) — thesis-driven synthesis across *all* papers read so far. Update with every new note.
 
-   **Structure** (create from scratch if `{{report_current}}` is empty or marked `(not yet created)`; otherwise update surgically):
+   **Required metadata header** (always present):
 
    ```
-   # <topic title from thesis>: Research Report
+   # <topic title>: Research Report
    
    > **Version:** vN (N papers)
    > **Last Updated:** <today>
    > **Papers:** [01](notes/01_xxx.md), [02](notes/02_yyy.md), …
    > **Thesis:** [.researcher/thesis.md](.researcher/thesis.md)
-   
-   ---
-   
-   ## 当前判断
-   [One paragraph: what we currently believe. Update every run.]
-   
-   ## 分 RQ 核心发现
-   [One subsection per research question from thesis. Cite papers as [N].]
-   
-   ## 设计启发
-   [Concrete implications for design/build work derived from the literature.]
-   
-   ## 未覆盖的问题
-   [What remains unknown or contradicted.]
-   
+   ```
+
+   **Body structure — your judgment, not a formula.**
+   The research questions exist as anchors, not as headings. Organize the body around the actual intellectual problems that have emerged from reading, not around the numbered RQs. Ask yourself: after reading these papers, what are the genuine tensions, open design choices, and actionable insights? Let those drive the sections. A good section title is a claim or a question worth debating, not an RQ label.
+
+   Required fixed section at the end:
+
+   ```
    ## 版本更新日志
    | 版本 | 日期 | 新增论文 | 关键变化 |
    |------|------|---------|---------|
    ```
 
    **Update rules:**
-   - Increment version number and update "Last Updated" + "Papers" list.
-   - Append a new row to the version log explaining what this paper changed.
-   - Add the new paper's contribution to the relevant RQ subsections (cite as [N]).
-   - Revise "当前判断" and "设计启发" only when the new paper meaningfully shifts the conclusion — otherwise leave them unchanged.
-   - Do NOT rewrite sections wholesale; prefer targeted inserts and rewrites of individual sentences.
+   - Increment version and "Last Updated"; add the new paper to the Papers list.
+   - Append a new row to the version log.
+   - Update body sections surgically — revise only where the new paper actually shifts the picture. Prefer targeted sentence rewrites over wholesale section rewrites.
+   - If a new theme emerges that doesn't fit existing sections, add a new section (don't force it into an existing one).
+   - If `{{report_current}}` is `(not yet created)`, write the full report from scratch.
 
 5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
 
