@@ -20,7 +20,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    (README.md, papers/README.md) which synthesize is now expected to maintain.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
-    allowedPrefixes: ['notes/', '.researcher/', 'README.md', 'report.md', 'papers/'],
+    allowedPrefixes: ['notes/', '.researcher/', 'README.md', 'report.md', 'papers/', 'references/'],
   });
   if (dirty.length > 0) {
     throw new Error(

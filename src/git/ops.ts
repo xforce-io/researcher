@@ -38,8 +38,9 @@ export async function pushBranch(o: { cwd: string; branch: string }): Promise<vo
   await execa('git', ['push', '-u', 'origin', o.branch], { cwd: o.cwd });
 }
 
-export async function ghPrCreate(o: { cwd: string; title: string; bodyFile: string }): Promise<string> {
+export async function ghPrCreate(o: { cwd: string; title: string; bodyFile: string; base?: string }): Promise<string> {
   if (process.env.RESEARCHER_NO_REMOTE === '1') return '(skipped: RESEARCHER_NO_REMOTE=1)';
-  const { stdout } = await execa('gh', ['pr', 'create', '--draft', '--title', o.title, '--body-file', o.bodyFile], { cwd: o.cwd });
+  const base = o.base ?? 'main';
+  const { stdout } = await execa('gh', ['pr', 'create', '--draft', '--base', base, '--title', o.title, '--body-file', o.bodyFile], { cwd: o.cwd });
   return stdout.trim();
 }

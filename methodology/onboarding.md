@@ -67,7 +67,7 @@ Field: project.yaml > sources[0].queries[]
 Question: "What arXiv search keywords would surface the right papers?"
 Min: 2
 Max: 6
-Style: 2-6 concrete phrases; avoid single common words.
+Style: derive queries from the specific technical mechanisms in the project, not from the topic name. If references/ or design documents are present in the working directory, read them and extract mechanism-level queries (e.g. for a dynamic tool loading system: "dynamic tool retrieval context window LLM", not "multi-agent LLM"). Generic topic keywords are a last resort for when no design documents exist.
 
 ## Q7 — working_hypotheses
 Required: false

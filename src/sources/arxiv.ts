@@ -48,12 +48,17 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
   };
 }
 
-async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
+async function fetchWithRetry(url: string, attempts = 4): Promise<Response> {
   let last: Response | undefined;
   for (let i = 0; i < attempts; i++) {
     last = await fetch(url);
     if (last.ok) return last;
-    if (last.status < 500) return last; // 4xx — don't retry, the id is wrong
+    if (last.status === 429) {
+      // Rate-limited — back off with increasing delay: 5s, 10s, 20s
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
+      continue;
+    }
+    if (last.status < 500) return last; // other 4xx — don't retry, the id is wrong
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1))); // 0.5s, 1s
   }
   return last as Response;
