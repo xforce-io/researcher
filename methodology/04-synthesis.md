@@ -27,6 +27,7 @@ Every newly added paper in landscape.md must declare at least one explicit relat
 | `extends` | Broadens the scope of another paper without replacing it. |
 | `contradicts` | A claim in this paper is in direct conflict with a claim in an existing note. |
 | `orthogonal` | Related domain, no overlapping claim — included for completeness. |
+| `supersedes` | This paper subsumes an earlier note's contribution: the earlier paper's mechanism or result is dominated, deprecated, or made redundant by this one. Use only when the earlier work no longer earns load-bearing weight in synthesis — not for incremental improvements (those are `builds-on` or `extends`). Synthesis demotes superseded papers from main narrative to an appendix; the note file is preserved for history. |
 
 If you cannot find a relation to any existing note, stop and reconsider the inclusion decision. A paper with zero relations to the existing notes likely means: (a) it is off-topic and shouldn't have reached deep-read, or (b) it is genuinely first-of-kind, in which case say so explicitly and explain why it belongs despite the isolation.
 
