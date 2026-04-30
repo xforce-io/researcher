@@ -43,7 +43,7 @@ Gaps you found through critical reading. Not the "Future Work" section — those
 
 ### Relations
 
-How this paper connects to others already in `notes/`. At least one explicit relation is required. Use the relation kinds defined in `04-synthesis.md`: `builds-on`, `competes-with`, `extends`, `contradicts`, `orthogonal`.
+How this paper connects to others already in `notes/`. At least one explicit relation is required. Use the relation kinds defined in `04-synthesis.md`: `builds-on`, `competes-with`, `extends`, `contradicts`, `orthogonal`, `supersedes`.
 
 Every relation gets a confidence label: `[high]`, `[med]`, or `[low]`.
 

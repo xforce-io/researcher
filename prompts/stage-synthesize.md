@@ -106,6 +106,17 @@ You may add new bullets, table rows, and reading-priority entries inside the exi
 
 If the new paper does not fit into any existing bucket, do NOT extend the structure unilaterally. Instead, append a section to the contradictions file titled `## Proposed taxonomy extension` describing exactly what new bucket would be needed and why; the human will decide whether to accept the proposal in a later edit.
 
+### Handling `supersedes` relations
+
+If the new note's Relations section declares `supersedes <note_id>` (or 中文等价表达 like 取代/包含/弃用), the named paper is no longer load-bearing and must be demoted from the main narrative. Apply these surgical edits:
+
+- **In `notes/00_research_landscape.md`**: append the inline tag `(superseded by [N])` to the existing bullet for the demoted paper, where `[N]` is the new paper. Do NOT delete the bullet (history matters), do NOT move it. The relation also gets recorded normally inside the new paper's entry.
+- **In `report.md`**: remove the demoted paper's analysis from main body sections (§3 / §4 / similar). Append (or extend) an appendix section titled `## 附录: Superseded works` (or English `## Appendix: Superseded works`) with one row per demoted paper: `[N_old] <one-line title> — superseded by [N_new] (<one-line reason>)`. If a previous run already created this appendix, add a row; do not duplicate. Inside the main body, replace any prior load-bearing reference to the demoted paper with a single sentence acknowledging its supersede status (`(See appendix: superseded by [N_new]).`) — do NOT silently delete it.
+- **In `README.md`**: change the demoted paper's row Status emoji to `📜` (archived). Keep the row in the table.
+- **The note file itself stays untouched** — the supersede state lives in landscape + report + README, not in note frontmatter (the synthesize stage is forbidden from editing other notes).
+
+If the new note's Relations declare nothing about supersedence, ignore this section.
+
 ### Other constraints
 
 Do NOT modify `thesis.md`. Do NOT modify any file in `notes/` other than `00_research_landscape.md`. Do NOT modify `.researcher/state/`.
