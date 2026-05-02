@@ -4,7 +4,7 @@ import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import type { RunContext } from './context.js';
 
-const TIMEOUT_MS = 20 * 60 * 1000;
+const TIMEOUT_MS = 45 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
 export async function synthesize(ctx: RunContext): Promise<void> {
