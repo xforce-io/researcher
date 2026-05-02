@@ -90,8 +90,12 @@ It must answer four questions for a first-time visitor in this order:
 1. What is this topic, in one paragraph (derived from the working thesis).
 2. What's the current set of read papers (a table with #, title, layer/axis,
    priority, read status).
-3. What does the researcher currently believe (a 2–4 sentence thesis summary,
-   linking to `.researcher/thesis.md` for the full statement).
+3. What does the researcher currently believe — a **≤4 sentence** thesis
+   summary (single short paragraph or 2–4 short bullets), regenerated each
+   run from `.researcher/thesis.md`, never appended to. Must end with a
+   pointer to `.researcher/thesis.md` for the full statement. The
+   "preserve existing prose" rule below does NOT apply to this block — it
+   is a summary, not a narrative paragraph, and the cap is hard.
 4. Where to look for depth (`notes/00_research_landscape.md` for the synthesis,
    `papers/README.md` for the source index, `.researcher/` for project soul).
 

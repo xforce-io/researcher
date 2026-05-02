@@ -60,7 +60,13 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
 3. **`README.md`** — maintain per the **workshop curation** section in the writing discipline. The minimum required mutation: ensure the paper table includes a row for the new note `{{new_note_filename}}` (with the right priority and read-status emoji), and update "Last Updated" if the README has such a field. Beyond that, follow the curation rules: preserve narrative paragraphs that still match the current thesis; rewrite them only if the thesis has shifted relative to what the existing README implies. Use `Edit` for surgical changes, `Write` only if the README is being effectively rebuilt.
 
-4. **`report.md`** (repo root) — thesis-driven synthesis across *all* papers read so far. Update with every new note.
+   **Hard cap on the README's Thesis section** (if the README has one, named `## Thesis` / `## 论题` / similar). It is a *summary* of `.researcher/thesis.md`, not a copy of it and not an accretion log:
+   - **≤4 sentences total**, written as a single short paragraph or 2–4 short bullets. No multi-claim mega-paragraphs.
+   - **Regenerated each run from `.researcher/thesis.md`, never appended to**. If you find the existing section already exceeds the cap, rewrite it to fit the cap — do not preserve length out of "surgical update" politeness.
+   - Must end with a pointer to the full thesis (e.g. `See [.researcher/thesis.md](.researcher/thesis.md) for the full working thesis.`).
+   - The depth and supporting evidence belong in `report.md` and `notes/00_research_landscape.md`, not in the README's Thesis block.
+
+4. **`report.md`** (repo root) — `report.md` is `.researcher/thesis.md`'s **evidence and argument apparatus**. The thesis is the spec; the report is its working implementation. The report's job is to make the thesis's positioning, design decisions, and falsifiability points *legible and challengeable* in light of every paper read so far. It is **not** a per-paper notebook, **not** an academic survey, **not** a list of "what each paper says." Update it with every new note.
 
    **Required metadata header** (always present):
 
@@ -73,10 +79,50 @@ Produce up to four artifacts (the third and fourth depend on what already exists
    > **Thesis:** [.researcher/thesis.md](.researcher/thesis.md)
    ```
 
-   **Body structure — your judgment, not a formula.**
-   The research questions exist as anchors, not as headings. Organize the body around the actual intellectual problems that have emerged from reading, not around the numbered RQs. Ask yourself: after reading these papers, what are the genuine tensions, open design choices, and actionable insights? Let those drive the sections. A good section title is a claim or a question worth debating, not an RQ label.
+   ### Step A — structural compliance check (BEFORE any edit)
 
-   If a `## Design Context` section exists in the thesis, or if `references/` contains product/design documents, the report body should map research findings to *specific design decisions in that context* — not just compare papers to each other. A section that says "paper X implies we should do Y in our component Z because of gap G" is more valuable than one that says "paper X achieves result R."
+   Before deciding whether to do a surgical update or a restructure, audit the existing `{{report_current}}` against this checklist. The checklist applies whenever `.researcher/thesis.md` has a `## Design Context` section OR `references/` contains product/design documents (i.e. the topic has a real design spec). If neither exists, this checklist is skipped and you may use a freer academic-axis structure.
+
+   - [ ] **Spine matches thesis structure**: top-level sections derive from thesis's *Working thesis* claims, *Design Context* goals/components, and *可证伪点追踪* — not from academic axes ("调用前检索", "智能体内规划"), per-paper labels ("§N paper X", "MAST 失败的地图"), or numbered RQs.
+   - [ ] **Section titles are claims or design questions**, not paper titles or topic taxonomy. "Goal 4 Composer：sandbox 还是 broadcast？" is the target shape; "Agent-as-a-Graph 的类型化召回" is not.
+   - [ ] **Papers appear as evidence inside sections**, not as section topics. A given paper may appear in multiple sections, in one, or as a one-line falsifiability note.
+   - [ ] **Each design-goal section answers three questions**: (i) what does the literature now say about this goal? (ii) what residual gap or tension remains? (iii) what should we do about it in our system?
+   - [ ] **可证伪点追踪 is a body section, not an afterthought** — every entry in thesis's 可证伪点 table has a paragraph in the report tracking current evidence pro/con and the next observation that would resolve it.
+   - [ ] **No "supplementary / backfill / 整合" sections that exist alongside an old non-compliant spine**. If you find such a section, that is a sign the previous run dodged a restructure — fix it now.
+   - [ ] **Every paper in the Papers metadata is cited in the body** (`[1]`…`[N]`).
+
+   Record the result of this audit. If **any** box fails, the report is **non-compliant** — proceed to Step B (restructure). If all boxes pass, proceed to Step C (surgical update).
+
+   ### Step B — restructure (when non-compliant)
+
+   When the audit fails, you MUST restructure the report. This is not optional and not a "judgment call" — additive supplementary sections are explicitly forbidden as a workaround.
+
+   - Use `Write` to rebuild `report.md` from scratch, with the spine derived from `.researcher/thesis.md`. Recommended top-level structure:
+     1. **Opening framing** (≤6 sentences): the topic's positioning and the central tension, drawn from thesis's Working thesis. Voice mirrors the thesis.
+     2. **One section per design goal / open design decision** named in thesis's Design Context. Each section answers the three questions above.
+     3. **Cross-cutting tensions** (only if real): conflicts between papers, conflicts between literature and thesis, conflicts between goals.
+     4. **可证伪点追踪**: one paragraph per thesis falsifiability entry, with current evidence and next observation.
+     5. **版本更新日志** (the fixed section below).
+   - Preserve facts, numbers, and citations from the old report — but reorganize them. Do not lose information; do lose the old structure.
+   - The restructure replaces the old body wholesale; do not keep parallel old academic-axis sections "for safety."
+
+   ### Step C — surgical update (when compliant)
+
+   If the audit passes, integrate the new paper surgically:
+   - Increment version and "Last Updated"; add the new paper to the Papers list.
+   - Append a new row to the version log.
+   - Revise body sections only where the new paper actually shifts the picture. Prefer targeted sentence rewrites over wholesale section rewrites.
+   - If a new theme genuinely emerges that doesn't fit any existing design-goal section, add a new design-goal-anchored section — but do not add an academic-axis section, and do not add a "supplementary integration" section as a way to avoid restructuring elsewhere.
+
+   ### Step D — final self-check (before writing FILES_MODIFIED)
+
+   - Re-run the Step A checklist against your output. If any box fails, you are not done — fix it before emitting FILES_MODIFIED.
+   - Confirm every paper `[1]…[N]` from the Papers metadata is cited in the body.
+   - Confirm no parallel old-spine sections survived the restructure.
+
+   ### Bootstrapping
+
+   - If `{{report_current}}` is `(not yet created)`, write the full report from scratch using the Step B structure.
 
    Required fixed section at the end:
 
@@ -85,13 +131,6 @@ Produce up to four artifacts (the third and fourth depend on what already exists
    | 版本 | 日期 | 新增论文 | 关键变化 |
    |------|------|---------|---------|
    ```
-
-   **Update rules:**
-   - Increment version and "Last Updated"; add the new paper to the Papers list.
-   - Append a new row to the version log.
-   - Update body sections surgically — revise only where the new paper actually shifts the picture. Prefer targeted sentence rewrites over wholesale section rewrites.
-   - If a new theme emerges that doesn't fit existing sections, add a new section (don't force it into an existing one).
-   - If `{{report_current}}` is `(not yet created)`, write the full report from scratch.
 
 5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
 
