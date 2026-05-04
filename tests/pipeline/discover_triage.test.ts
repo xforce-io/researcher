@@ -67,7 +67,7 @@ describe('discover_triage stage', () => {
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty landscape\n');
   });
 
-  it('sets ctx.addArxivId from the first deep-read pick and writes skim/reject to seen.jsonl', async () => {
+  it('sets ctx.addSourceId from the first deep-read pick and writes skim/reject to seen.jsonl', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({
       projectRoot: proj,
@@ -77,7 +77,7 @@ describe('discover_triage stage', () => {
 
     await discoverTriage(ctx);
 
-    expect(ctx.addArxivId).toBe('arxiv:2401.11111');
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.22222');
     expect(seen).toContain('arxiv:2401.33333');
@@ -85,7 +85,7 @@ describe('discover_triage stage', () => {
     expect(seen).not.toContain('arxiv:2401.11111');
   });
 
-  it('leaves ctx.addArxivId undefined when no deep-read candidate is returned', async () => {
+  it('leaves ctx.addSourceId undefined when no deep-read candidate is returned', async () => {
     const noDeepRead = sample({
       candidates: [
         {
@@ -107,7 +107,7 @@ describe('discover_triage stage', () => {
 
     await discoverTriage(ctx);
 
-    expect(ctx.addArxivId).toBeUndefined();
+    expect(ctx.addSourceId).toBeUndefined();
     expect(readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8')).toContain('arxiv:2401.99999');
   });
 
@@ -122,7 +122,7 @@ describe('discover_triage stage', () => {
 
     await discoverTriage(ctx);
 
-    expect(ctx.addArxivId).toBeUndefined();
+    expect(ctx.addSourceId).toBeUndefined();
     // file may or may not be touched, but should remain valid (likely just header line)
     const seenPath = join(proj, '.researcher/state/seen.jsonl');
     expect(existsSync(seenPath)).toBe(true);
@@ -150,6 +150,6 @@ describe('discover_triage stage', () => {
     await discoverTriage(ctx);
 
     // We do NOT re-read a previously-decided paper.
-    expect(ctx.addArxivId).toBeUndefined();
+    expect(ctx.addSourceId).toBeUndefined();
   });
 });

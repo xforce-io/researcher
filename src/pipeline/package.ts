@@ -12,7 +12,7 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
 export async function packageStage(ctx: RunContext): Promise<void> {
   if (!ctx.newNoteFilename || !ctx.newNoteContent) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
-  if (!ctx.addArxivId) throw new Error('package (Plan 1, add mode) requires addArxivId');
+  if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
 
   // 0. fail fast if user has unrelated uncommitted changes — otherwise they get
   //    swept into the researcher branch when we stage workshop docs.
@@ -55,9 +55,9 @@ export async function packageStage(ctx: RunContext): Promise<void> {
 
   // 2. update state files
   const seen = new Seen(join(ctx.researcherDir, 'state/seen.jsonl'));
-  if (!seen.has(ctx.addArxivId)) {
+  if (!seen.has(ctx.addSourceId)) {
     seen.append({
-      id: ctx.addArxivId,
+      id: ctx.addSourceId,
       source: 'arxiv',
       first_seen_run: ctx.runDir.id,
       decision: 'deep-read',

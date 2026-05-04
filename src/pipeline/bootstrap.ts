@@ -11,7 +11,7 @@ export interface BootstrapInput {
   projectRoot: string;
   adapter: AgentRuntime;
   runDir: RunDir;
-  addArxivId?: string;
+  addSourceId?: string;
 }
 
 export async function bootstrap(input: BootstrapInput): Promise<RunContext> {
@@ -34,6 +34,6 @@ export async function bootstrap(input: BootstrapInput): Promise<RunContext> {
     methodology,
     adapter: input.adapter,
     runDir: input.runDir,
-    addArxivId: input.addArxivId,
+    addSourceId: input.addSourceId,
   };
 }

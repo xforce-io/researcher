@@ -10,8 +10,8 @@ import type { RunContext } from './context.js';
 const TIMEOUT_MS = 15 * 60 * 1000;
 
 export async function read(ctx: RunContext): Promise<void> {
-  if (!ctx.addArxivId) throw new Error('read stage requires addArxivId in context');
-  const meta = await fetchArxivMetadata(ctx.addArxivId);
+  if (!ctx.addSourceId) throw new Error('read stage requires addSourceId in context');
+  const meta = await fetchArxivMetadata(ctx.addSourceId);
 
   const bareId = meta.id.replace(/^arxiv:/, '');
   let paperText = readTextCache(bareId);

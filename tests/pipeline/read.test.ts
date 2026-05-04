@@ -40,7 +40,7 @@ describe('read stage', () => {
   });
   it('writes a note file and records it in context', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     await read(ctx);
     expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
     expect(ctx.newNoteContent).toContain('Claims');
@@ -61,7 +61,7 @@ describe('read stage', () => {
     }
     const adapter = new CapturingAdapter();
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addSourceId: 'arxiv:2401.00001' });
     await read(ctx);
     expect(adapter.lastPrompt).toContain('CACHED PDF BODY MARKER');
   });

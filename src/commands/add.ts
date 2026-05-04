@@ -30,7 +30,7 @@ export async function runAdd(opts: AddOptions): Promise<void> {
       {
         name: 'bootstrap',
         fn: async () => {
-          ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addArxivId: id });
+          ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addSourceId: id });
         },
       },
       { name: 'read',        fn: async () => read(ctx!) },
