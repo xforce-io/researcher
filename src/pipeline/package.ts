@@ -58,7 +58,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   if (!seen.has(ctx.addSourceId)) {
     seen.append({
       id: ctx.addSourceId,
-      source: 'arxiv',
+      source: ctx.addSourceId.startsWith('arxiv:') ? 'arxiv' : 'url',
       first_seen_run: ctx.runDir.id,
       decision: 'deep-read',
       reason: ctx.triageReason ?? 'manual feed via researcher add',
