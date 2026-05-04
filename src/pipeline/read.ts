@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execa } from 'execa';
 import { fetchArxivMetadata } from '../sources/arxiv.js';
+import { readTextCache, writeTextCache } from '../sources/cache.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import type { RunContext } from './context.js';
 
@@ -12,7 +13,16 @@ export async function read(ctx: RunContext): Promise<void> {
   if (!ctx.addArxivId) throw new Error('read stage requires addArxivId in context');
   const meta = await fetchArxivMetadata(ctx.addArxivId);
 
-  const paperText = await tryPdfToText(meta.pdf_url).catch(() => meta.abstract);
+  const bareId = meta.id.replace(/^arxiv:/, '');
+  let paperText = readTextCache(bareId);
+  if (paperText === undefined) {
+    try {
+      paperText = await tryPdfToText(meta.pdf_url);
+      writeTextCache(bareId, paperText);
+    } catch {
+      paperText = meta.abstract;
+    }
+  }
 
   const notesDir = join(ctx.projectRoot, 'notes');
   const existing = readdirSync(notesDir).filter((f) => /^\d+_.*\.md$/.test(f)).sort();

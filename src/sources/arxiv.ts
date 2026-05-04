@@ -1,3 +1,5 @@
+import { readJsonCache, writeJsonCache } from './cache.js';
+
 const ID_RE = /(\d{4}\.\d{4,5})(?:v\d+)?/;
 
 export function canonicalizeArxivId(input: string): string {
@@ -27,6 +29,8 @@ export interface ArxivMetadata {
 
 export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMetadata> {
   const bareId = canonicalId.replace(/^arxiv:/, '');
+  const cached = readJsonCache<ArxivMetadata>(bareId);
+  if (cached) return cached;
   const apiUrl = `https://export.arxiv.org/api/query?id_list=${bareId}`;
   const res = await fetchWithRetry(apiUrl);
   if (!res.ok) throw new Error(`arxiv api ${res.status} for ${bareId}`);
@@ -38,7 +42,7 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
   const authors = [...entry.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/g)]
     .map((m) => decodeXml(m[1]));
   if (!title) throw new Error(`empty title for ${bareId} in arxiv api response`);
-  return {
+  const meta: ArxivMetadata = {
     id: canonicalId,
     title,
     authors,
@@ -46,6 +50,8 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
     abs_url: arxivAbsUrl(canonicalId),
     pdf_url: arxivPdfUrl(canonicalId),
   };
+  writeJsonCache(bareId, meta);
+  return meta;
 }
 
 async function fetchWithRetry(url: string, attempts = 6): Promise<Response> {

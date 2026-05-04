@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { canonicalizeArxivId, arxivAbsUrl, arxivPdfUrl, fetchArxivMetadata } from '../../src/sources/arxiv.js';
+import { writeJsonCache } from '../../src/sources/cache.js';
 
 describe('arxiv', () => {
   it('canonicalizes bare id', () => {
@@ -18,7 +22,16 @@ describe('arxiv', () => {
 });
 
 describe('fetchArxivMetadata', () => {
-  afterEach(() => vi.restoreAllMocks());
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'r-arxiv-'));
+    process.env.RESEARCHER_HOME = home;
+  });
+  afterEach(() => {
+    delete process.env.RESEARCHER_HOME;
+    rmSync(home, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
 
   it('parses title, authors, and abstract from arxiv Atom API', async () => {
     const atom = `<?xml version="1.0" encoding="UTF-8"?>
@@ -130,9 +143,16 @@ describe('fetchArxivMetadata', () => {
 });
 
 describe('fetchArxivMetadata 429 backoff', () => {
-  beforeEach(() => vi.useFakeTimers());
+  let home: string;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    home = mkdtempSync(join(tmpdir(), 'r-arxiv-429-'));
+    process.env.RESEARCHER_HOME = home;
+  });
   afterEach(() => {
     vi.useRealTimers();
+    delete process.env.RESEARCHER_HOME;
+    rmSync(home, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -188,5 +208,59 @@ describe('fetchArxivMetadata 429 backoff', () => {
     promise.catch(() => {});
     await vi.runAllTimersAsync();
     await expect(promise).rejects.toThrow(/arxiv api 429/i);
+  });
+});
+
+describe('fetchArxivMetadata cache', () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'r-arxiv-cache-'));
+    process.env.RESEARCHER_HOME = home;
+  });
+
+  afterEach(() => {
+    delete process.env.RESEARCHER_HOME;
+    rmSync(home, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('returns cached metadata without calling fetch', async () => {
+    writeJsonCache('2401.12345', {
+      id: 'arxiv:2401.12345',
+      title: 'Cached Title',
+      authors: ['A', 'B'],
+      abstract: 'cached abstract',
+      abs_url: 'https://arxiv.org/abs/2401.12345',
+      pdf_url: 'https://arxiv.org/pdf/2401.12345',
+    });
+    const fetchMock = vi.fn(async () => new Response('should not happen', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const meta = await fetchArxivMetadata('arxiv:2401.12345');
+    expect(meta.title).toBe('Cached Title');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('writes cache on a fresh fetch', async () => {
+    const atom = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.99999v1</id>
+    <title>Fresh Paper</title>
+    <summary>fresh abstract</summary>
+    <author><name>Z</name></author>
+  </entry>
+</feed>`;
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(atom, { status: 200 })));
+
+    await fetchArxivMetadata('arxiv:2401.99999');
+
+    // Second call should not hit fetch — cache is warm.
+    const fetchSpy = vi.fn(async () => new Response('boom', { status: 500 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const meta = await fetchArxivMetadata('arxiv:2401.99999');
+    expect(meta.title).toBe('Fresh Paper');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
