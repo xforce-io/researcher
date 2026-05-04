@@ -11,11 +11,13 @@ export class ClaudeCodeAdapter implements AgentRuntime {
   readonly id = 'claude-code';
 
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    // Node refuses argv containing NUL — PDF text extraction occasionally
+    // leaks \0 into the read-stage prompt and crashes the whole tick.
     const args = [
       '-p',
-      opts.userPrompt,
+      stripNul(opts.userPrompt),
       '--append-system-prompt',
-      opts.systemPrompt,
+      stripNul(opts.systemPrompt),
       '--allowedTools',
       ALLOWED_TOOLS,
       '--dangerously-skip-permissions',
@@ -31,6 +33,11 @@ export class ClaudeCodeAdapter implements AgentRuntime {
       modifiedFiles: parseFilesModified(result.stdout ?? ''),
     };
   }
+}
+
+function stripNul(s: string): string {
+  // eslint-disable-next-line no-control-regex -- intentional: matches NUL
+  return s.replace(/\u0000/g, '');
 }
 
 function parseFilesModified(output: string): string[] {

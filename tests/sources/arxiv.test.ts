@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { canonicalizeArxivId, arxivAbsUrl, arxivPdfUrl, fetchArxivMetadata } from '../../src/sources/arxiv.js';
 
 describe('arxiv', () => {
@@ -70,7 +70,9 @@ describe('fetchArxivMetadata', () => {
   });
 
   it('retries on transient 5xx and succeeds when the next attempt returns ok', async () => {
-    const ok = `<?xml version="1.0"?>
+    vi.useFakeTimers();
+    try {
+      const ok = `<?xml version="1.0"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <entry>
     <id>http://arxiv.org/abs/2604.17658v1</id>
@@ -79,21 +81,34 @@ describe('fetchArxivMetadata', () => {
     <author><name>X</name></author>
   </entry>
 </feed>`;
-    let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      calls++;
-      if (calls < 3) return new Response('Service Unavailable', { status: 503 });
-      return new Response(ok, { status: 200 });
-    }));
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        calls++;
+        if (calls < 3) return new Response('Service Unavailable', { status: 503 });
+        return new Response(ok, { status: 200 });
+      }));
 
-    const meta = await fetchArxivMetadata('arxiv:2604.17658');
-    expect(meta.title).toBe('Towards Self-Improving Error Diagnosis');
-    expect(calls).toBe(3); // two retries before success
+      const promise = fetchArxivMetadata('arxiv:2604.17658');
+      await vi.runAllTimersAsync();
+      const meta = await promise;
+      expect(meta.title).toBe('Towards Self-Improving Error Diagnosis');
+      expect(calls).toBe(3); // two retries before success
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('gives up after the retry budget is exhausted on persistent 5xx', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream', { status: 503 })));
-    await expect(fetchArxivMetadata('arxiv:2604.17658')).rejects.toThrow(/arxiv api 503/i);
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream', { status: 503 })));
+      const promise = fetchArxivMetadata('arxiv:2604.17658');
+      promise.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(promise).rejects.toThrow(/arxiv api 503/i);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not retry on 4xx (no point — the id is wrong)', async () => {
@@ -111,5 +126,67 @@ describe('fetchArxivMetadata', () => {
 <feed xmlns="http://www.w3.org/2005/Atom"></feed>`;
     vi.stubGlobal('fetch', vi.fn(async () => new Response(atom, { status: 200 })));
     await expect(fetchArxivMetadata('arxiv:2401.12345')).rejects.toThrow(/no entry/i);
+  });
+});
+
+describe('fetchArxivMetadata 429 backoff', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  const ok = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2602.02475v1</id>
+    <title>Sample</title>
+    <summary>abstract</summary>
+    <author><name>X</name></author>
+  </entry>
+</feed>`;
+
+  it('retries on 429 and succeeds on later attempt', async () => {
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls++;
+      if (calls < 4) return new Response('rate limited', { status: 429 });
+      return new Response(ok, { status: 200 });
+    }));
+
+    const promise = fetchArxivMetadata('arxiv:2602.02475');
+    await vi.runAllTimersAsync();
+    const meta = await promise;
+    expect(meta.title).toBe('Sample');
+    expect(calls).toBe(4);
+  });
+
+  it('honors Retry-After header (seconds form)', async () => {
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      calls++;
+      if (calls === 1) {
+        return new Response('slow down', {
+          status: 429,
+          headers: { 'Retry-After': '7' },
+        });
+      }
+      return new Response(ok, { status: 200 });
+    }));
+
+    const promise = fetchArxivMetadata('arxiv:2602.02475');
+    await vi.advanceTimersByTimeAsync(6_999);
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(2);
+    await promise;
+    expect(calls).toBe(2);
+  });
+
+  it('gives up after exhausting the 429 retry budget', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('rate limited', { status: 429 })));
+    const promise = fetchArxivMetadata('arxiv:2602.02475');
+    promise.catch(() => {});
+    await vi.runAllTimersAsync();
+    await expect(promise).rejects.toThrow(/arxiv api 429/i);
   });
 });
