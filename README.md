@@ -21,6 +21,12 @@ forced to either reinforce, refine, or contradict it; and the apparatus
 (`report.md`, the landscape, per-paper notes) exists to make that thesis
 challengeable, not to summarize the literature for its own sake.
 
+Each tick surfaces any contradictions the new paper raises against your
+thesis or prior notes — that report is typically where the actual thinking
+happens, not the per-paper summary. The loop closes because the thesis is
+read into every triage prompt: as the thesis sharpens, what gets deep-read
+next round shifts with it.
+
 You stay in the loop by reviewing diffs in PRs, not by chatting with an agent.
 
 ## Status
