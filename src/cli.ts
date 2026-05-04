@@ -24,7 +24,7 @@ methodology.command('edit <name>').action(async (name: string) => (await import(
 
 program
   .command('add <input>')
-  .description('Manually add a paper (arxiv id, URL, or PDF path) to the current topic')
+  .description('Manually add a paper (arxiv id or http(s) URL) to the current topic')
   .action(async (input: string) => {
     const { runAdd } = await import('./commands/add.js');
     await runAdd({ input, cwd: process.cwd() });
