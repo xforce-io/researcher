@@ -48,20 +48,33 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
   };
 }
 
-async function fetchWithRetry(url: string, attempts = 4): Promise<Response> {
-  let last: Response | undefined;
+async function fetchWithRetry(url: string, attempts = 6): Promise<Response> {
+  let last!: Response;
   for (let i = 0; i < attempts; i++) {
     last = await fetch(url);
     if (last.ok) return last;
-    if (last.status === 429) {
-      // Rate-limited — back off with increasing delay: 5s, 10s, 20s
-      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
-      continue;
-    }
-    if (last.status < 500) return last; // other 4xx — don't retry, the id is wrong
-    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1))); // 0.5s, 1s
+    // 4xx other than 429 means the id is wrong — no point retrying.
+    if (last.status >= 400 && last.status < 500 && last.status !== 429) return last;
+    if (i === attempts - 1) break;
+    await new Promise((r) => setTimeout(r, retryDelayMs(last, i)));
   }
-  return last as Response;
+  return last;
+}
+
+function retryDelayMs(res: Response, attempt: number): number {
+  const ra = res.headers.get('retry-after');
+  if (ra) {
+    const sec = Number(ra);
+    if (Number.isFinite(sec) && sec >= 0) return Math.min(sec * 1000, 120_000);
+    const dateMs = Date.parse(ra);
+    if (!Number.isNaN(dateMs)) {
+      const delta = dateMs - Date.now();
+      if (delta > 0) return Math.min(delta, 120_000);
+    }
+  }
+  // Exponential backoff: 2s, 4s, 8s, 16s, 32s, 60s (cap), with jitter.
+  const base = Math.min(2000 * 2 ** attempt, 60_000);
+  return base + Math.floor(Math.random() * 1000);
 }
 
 function decodeXml(s: string): string {
