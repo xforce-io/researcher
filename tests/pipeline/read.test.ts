@@ -40,7 +40,7 @@ describe('read stage', () => {
   });
   it('writes a note file and records it in context', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     await read(ctx);
     expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
     expect(ctx.newNoteContent).toContain('Claims');
@@ -61,9 +61,36 @@ describe('read stage', () => {
     }
     const adapter = new CapturingAdapter();
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addSourceId: 'arxiv:2401.00001' });
     await read(ctx);
     expect(adapter.lastPrompt).toContain('CACHED PDF BODY MARKER');
+  });
+
+  it('renders source_fetch_instruction and url-derived slug for url: source', async () => {
+    class CapturingAdapter implements AgentRuntime {
+      id = 'capture-url';
+      lastPrompt = '';
+      async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+        this.lastPrompt = opts.userPrompt;
+        // The read stage reads back the file the agent is supposed to write.
+        // Mirror the filename it computes from the url path slug.
+        const noteContent = '# Autodata\n\n## Claims\n- something';
+        writeFileSync(join(opts.cwd, 'notes', '01_autodata.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_autodata.md\n', modifiedFiles: ['notes/01_autodata.md'], exitCode: 0 };
+      }
+    }
+    const adapter = new CapturingAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({
+      projectRoot: proj,
+      adapter,
+      runDir: rd,
+      addSourceId: 'url:https://facebookresearch.github.io/RAM/blogs/autodata/',
+    });
+    await read(ctx);
+    expect(adapter.lastPrompt).toContain('### Source acquisition');
+    expect(adapter.lastPrompt).toContain('https://facebookresearch.github.io/RAM/blogs/autodata/');
+    expect(ctx.newNoteFilename).toBe('01_autodata.md');
   });
 
 });

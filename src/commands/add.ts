@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { canonicalizeArxivId } from '../sources/arxiv.js';
+import { canonicalizeUrl } from '../sources/url.js';
 import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
@@ -15,7 +16,7 @@ import type { RunContext } from '../pipeline/context.js';
 export interface AddOptions { input: string; cwd: string; }
 
 export async function runAdd(opts: AddOptions): Promise<void> {
-  const id = canonicalizeArxivId(opts.input); // Plan 1: arxiv-only
+  const id = canonicalizeAddInput(opts.input);
   const researcherDir = resolveProjectResearcherDir(opts.cwd);
   const seen = new Seen(join(researcherDir, 'state/seen.jsonl'));
   if (seen.has(id)) {
@@ -30,7 +31,7 @@ export async function runAdd(opts: AddOptions): Promise<void> {
       {
         name: 'bootstrap',
         fn: async () => {
-          ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addArxivId: id });
+          ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir, addSourceId: id });
         },
       },
       { name: 'read',        fn: async () => read(ctx!) },
@@ -39,4 +40,10 @@ export async function runAdd(opts: AddOptions): Promise<void> {
     ] as const);
   });
   process.stdout.write(`done. run id: ${runDir.id}\n`);
+}
+
+export function canonicalizeAddInput(input: string): string {
+  try { return canonicalizeArxivId(input); } catch { /* fall through */ }
+  try { return canonicalizeUrl(input); } catch { /* fall through */ }
+  throw new Error(`unrecognized input (not an arxiv id and not an http(s) URL): ${input}`);
 }

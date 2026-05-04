@@ -24,6 +24,8 @@
 {{paper_metadata}}
 ```
 
+{{source_fetch_instruction}}
+
 ### Paper text
 
 The block between the BEGIN/END markers below is the raw extracted paper text.

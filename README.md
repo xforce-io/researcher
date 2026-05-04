@@ -43,7 +43,7 @@ produces:
 Implemented:
 - `init` — scaffold `.researcher/`
 - `onboard` — interactive TUI to draft `project.yaml` + `thesis.md`
-- `add <arxiv-id | arxiv-url>` — manually deep-read one paper end-to-end
+- `add <arxiv-id | arxiv-url | http(s)-url>` — manually deep-read one paper or web source end-to-end
 - `run` — autonomous tick: discover → triage → (deep-read pick) → synthesize → package
 - `methodology install / show / edit` — manage the portable methodology bundle
 

@@ -38,7 +38,7 @@ agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持�
 已实现：
 - `init` —— 在仓库里搭好 `.researcher/`
 - `onboard` —— 交互式 TUI，引导你写出 `project.yaml` + `thesis.md`
-- `add <arxiv-id | arxiv-url>` —— 手动把一篇论文端到端深读完
+- `add <arxiv-id | arxiv-url | http(s)-url>` —— 手动把一篇论文或网络来源端到端深读完
 - `run` —— 自动 tick：discover → triage →（挑一篇）深读 → synthesize → package
 - `methodology install / show / edit` —— 管理可移植的方法论包
 

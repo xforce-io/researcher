@@ -61,7 +61,7 @@ export async function runRun(opts: RunOptions): Promise<void> {
       { name: 'discover', fn: async () => discoverTriage(ctx!) },
     ]);
 
-    if (!ctx!.addArxivId) {
+    if (!ctx!.addSourceId) {
       process.stdout.write(`autonomous tick: no deep-read candidate this run (${runDir.id}).\n`);
       return;
     }
@@ -71,7 +71,7 @@ export async function runRun(opts: RunOptions): Promise<void> {
       { name: 'synthesize', fn: async () => synthesize(ctx!) },
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);
-    process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addArxivId})\n`);
+    process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addSourceId})\n`);
     if (ctx!.contradictionsPath && existsSync(ctx!.contradictionsPath)) {
       const report = classifyContradictions(readFileSync(ctx!.contradictionsPath, 'utf8'));
       if (report.hasContradictions) {

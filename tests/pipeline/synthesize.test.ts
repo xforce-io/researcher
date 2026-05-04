@@ -35,7 +35,7 @@ describe('synthesize stage', () => {
   });
   it('updates landscape and records diff', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
     ctx.newNoteContent = '# Stub';
     writeFileSync(join(proj, 'notes/01_stub.md'), '# Stub');

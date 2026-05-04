@@ -43,7 +43,7 @@ describe('package stage', () => {
     mkdirSync(join(proj, 'src'), { recursive: true });
     writeFileSync(join(proj, 'src/unrelated.ts'), 'export const x = 1;\n');
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
@@ -59,7 +59,7 @@ describe('package stage', () => {
     mkdirSync(join(proj, 'papers'), { recursive: true });
     writeFileSync(join(proj, 'papers/README.md'), '| # | paper |\n|---|---|\n| 9 | new |\n');
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
@@ -77,7 +77,7 @@ describe('package stage', () => {
 
   it('produces 2 commits and updates state files', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';

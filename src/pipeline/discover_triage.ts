@@ -69,7 +69,7 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
       });
       return;
     }
-    ctx.addArxivId = pick.id;
+    ctx.addSourceId = pick.id;
     ctx.triageReason = pick.reason;
   }
 }

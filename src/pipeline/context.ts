@@ -12,7 +12,7 @@ export interface RunContext {
   adapter: AgentRuntime;
   runDir: RunDir;
   // mode-specific
-  addArxivId?: string;
+  addSourceId?: string;
   /** When discover_triage chose this paper, the reason it recorded — used by
    * package stage when writing seen.jsonl in autonomous mode. */
   triageReason?: string;
