@@ -58,6 +58,11 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
 2. **`{{contradictions_path}}`** — use `Write`. List any contradictions between the new paper and existing landscape claims or working thesis. If none, write the single word `none` as the file content.
 
+   **Header convention (load-bearing — the runner parses these to route attention):**
+   - Each real epistemic contradiction must be its own `## Contradiction: <one-line title>` H2 section. Use `## Contradiction (<scope>): <title>` if you want to mark scope (e.g. `paper-internal`, `cross-paper`, `vs-thesis`).
+   - Taxonomy / landscape-extension proposals (see §"Constraints on landscape structural evolution" below) use the single H2 header `## Proposed taxonomy extension` and are NOT real contradictions — they do not force thesis updates and the runner will surface them as a separate, lower-priority signal.
+   - Do NOT mix the two under one header. A single file may contain both kinds, but each must be its own H2 section so the runner can classify them independently.
+
 3. **`README.md`** — maintain per the **workshop curation** section in the writing discipline. The minimum required mutation: ensure the paper table includes a row for the new note `{{new_note_filename}}` (with the right priority and read-status emoji), and update "Last Updated" if the README has such a field. Beyond that, follow the curation rules: preserve narrative paragraphs that still match the current thesis; rewrite them only if the thesis has shifted relative to what the existing README implies. Use `Edit` for surgical changes, `Write` only if the README is being effectively rebuilt.
 
    **Hard cap on the README's Thesis section** (if the README has one, named `## Thesis` / `## 论题` / similar). It is a *summary* of `.researcher/thesis.md`, not a copy of it and not an accretion log:

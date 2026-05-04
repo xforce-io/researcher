@@ -12,6 +12,7 @@ import { discoverTriage } from '../pipeline/discover_triage.js';
 import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { packageStage } from '../pipeline/package.js';
+import { classifyContradictions } from '../pipeline/contradictions.js';
 import type { RunContext } from '../pipeline/context.js';
 
 export interface RunOptions {
@@ -72,9 +73,12 @@ export async function runRun(opts: RunOptions): Promise<void> {
     ]);
     process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addArxivId})\n`);
     if (ctx!.contradictionsPath && existsSync(ctx!.contradictionsPath)) {
-      const body = readFileSync(ctx!.contradictionsPath, 'utf8').trim();
-      if (body && body.toLowerCase() !== 'none') {
+      const report = classifyContradictions(readFileSync(ctx!.contradictionsPath, 'utf8'));
+      if (report.hasContradictions) {
         process.stdout.write(`\ncontradictions found — consider updating .researcher/thesis.md\n`);
+      }
+      if (report.hasTaxonomyProposal) {
+        process.stdout.write(`\nlandscape proposal pending review — see contradictions.md §"Proposed taxonomy extension"\n`);
       }
     }
   });
