@@ -25,6 +25,14 @@ agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持�
 
 你通过审 PR diff 留在闭环里，而不是和某个 agent 不停聊。
 
+## 示例
+
+作者目前正在用本工具维护的两个 topic 仓库（均公开）；想直观看工具实际产物，
+最直接的入口是各自的 `report.md`：
+
+- **[research-agent-triage](https://github.com/xforce-io/research-agent-triage/blob/main/report.md)** — 生产 agent 轨迹分诊
+- **[research-agent-decision](https://github.com/xforce-io/research-agent-decision/blob/main/report.md)** — KWeaver 决策 agent 层
+
 ## 当前状态
 
 已实现：

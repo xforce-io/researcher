@@ -29,6 +29,15 @@ next round shifts with it.
 
 You stay in the loop by reviewing diffs in PRs, not by chatting with an agent.
 
+## Examples
+
+Two topic repos the author currently maintains with this tool — both public,
+so their `report.md` is the most direct way to see what the pipeline actually
+produces:
+
+- **[research-agent-triage](https://github.com/xforce-io/research-agent-triage/blob/main/report.md)** — production agent trace triage
+- **[research-agent-decision](https://github.com/xforce-io/research-agent-decision/blob/main/report.md)** — decision-agent layer for KWeaver
+
 ## Status
 
 Implemented:
