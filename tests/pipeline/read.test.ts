@@ -7,6 +7,7 @@ import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { read } from '../../src/pipeline/read.js';
+import { writeTextCache } from '../../src/sources/cache.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 
@@ -44,4 +45,25 @@ describe('read stage', () => {
     expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
     expect(ctx.newNoteContent).toContain('Claims');
   });
+
+  it('uses cached paper text instead of refetching when cache is warm', async () => {
+    writeTextCache('2401.00001', 'CACHED PDF BODY MARKER');
+
+    class CapturingAdapter implements AgentRuntime {
+      id = 'capture';
+      lastPrompt = '';
+      async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+        this.lastPrompt = opts.userPrompt;
+        const noteContent = '# Stub note\n\n## Claims\n- something';
+        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_stub_paper.md\n', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+      }
+    }
+    const adapter = new CapturingAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addArxivId: 'arxiv:2401.00001' });
+    await read(ctx);
+    expect(adapter.lastPrompt).toContain('CACHED PDF BODY MARKER');
+  });
+
 });
