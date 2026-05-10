@@ -16,11 +16,17 @@ export async function packageStage(ctx: RunContext): Promise<void> {
 
   // 0. fail fast if user has unrelated uncommitted changes — otherwise they get
   //    swept into the researcher branch when we stage workshop docs.
-  //    Allowed: agent territory (notes/, .researcher/) + workshop front-page docs
-  //    (README.md, papers/README.md) which synthesize is now expected to maintain.
+  //    Allowed: workshop docs the agent actually maintains (landscape + the current paper's note,
+  //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
+  //    Notes other than the current one are rejected on purpose: they're orphans from a
+  //    previous failed run, and silently sweeping them up here would mask that failure.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
-    allowedPrefixes: ['notes/', '.researcher/', 'README.md', 'report.md', 'papers/', 'references/'],
+    allowedPrefixes: [
+      '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
+      LANDSCAPE,
+      `notes/${ctx.newNoteFilename}`,
+    ],
   });
   if (dirty.length > 0) {
     throw new Error(
@@ -53,8 +59,57 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     writeFileSync(runSummaryPath, '# Run summary\n\n_(adapter did not write a summary)_\n');
   }
 
-  // 2. update state files
-  const seen = new Seen(join(ctx.researcherDir, 'state/seen.jsonl'));
+  // 2. snapshot the to-be-committed files into memory before the branch dance.
+  //    We branch from main to keep each PR independent, but synthesize/read just wrote into the
+  //    working tree on the previous branch. After we switch to main, those files will revert
+  //    to main's content — so we capture the cumulative content here and restore on the new branch.
+  const candidatePaths = [
+    join('notes', ctx.newNoteFilename),
+    LANDSCAPE,
+    'README.md',
+    'report.md',
+    'papers/README.md',
+    '.researcher/project.yaml',
+    '.researcher/thesis.md',
+    '.researcher/.gitignore',
+  ];
+  const snapshots = new Map<string, string>();
+  for (const rel of candidatePaths) {
+    const abs = join(ctx.projectRoot, rel);
+    if (existsSync(abs)) snapshots.set(rel, readFileSync(abs, 'utf8'));
+  }
+  // Cumulative state from previous branch's working tree (= main + every un-merged paper PR).
+  const seenPath = join(ctx.researcherDir, 'state/seen.jsonl');
+  const wmPath = join(ctx.researcherDir, 'state/watermark.json');
+  const cumulativeSeen = existsSync(seenPath) ? readFileSync(seenPath, 'utf8') : '';
+
+  // 3. git: branch FROM MAIN, two commits, push, PR. Stash → checkout main → branch → drop stash
+  //    → restore snapshots. Working tree stays on the new branch so the next `researcher add`
+  //    invocation reads the cumulative seen.jsonl (otherwise main's seen.jsonl would be stale
+  //    until the PR merges, breaking dedup for back-to-back runs of the same paper).
+  const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
+  // Branch name = the note filename (without .md). Readable PR titles when the
+  // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
+  const branch = `researcher/${ctx.newNoteFilename.replace(/\.md$/, '')}`;
+  const stashMsg = `researcher-pkg-${ctx.runDir.id}`;
+  const stashed = await gitops.stash({ cwd: ctx.projectRoot, message: stashMsg });
+  await gitops.checkout({ cwd: ctx.projectRoot, branch: 'main' });
+  await gitops.pullFastForward({ cwd: ctx.projectRoot, branch: 'main' });
+  await gitops.createBranch({ cwd: ctx.projectRoot, branch });
+  if (stashed) await gitops.stashDrop({ cwd: ctx.projectRoot });
+
+  // 4. restore snapshots — everything except state files. State gets the cumulative content
+  //    plus this run's append below.
+  for (const [rel, content] of snapshots) {
+    const abs = join(ctx.projectRoot, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+  mkdirSync(dirname(seenPath), { recursive: true });
+  writeFileSync(seenPath, cumulativeSeen);
+
+  // 5. update state files (Seen.append + watermark) on the new branch's checked-out tree.
+  const seen = new Seen(seenPath);
   if (!seen.has(ctx.addSourceId)) {
     seen.append({
       id: ctx.addSourceId,
@@ -70,30 +125,10 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     last_run_window: { from: now, to: now },
     last_run_id: ctx.runDir.id,
   };
-  writeWatermark(join(ctx.researcherDir, 'state/watermark.json'), wm);
+  writeWatermark(wmPath, wm);
 
-  // 3. git: branch, two commits, push, PR. Working tree stays on the new branch
-  // so the next `researcher add` invocation reads the up-to-date seen.jsonl
-  // (otherwise main's seen.jsonl would be stale until the PR merges, breaking
-  // dedup for back-to-back runs of the same paper).
-  const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
-  // Branch name = the note filename (without .md). Readable PR titles when the
-  // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
-  const branch = `researcher/${ctx.newNoteFilename.replace(/\.md$/, '')}`;
-  await gitops.createBranch({ cwd: ctx.projectRoot, branch });
-  // README.md / papers/README.md / .researcher/{project.yaml,thesis.md} are workshop docs an
-  // upstream stage may or may not have written. Filter to paths that actually exist on disk —
-  // git add fails fatally on a missing pathspec.
-  const candidatePaths = [
-    join('notes', ctx.newNoteFilename),
-    LANDSCAPE,
-    'README.md',
-    'report.md',
-    'papers/README.md',
-    '.researcher/project.yaml',
-    '.researcher/thesis.md',
-    '.researcher/.gitignore',
-  ];
+  // 6. commit research, then state, then push + PR.
+  // git add fails fatally on a missing pathspec; filter by existsSync (some are optional).
   const researchPaths = candidatePaths.filter((p) => existsSync(join(ctx.projectRoot, p)));
   await gitops.commit({
     cwd: ctx.projectRoot,

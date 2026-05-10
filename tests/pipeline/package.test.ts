@@ -75,6 +75,59 @@ describe('package stage', () => {
     expect(last).toContain('papers/README.md');
   });
 
+  it('forks the second paper branch from main, not from the previous paper branch', async () => {
+    // Bug 2 regression: previously the new branch was created with `git checkout -b` from the
+    // current HEAD, which after the first packageStage run is `researcher/01_stub`. The next
+    // run would then stack on top of it, polluting the second PR with the first PR's commits.
+    // Expected behaviour: each paper branch is rooted at main's tip.
+    const rd1 = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx1 = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd1, addSourceId: 'arxiv:2401.00001' });
+    ctx1.newNoteFilename = '01_stub.md';
+    ctx1.newNoteContent = '# Stub';
+    ctx1.landscapeDiff = '+stub';
+    ctx1.contradictionsPath = rd1.path('contradictions.md');
+    writeFileSync(ctx1.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+    await packageStage(ctx1);
+
+    const mainTip = execaSync('git', ['rev-parse', 'main'], { cwd: proj }).stdout.trim();
+
+    // Stage paper #2 in the working tree (still on researcher/01_stub branch).
+    writeFileSync(join(proj, 'notes/02_second.md'), '# Second');
+    const rd2 = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx2 = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd2, addSourceId: 'arxiv:2401.00002' });
+    ctx2.newNoteFilename = '02_second.md';
+    ctx2.newNoteContent = '# Second';
+    ctx2.landscapeDiff = '+second';
+    ctx2.contradictionsPath = rd2.path('contradictions.md');
+    writeFileSync(ctx2.contradictionsPath, 'none');
+    await packageStage(ctx2);
+
+    // After fix: researcher/02_second has exactly 2 commits beyond main (research + state).
+    const commitsAhead = execaSync('git', ['rev-list', '--count', `main..researcher/02_second`], { cwd: proj }).stdout.trim();
+    expect(commitsAhead).toBe('2');
+
+    // And researcher/02_second's "research" commit's parent IS main's tip.
+    const researchCommitParent = execaSync('git', ['rev-parse', 'researcher/02_second^^'], { cwd: proj }).stdout.trim();
+    expect(researchCommitParent).toBe(mainTip);
+  });
+
+  it('refuses to run when an orphan note from a previous failed run sits untracked in notes/', async () => {
+    // Bug 1 regression: previously `notes/` was wholly allow-listed in the dirty check, so a
+    // half-written note from a crashed earlier run would silently sit there forever (the package
+    // commit only adds ctx.newNoteFilename). After fix: orphan notes trip the dirty check.
+    writeFileSync(join(proj, 'notes/05_orphan_from_failed_run.md'), '# Orphan from a previous crashed run');
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+
+    await expect(packageStage(ctx)).rejects.toThrow(/05_orphan_from_failed_run/);
+  });
+
   it('produces 2 commits and updates state files', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
