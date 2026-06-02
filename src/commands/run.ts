@@ -21,11 +21,24 @@ export interface RunOptions {
   adapter?: AgentRuntime;
 }
 
-export async function runRun(opts: RunOptions): Promise<void> {
+/** What a single autonomous tick concluded — surfaced for workspace summaries. */
+export type RunOutcome =
+  | 'completed'      // deep-read a paper + synthesized + packaged (PR opened)
+  | 'no-candidate'   // discover ran but nothing worth deep-reading this tick
+  | 'thin-signal'    // soul too thin to draft; punted to open_questions.md
+  | 'no-queries';    // no arxiv queries configured; discover skipped
+
+export interface RunResult {
+  outcome: RunOutcome;
+  runId: string;
+}
+
+export async function runRun(opts: RunOptions): Promise<RunResult> {
   const researcherDir = resolveProjectResearcherDir(opts.cwd);
   const adapter = opts.adapter ?? new ClaudeCodeAdapter();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
 
+  let outcome: RunOutcome = 'completed';
   await withLock(join(researcherDir, 'state/.lock'), async () => {
     let ctx: RunContext;
     await runStages(runDir, [
@@ -43,6 +56,7 @@ export async function runRun(opts: RunOptions): Promise<void> {
         `autonomous tick: signal too thin to draft project soul. ` +
         `see .researcher/open_questions.md, fill it in, then re-run. (${runDir.id})\n`,
       );
+      outcome = 'thin-signal';
       return;
     }
 
@@ -54,6 +68,7 @@ export async function runRun(opts: RunOptions): Promise<void> {
         `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
         `Add queries to .researcher/project.yaml sources[].queries, or use \`researcher add <arxiv-id>\`.\n`
       );
+      outcome = 'no-queries';
       return;
     }
 
@@ -63,6 +78,7 @@ export async function runRun(opts: RunOptions): Promise<void> {
 
     if (!ctx!.addSourceId) {
       process.stdout.write(`autonomous tick: no deep-read candidate this run (${runDir.id}).\n`);
+      outcome = 'no-candidate';
       return;
     }
 
@@ -80,6 +96,10 @@ export async function runRun(opts: RunOptions): Promise<void> {
       if (report.hasTaxonomyProposal) {
         process.stdout.write(`\nlandscape proposal pending review — see contradictions.md §"Proposed taxonomy extension"\n`);
       }
+      if (report.hasCharterTension) {
+        process.stdout.write(`\ncharter tension surfaced — see contradictions.md §"Charter tension" (adjudicate: fix pillar or update super-repo CHARTER.md)\n`);
+      }
     }
   });
+  return { outcome, runId: runDir.id };
 }

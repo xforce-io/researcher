@@ -9,6 +9,8 @@ export interface RunContext {
   projectYaml: ProjectYaml;
   thesis: Thesis;
   methodology: Map<string, string>; // filename → content
+  /** Synced anchor from the super-repo CHARTER.md (.researcher/charter.md), if present. */
+  charter?: string;
   adapter: AgentRuntime;
   runDir: RunDir;
   // mode-specific

@@ -23,6 +23,7 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
     methodology_filtering: ctx.methodology.get('03-filtering.md') ?? '',
     project_yaml: readFileSync(join(ctx.researcherDir, 'project.yaml'), 'utf8'),
     thesis: ctx.thesis.body,
+    charter: ctx.charter ?? '(no charter synced — this topic is not anchored to a super-repo CHARTER)',
     seen_ids: seenIds.length > 0 ? seenIds.join('\n') : '(none)',
     landscape_current: landscapeCurrent,
     triaged_path: triagedPath,
