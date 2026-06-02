@@ -24,6 +24,16 @@ modify any project files in this stage.
 
 {{thesis}}
 
+## Project charter (shared anchor — do not drift)
+
+The charter below is the **shared invariant** for this research matrix: the north-star,
+the cross-pillar concept definitions/boundaries, and THIS pillar's mandate / boundary / interfaces.
+When triaging, respect this pillar's boundary — a paper that belongs to a *neighboring* pillar
+(per the boundaries below) is out of scope here even if interesting. Use the shared concept
+definitions exactly; do not silently redefine them.
+
+{{charter}}
+
 ## Already-seen ledger (do not re-triage)
 
 The following canonical IDs already have a recorded decision in `seen.jsonl`.

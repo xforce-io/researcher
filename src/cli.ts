@@ -40,10 +40,21 @@ program
 
 program
   .command('run')
-  .description('Autonomous tick: discover + triage + (if deep-read pick) read + synthesize + package')
+  .description('Autonomous tick (topic repo), or workspace orchestration (super-repo with researcher.workspace.yml)')
   .action(async () => {
-    const { runRun } = await import('./commands/run.js');
-    await runRun({ cwd: process.cwd() });
+    const cwd = process.cwd();
+    const { existsSync } = await import('node:fs');
+    const { resolveProjectResearcherDir } = await import('./paths.js');
+    const { hasWorkspaceManifest } = await import('./workspace/manifest.js');
+    // A topic repo (.researcher/ present) always runs single-topic; only a
+    // super-repo without its own .researcher/ enters workspace orchestration.
+    if (!existsSync(resolveProjectResearcherDir(cwd)) && hasWorkspaceManifest(cwd)) {
+      const { runWorkspace } = await import('./workspace/orchestrator.js');
+      await runWorkspace({ cwd });
+    } else {
+      const { runRun } = await import('./commands/run.js');
+      await runRun({ cwd });
+    }
   });
 
 program.parseAsync(process.argv).catch((err) => {

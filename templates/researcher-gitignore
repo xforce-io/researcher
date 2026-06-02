@@ -1,3 +1,8 @@
 # Local-only run logs (intermediate stage outputs, devil's-advocate drafts).
 # seen.jsonl and watermark.json are committed — see plan 1 §state.
 state/runs/
+
+# Derived anchor: AUTO-SYNCED from the super-repo CHARTER.md before each
+# workspace tick. Single source of truth is the super-repo, so the synced
+# copy is ephemeral and never committed into the topic repo.
+charter.md

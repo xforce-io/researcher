@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadProjectYaml } from '../config/project-yaml.js';
 import { loadThesis } from '../config/thesis-md.js';
@@ -26,12 +26,15 @@ export async function bootstrap(input: BootstrapInput): Promise<RunContext> {
   if (methodology.size === 0) {
     throw new Error(`no methodology files at ${methodologyDir}; run \`researcher methodology install\``);
   }
+  const charterPath = join(researcherDir, 'charter.md');
+  const charter = existsSync(charterPath) ? readFileSync(charterPath, 'utf8') : undefined;
   return {
     projectRoot: input.projectRoot,
     researcherDir,
     projectYaml,
     thesis,
     methodology,
+    charter,
     adapter: input.adapter,
     runDir: input.runDir,
     addSourceId: input.addSourceId,

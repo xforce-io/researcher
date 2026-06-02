@@ -6,10 +6,12 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions('')).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
     expect(classifyContradictions('   \n\n   ')).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 
@@ -17,10 +19,12 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions('none')).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
     expect(classifyContradictions('NONE\n')).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 
@@ -29,6 +33,7 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: true,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 
@@ -37,6 +42,7 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: true,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 
@@ -45,6 +51,7 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: true,
+      hasCharterTension: false,
     });
   });
 
@@ -59,6 +66,25 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: true,
       hasTaxonomyProposal: true,
+      hasCharterTension: false,
+    });
+  });
+
+  it('flags `## Charter tension` as a soft charter signal', () => {
+    const body = '## Charter tension: pillar boundary pushed\n\nthe evidence suggests...';
+    expect(classifyContradictions(body)).toEqual({
+      hasContradictions: false,
+      hasTaxonomyProposal: false,
+      hasCharterTension: true,
+    });
+  });
+
+  it('flags charter tension alongside a real contradiction', () => {
+    const body = '## Contradiction: foo\nbody\n\n## Charter tension: bar\nbody';
+    expect(classifyContradictions(body)).toEqual({
+      hasContradictions: true,
+      hasTaxonomyProposal: false,
+      hasCharterTension: true,
     });
   });
 
@@ -67,6 +93,7 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 
@@ -77,6 +104,7 @@ describe('classifyContradictions', () => {
     expect(classifyContradictions(body)).toEqual({
       hasContradictions: false,
       hasTaxonomyProposal: false,
+      hasCharterTension: false,
     });
   });
 });

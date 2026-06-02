@@ -16,15 +16,18 @@
 export interface ContradictionsReport {
   hasContradictions: boolean;
   hasTaxonomyProposal: boolean;
+  /** Soft, human-adjudicated tension against a super-repo CHARTER invariant. */
+  hasCharterTension: boolean;
 }
 
 export function classifyContradictions(body: string): ContradictionsReport {
   const trimmed = body.trim();
   if (!trimmed || trimmed.toLowerCase() === 'none') {
-    return { hasContradictions: false, hasTaxonomyProposal: false };
+    return { hasContradictions: false, hasTaxonomyProposal: false, hasCharterTension: false };
   }
   return {
     hasContradictions: /^## Contradiction\b/m.test(trimmed),
     hasTaxonomyProposal: /^## Proposed taxonomy extension\b/m.test(trimmed),
+    hasCharterTension: /^## Charter tension\b/m.test(trimmed),
   };
 }

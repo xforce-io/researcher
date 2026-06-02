@@ -40,6 +40,7 @@ export async function synthesize(ctx: RunContext): Promise<void> {
     methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     thesis: ctx.thesis.body,
+    charter: ctx.charter ?? '(no charter synced — this topic is not anchored to a super-repo CHARTER)',
     landscape_current: landscapeBefore,
     readme_current: existsSync(readmePath) ? readFileSync(readmePath, 'utf8') : '(no README.md)',
     papers_readme_current: existsSync(papersReadmePath)
