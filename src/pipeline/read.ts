@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execa } from 'execa';
@@ -26,7 +26,11 @@ export async function read(ctx: RunContext): Promise<void> {
     : (() => { throw new Error(`unknown source prefix in addSourceId: ${ctx.addSourceId}`); })();
 
   const notesDir = join(ctx.projectRoot, 'notes');
-  const existing = readdirSync(notesDir).filter((f) => /^\d+_.*\.md$/.test(f)).sort();
+  // A freshly-created topic has no notes/ yet (synthesize creates it later);
+  // treat missing as empty so the first paper note becomes 01_*.
+  const existing = existsSync(notesDir)
+    ? readdirSync(notesDir).filter((f) => /^\d+_.*\.md$/.test(f)).sort()
+    : [];
   // Pick max paper-note number + 1; skip 00_* (landscape index, not a paper).
   const maxNum = existing.reduce((m, f) => {
     if (f.startsWith('00_')) return m;
