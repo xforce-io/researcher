@@ -67,7 +67,11 @@ excerpt, written with an `AUTO-SYNCED … do not edit here` header.
   `<researcherDir>/charter.md` into `ctx.charter`; `discover_triage` and `synthesize` inject it
   into their prompts (`{{charter}}`). A topic run inside a submodule is anchored even without
   the orchestrator. Missing charter → a neutral placeholder (back-compat for non-matrix repos).
-- **Sync:** the orchestrator refreshes each active topic's `charter.md` before its tick.
+- **Sync:** the orchestrator refreshes each active topic's `charter.md` before its tick. It is a
+  **derived, gitignored artifact** (the `init` template ignores `charter.md`) — single source of
+  truth is the super-repo `CHARTER.md`, so the topic copy is ephemeral and re-synced each tick,
+  never committed into the topic repo. Existing topics need `charter.md` added to their
+  `.researcher/.gitignore`.
 - **Drift:** `synthesize` is told to also surface tensions *against the charter* into
   `contradictions.md` under `## Charter tension: <title>`. `classifyContradictions` detects it
   (`hasCharterTension`) and `run` prints a soft, **non-blocking** notice. It is **bidirectional**:
