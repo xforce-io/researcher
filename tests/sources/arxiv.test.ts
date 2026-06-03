@@ -5,6 +5,17 @@ import { join } from 'node:path';
 import { canonicalizeArxivId, arxivAbsUrl, arxivPdfUrl, fetchArxivMetadata } from '../../src/sources/arxiv.js';
 import { writeJsonCache } from '../../src/sources/cache.js';
 
+// arxiv.ts now applies a preventive min-interval throttle by default. Disable it
+// for every existing test (interval 0 = no wait) so their timing assertions are
+// unaffected; the rate-limit-hardening suite below re-enables it explicitly.
+beforeEach(() => {
+  process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '0';
+});
+afterEach(() => {
+  delete process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS;
+  delete process.env.RESEARCHER_ARXIV_RETRIES;
+});
+
 describe('arxiv', () => {
   it('canonicalizes bare id', () => {
     expect(canonicalizeArxivId('2401.12345')).toBe('arxiv:2401.12345');
@@ -262,5 +273,123 @@ describe('fetchArxivMetadata cache', () => {
     const meta = await fetchArxivMetadata('arxiv:2401.99999');
     expect(meta.title).toBe('Fresh Paper');
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('arxiv rate-limit hardening', () => {
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'r-arxiv-rl-'));
+    process.env.RESEARCHER_HOME = home;
+  });
+  afterEach(() => {
+    delete process.env.RESEARCHER_HOME;
+    rmSync(home, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const okAtom = (id: string) => `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/${id}v1</id>
+    <title>Sample ${id}</title>
+    <summary>abstract</summary>
+    <author><name>X</name></author>
+  </entry>
+</feed>`;
+
+  it('throttles consecutive requests to at least the configured min interval', async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '5000';
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => { calls++; return new Response(okAtom('3001.00001'), { status: 200 }); }));
+
+      // First request completes and establishes the baseline timestamp.
+      const p1 = fetchArxivMetadata('arxiv:3001.00001');
+      await vi.runAllTimersAsync();
+      await p1;
+      expect(calls).toBe(1);
+
+      // Second (different id, cache-miss) must wait out the throttle window before hitting fetch.
+      const p2 = fetchArxivMetadata('arxiv:3001.00002');
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(calls).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await p2;
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults the min interval to 5000ms when the env var is unset', async () => {
+    vi.useFakeTimers();
+    try {
+      delete process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS;
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => { calls++; return new Response(okAtom('3002.00001'), { status: 200 }); }));
+
+      const p1 = fetchArxivMetadata('arxiv:3002.00001');
+      await vi.runAllTimersAsync();
+      await p1;
+      expect(calls).toBe(1);
+
+      const p2 = fetchArxivMetadata('arxiv:3002.00002');
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(calls).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await p2;
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports attempts and total wait time when it finally gives up', async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '0';
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('rate limited', { status: 429 })));
+      const p = fetchArxivMetadata('arxiv:2602.09999');
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow(/gave up after \d+ attempts.*waited/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('honors RESEARCHER_ARXIV_RETRIES to cap attempts', async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '0';
+      process.env.RESEARCHER_ARXIV_RETRIES = '2';
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => { calls++; return new Response('rl', { status: 429 }); }));
+      const p = fetchArxivMetadata('arxiv:2602.08888');
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow(/arxiv api 429/i);
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults to 8 attempts when RESEARCHER_ARXIV_RETRIES is unset', async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '0';
+      let calls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => { calls++; return new Response('rl', { status: 429 }); }));
+      const p = fetchArxivMetadata('arxiv:2602.07777');
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow();
+      expect(calls).toBe(8);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
