@@ -32,8 +32,13 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
   const cached = readJsonCache<ArxivMetadata>(bareId);
   if (cached) return cached;
   const apiUrl = `https://export.arxiv.org/api/query?id_list=${bareId}`;
-  const res = await fetchWithRetry(apiUrl);
-  if (!res.ok) throw new Error(`arxiv api ${res.status} for ${bareId}`);
+  const { res, attempts, totalWaitMs } = await fetchWithRetry(apiUrl);
+  if (!res.ok) {
+    throw new Error(
+      `arxiv api ${res.status} for ${bareId} ` +
+        `(gave up after ${attempts} attempts, waited ${Math.round(totalWaitMs / 1000)}s)`,
+    );
+  }
   const xml = await res.text();
   const entry = /<entry>([\s\S]*?)<\/entry>/.exec(xml)?.[1];
   if (!entry) throw new Error(`no entry for ${bareId} in arxiv api response`);
@@ -54,17 +59,64 @@ export async function fetchArxivMetadata(canonicalId: string): Promise<ArxivMeta
   return meta;
 }
 
-async function fetchWithRetry(url: string, attempts = 6): Promise<Response> {
-  let last!: Response;
-  for (let i = 0; i < attempts; i++) {
-    last = await fetch(url);
-    if (last.ok) return last;
-    // 4xx other than 429 means the id is wrong — no point retrying.
-    if (last.status >= 400 && last.status < 500 && last.status !== 429) return last;
-    if (i === attempts - 1) break;
-    await new Promise((r) => setTimeout(r, retryDelayMs(last, i)));
+const DEFAULT_MIN_INTERVAL_MS = 5_000; // arXiv etiquette: space requests apart
+const DEFAULT_RETRIES = 8;
+
+function arxivMinIntervalMs(): number {
+  const v = Number(process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_MIN_INTERVAL_MS;
+}
+
+function arxivMaxAttempts(): number {
+  const v = Number(process.env.RESEARCHER_ARXIV_RETRIES);
+  return Number.isFinite(v) && v >= 1 ? Math.floor(v) : DEFAULT_RETRIES;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Timestamp of the last arxiv request. Enforces a *preventive* minimum interval
+// between any two arxiv API calls (vs. only backing off after a 429). Because it
+// is module-level, it also spaces out requests across serially-run workspace
+// topics — the actual root cause of the 429 storm this guards against.
+let lastArxivRequestAt = 0;
+
+async function throttledFetch(url: string): Promise<Response> {
+  const interval = arxivMinIntervalMs();
+  if (interval > 0) {
+    const wait = lastArxivRequestAt + interval - Date.now();
+    if (wait > 0) await sleep(wait);
   }
-  return last;
+  lastArxivRequestAt = Date.now();
+  return fetch(url);
+}
+
+interface RetryOutcome {
+  res: Response;
+  /** How many requests were actually made. */
+  attempts: number;
+  /** Total time spent in backoff sleeps (excludes preventive throttle waits). */
+  totalWaitMs: number;
+}
+
+async function fetchWithRetry(url: string): Promise<RetryOutcome> {
+  const max = arxivMaxAttempts();
+  let last!: Response;
+  let totalWaitMs = 0;
+  let attempts = 0;
+  for (let i = 0; i < max; i++) {
+    last = await throttledFetch(url);
+    attempts = i + 1;
+    if (last.ok) return { res: last, attempts, totalWaitMs };
+    // 4xx other than 429 means the id is wrong — no point retrying.
+    if (last.status >= 400 && last.status < 500 && last.status !== 429) {
+      return { res: last, attempts, totalWaitMs };
+    }
+    if (i === max - 1) break;
+    const delay = retryDelayMs(last, i);
+    totalWaitMs += delay;
+    await sleep(delay);
+  }
+  return { res: last, attempts, totalWaitMs };
 }
 
 function retryDelayMs(res: Response, attempt: number): number {
