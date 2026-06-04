@@ -44,7 +44,7 @@ Implemented:
 - `init` — scaffold `.researcher/`
 - `onboard` — interactive TUI to draft `project.yaml` + `thesis.md`
 - `add <arxiv-id | arxiv-url | http(s)-url>` — manually deep-read one paper or web source end-to-end
-- `run` — autonomous tick: discover → triage → (deep-read pick) → synthesize → package
+- `run` — autonomous tick: discover → triage → (deep-read pick) → synthesize → package; workspace-aware (at a super-repo root, advances every active pillar)
 - `methodology install / show / edit` — manage the portable methodology bundle
 
 Not yet wired: focused-instruction mode (manual override of triage decisions).
@@ -124,6 +124,100 @@ state updates) and opens a draft PR.
 section anchors to a thesis claim, design goal, or falsifiability point, never
 to "what each paper says." See `methodology/06-writing.md` for the discipline.
 
+### File contract — who writes, who reads
+
+A topic repo has exactly two consumers: **you** (the human) and the **research
+agent** (headless claude invoked by each run). Knowing which file each touches
+removes most confusion:
+
+| File | Written by | Read by | In agent prompt? | Git |
+|---|---|---|---|---|
+| `.researcher/thesis.md` | you | research agent | ✅ the *research spec* | tracked |
+| `.researcher/project.yaml` | you (onboard drafts) | CLI + research agent | ✅ | tracked |
+| `.researcher/charter.md` | machine (AUTO-SYNCED) | research agent | ✅ anchor — **do not edit** | tracked |
+| `notes/00_research_landscape.md` | research agent | you (review) | — | tracked |
+| `notes/NN_<slug>.md`, `report.md`, `papers/README.md` | research agent | you (review) | partial re-feed | tracked |
+| `.researcher/state/{seen.jsonl,watermark.json}` | machine | CLI | — | tracked |
+| `.researcher/state/runs/<id>/` | machine | you (diagnosis) | — | gitignored |
+
+Rule of thumb: **you write the spec (thesis) and review PRs; the research agent
+writes the evidence (notes / report / landscape); the machine writes state.**
+`charter.md` exists only in workspace mode (below).
+
+## Workspace mode (multi-pillar)
+
+A single narrow thesis is the right unit for one topic. When a larger program
+needs several **pillars** researched in parallel — each its own narrow thesis,
+deep-dived independently — a **super-repo** stitches them together with git
+submodules and advances them from one root.
+
+### Two specs, two scopes
+
+- **research spec** = `thesis.md` — one pillar's narrow claim; drives that
+  pillar's triage / read / synthesize.
+- **anchor** = `CHARTER.md` (super-repo) — the invariants shared across *all*
+  pillars. Before each run its slice (shared core + this pillar's excerpt) is
+  written into the pillar's read-only `.researcher/charter.md`. Drift surfaces
+  as a `## Charter tension` for you to adjudicate — **bidirectionally**: the
+  pillar drifted, or the CHARTER itself should change.
+
+In one line: **thesis governs where one pillar sharpens; CHARTER governs that
+the pillars don't drift into each other.**
+
+### Super-repo layout
+
+```
+<super-repo>/
+├── CHARTER.md                 # shared anchor: north star + pillar map/invariants + per-pillar excerpts
+├── researcher.workspace.yml   # control panel: topics + active/dormant
+├── docs/                      # human-maintained integration notes (NOT read by researcher)
+└── <pillar>/                  # each = a standalone topic repo (git submodule)
+```
+
+> `researcher` reads only **two** super-repo files: `researcher.workspace.yml`
+> (which pillars to run) and `CHARTER.md` (sliced into each pillar as its
+> anchor). Everything else under the super-repo is for humans.
+
+### CHARTER.md slicing contract
+
+`charter.md` is produced by slicing `CHARTER.md`, so its structure is a contract:
+
+- **shared core** = everything before the first `### ` heading (north star +
+  invariants — every pillar receives this).
+- **per-pillar excerpt** = the `### ` block whose heading contains the
+  backtick-wrapped pillar path (e.g. `` ### `trace` ``), up to the next `##`/`###`.
+- therefore `### ` is **reserved** for per-pillar excerpts inside `CHARTER.md`.
+
+Start from [`templates/CHARTER.md`](templates/CHARTER.md). A pillar's synced
+anchor = shared core + its own excerpt; it is overwritten every run and must
+not be hand-edited.
+
+### Quickstart B — stand up a workspace
+
+```sh
+# 1. create the super-repo
+mkdir my-research && cd my-research && git init
+cp <researcher>/templates/CHARTER.md CHARTER.md   # then edit: north star, invariants, excerpts
+
+# 2. add a pillar as a submodule (each pillar is its own topic repo)
+git submodule add <pillar-repo-url> trace
+( cd trace && researcher init && researcher onboard )
+
+# 3. register it in the control panel
+cat > researcher.workspace.yml <<'YML'
+version: 1
+topics:
+  - { path: trace, active: true }
+YML
+
+# 4. advance all active pillars from the super-repo root
+researcher run
+```
+
+Each active pillar advances one tick (charter synced first) and opens its own
+PR in its own submodule repo. Dormant pillars (`active: false`) are untouched.
+A pillar failing does not abort the rest — errors are collected in the summary.
+
 ## Commands
 
 | Command | What it does |
@@ -131,7 +225,7 @@ to "what each paper says." See `methodology/06-writing.md` for the discipline.
 | `researcher init` | Scaffold `.researcher/` at the repo root |
 | `researcher onboard` | Interactive TUI to draft `project.yaml` + `thesis.md` |
 | `researcher add <arxiv-id\|url>` | Deep-read one paper end-to-end (4-stage pipeline) |
-| `researcher run` | Autonomous tick: discover + triage + (deep-read) + synthesize + package |
+| `researcher run` | In a topic repo: autonomous tick (discover + triage + deep-read + synthesize + package). **At a super-repo root: advances every active pillar** (see Workspace mode) |
 | `researcher methodology install` | Copy methodology files to `~/.researcher/` |
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
