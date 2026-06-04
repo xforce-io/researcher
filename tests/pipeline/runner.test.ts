@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStages } from '../../src/pipeline/runner.js';
+import { runStages, assertAgentOk } from '../../src/pipeline/runner.js';
 import { RunDir, newRunId } from '../../src/state/runs.js';
 
 describe('runStages', () => {
@@ -26,5 +26,25 @@ describe('runStages', () => {
     ] as const)).rejects.toThrow('boom');
     expect(existsSync(rd.path('bootstrap.start'))).toBe(true);
     expect(existsSync(rd.path('bootstrap.done'))).toBe(false);
+  });
+});
+
+describe('assertAgentOk', () => {
+  it('throws and persists <stage>.err when exitCode != 0', () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-assert-'));
+    const rd = new RunDir(base, newRunId());
+    expect(() =>
+      assertAgentOk(rd, 'read', { output: 'o', modifiedFiles: [], exitCode: 1, stderr: 'detail' }),
+    ).toThrow(/read stage agent exited 1.*read\.err/s);
+    expect(existsSync(rd.path('read.err'))).toBe(true);
+  });
+
+  it('is a no-op (no throw, no .err file) when exitCode is 0', () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-assert-'));
+    const rd = new RunDir(base, newRunId());
+    expect(() =>
+      assertAgentOk(rd, 'read', { output: 'o', modifiedFiles: [], exitCode: 0, stderr: '' }),
+    ).not.toThrow();
+    expect(existsSync(rd.path('read.err'))).toBe(false);
   });
 });

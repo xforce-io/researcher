@@ -4,6 +4,7 @@ import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { loadProjectYaml } from '../config/project-yaml.js';
 import { loadThesis } from '../config/thesis-md.js';
 import type { RunContext } from './context.js';
+import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -23,7 +24,7 @@ export async function soulBootstrap(ctx: RunContext): Promise<void> {
     userPrompt,
     timeoutMs: TIMEOUT_MS,
   });
-  if (result.exitCode !== 0) throw new Error(`soul_bootstrap stage agent exited ${result.exitCode}`);
+  assertAgentOk(ctx.runDir, 'soul', result);
 
   if (existsSync(join(ctx.researcherDir, 'open_questions.md'))) {
     ctx.needsHumanInput = true;

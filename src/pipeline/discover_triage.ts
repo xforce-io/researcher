@@ -4,6 +4,7 @@ import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { parseTriaged } from '../config/triaged.js';
 import { Seen } from '../state/seen.js';
 import type { RunContext } from './context.js';
+import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -36,7 +37,7 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
     userPrompt,
     timeoutMs: TIMEOUT_MS,
   });
-  if (result.exitCode !== 0) throw new Error(`discover_triage stage agent exited ${result.exitCode}`);
+  assertAgentOk(ctx.runDir, 'discover', result);
   if (!existsSync(triagedPath)) throw new Error(`discover_triage: agent did not produce ${triagedPath}`);
 
   const triaged = parseTriaged(readFileSync(triagedPath, 'utf8'));

@@ -5,6 +5,7 @@ import { Seen } from '../state/seen.js';
 import { writeWatermark, type Watermark } from '../state/watermark.js';
 import * as gitops from '../git/ops.js';
 import type { RunContext } from './context.js';
+import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -53,7 +54,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     userPrompt,
     timeoutMs: TIMEOUT_MS,
   });
-  if (r.exitCode !== 0) throw new Error(`package stage agent exited ${r.exitCode}`);
+  assertAgentOk(ctx.runDir, 'package', r);
   if (!existsSync(runSummaryPath)) {
     mkdirSync(dirname(runSummaryPath), { recursive: true });
     writeFileSync(runSummaryPath, '# Run summary\n\n_(adapter did not write a summary)_\n');
