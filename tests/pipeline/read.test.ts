@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -44,6 +44,23 @@ describe('read stage', () => {
     await read(ctx);
     expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
     expect(ctx.newNoteContent).toContain('Claims');
+  });
+
+  it('computes 01_ for a fresh topic with no notes/ dir yet', async () => {
+    // brand-new pillar repo: no notes/ directory until the first note is written
+    rmSync(join(proj, 'notes'), { recursive: true, force: true });
+    class FreshStub implements AgentRuntime {
+      id = 'fresh';
+      async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+        mkdirSync(join(opts.cwd, 'notes'), { recursive: true });
+        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
+        return { output: 'done', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+      }
+    }
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new FreshStub(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    await read(ctx);
+    expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
   });
 
   it('uses cached paper text instead of refetching when cache is warm', async () => {
