@@ -1,5 +1,9 @@
 # Researcher: Read stage
 
+## Output language
+
+Write ALL prose output (the note, and anything else you produce) in **{{language}}** (`zh`=简体中文, `en`=English). Technical terms, paper titles, math, and code keep their original language. This OVERRIDES the "follow existing notes" rule in the writing discipline below.
+
 ## Methodology — reading discipline
 
 {{methodology_reading}}

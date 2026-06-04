@@ -20,6 +20,7 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
   const seenIds = listSeenIds(join(ctx.researcherDir, 'state/seen.jsonl'));
 
   const userPrompt = renderTemplate(loadPromptTemplate('stage-discover-triage.md'), {
+    language: ctx.language,
     methodology_source: ctx.methodology.get('02-source.md') ?? '',
     methodology_filtering: ctx.methodology.get('03-filtering.md') ?? '',
     project_yaml: readFileSync(join(ctx.researcherDir, 'project.yaml'), 'utf8'),

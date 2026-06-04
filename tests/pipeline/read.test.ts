@@ -83,6 +83,25 @@ describe('read stage', () => {
     expect(adapter.lastPrompt).toContain('CACHED PDF BODY MARKER');
   });
 
+  it('injects the configured output language into the read prompt', async () => {
+    class CapturingAdapter implements AgentRuntime {
+      id = 'capture-lang';
+      lastPrompt = '';
+      async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+        this.lastPrompt = opts.userPrompt;
+        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
+        return { output: 'done', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+      }
+    }
+    const adapter = new CapturingAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    await read(ctx);
+    // default language from the scaffolded project.yaml is zh
+    expect(adapter.lastPrompt).toMatch(/Output language/i);
+    expect(adapter.lastPrompt).toContain('zh');
+  });
+
   it('renders source_fetch_instruction and url-derived slug for url: source', async () => {
     class CapturingAdapter implements AgentRuntime {
       id = 'capture-url';

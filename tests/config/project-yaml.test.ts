@@ -41,4 +41,20 @@ describe('loadProjectYaml', () => {
     writeFileSync(p, 'research_questions: []');
     expect(() => loadProjectYaml(p)).toThrow(ProjectYamlError);
   });
+
+  it('defaults meta.language to zh when meta is absent', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+    const p = join(dir, 'project.yaml');
+    writeFileSync(p, VALID); // VALID has no meta block
+    const cfg = loadProjectYaml(p);
+    expect(cfg.meta.language).toBe('zh');
+  });
+
+  it('reads an explicit meta.language', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+    const p = join(dir, 'project.yaml');
+    writeFileSync(p, VALID + '\nmeta:\n  language: en\n');
+    const cfg = loadProjectYaml(p);
+    expect(cfg.meta.language).toBe('en');
+  });
 });

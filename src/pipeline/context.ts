@@ -7,6 +7,8 @@ export interface RunContext {
   projectRoot: string;
   researcherDir: string; // <projectRoot>/.researcher
   projectYaml: ProjectYaml;
+  /** Output language for all agent prose (from project.yaml meta.language). */
+  language: string;
   thesis: Thesis;
   methodology: Map<string, string>; // filename → content
   /** Synced anchor from the super-repo CHARTER.md (.researcher/charter.md), if present. */

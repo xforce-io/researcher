@@ -32,6 +32,7 @@ export async function bootstrap(input: BootstrapInput): Promise<RunContext> {
     projectRoot: input.projectRoot,
     researcherDir,
     projectYaml,
+    language: projectYaml.meta.language,
     thesis,
     methodology,
     charter,

@@ -39,6 +39,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   // 1. devil's-advocate / run summary via adapter
   const runSummaryPath = ctx.runDir.path('run-summary.md');
   const userPrompt = renderTemplate(loadPromptTemplate('stage-package.md'), {
+    language: ctx.language,
     methodology_verification: ctx.methodology.get('05-verification.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     thesis: ctx.thesis.body,
