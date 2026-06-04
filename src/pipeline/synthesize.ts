@@ -38,6 +38,7 @@ export async function synthesize(ctx: RunContext): Promise<void> {
     referencesContext = '(no references/ directory — skip this section)';
   }
   const userPrompt = renderTemplate(loadPromptTemplate('stage-synthesize.md'), {
+    language: ctx.language,
     methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     thesis: ctx.thesis.body,

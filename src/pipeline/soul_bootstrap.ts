@@ -10,6 +10,7 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function soulBootstrap(ctx: RunContext): Promise<void> {
   const userPrompt = renderTemplate(loadPromptTemplate('stage-soul-bootstrap.md'), {
+    language: ctx.language,
     project_yaml: readFileSync(join(ctx.researcherDir, 'project.yaml'), 'utf8'),
     thesis: ctx.thesis.body,
     readme: readIfExists(join(ctx.projectRoot, 'README.md')) ?? '(no README.md at repo root)',
@@ -33,6 +34,7 @@ export async function soulBootstrap(ctx: RunContext): Promise<void> {
 
   // Re-load yaml + thesis from disk so downstream stages see drafted content.
   ctx.projectYaml = loadProjectYaml(join(ctx.researcherDir, 'project.yaml'));
+  ctx.language = ctx.projectYaml.meta.language;
   ctx.thesis = loadThesis(join(ctx.researcherDir, 'thesis.md'));
 }
 

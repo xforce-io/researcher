@@ -23,7 +23,17 @@ const Cadence = z.object({
   backoff_after_empty_runs: z.number().int().nonnegative(),
 });
 
+const Meta = z
+  .object({
+    topic_oneline: z.string().optional(),
+    // Output language for all prose the agent writes (notes/report/landscape/
+    // summaries/triage reasons). BCP-47 short code; free string for extensibility.
+    language: z.string().default('zh'),
+  })
+  .default({ language: 'zh' });
+
 export const ProjectYamlSchema = z.object({
+  meta: Meta,
   research_questions: z.array(ResearchQuestion).min(1),
   inclusion_criteria: z.array(z.string()),
   exclusion_criteria: z.array(z.string()),

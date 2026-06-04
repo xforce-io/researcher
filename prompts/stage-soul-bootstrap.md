@@ -1,5 +1,9 @@
 # Researcher: Soul-bootstrap stage
 
+## Output language
+
+Write ALL prose output (open questions, any drafted prose) in **{{language}}** (`zh`=简体中文, `en`=English). Technical terms keep their original language.
+
 Before this run can do real research, the project's "soul" must be defined:
 the research questions in `project.yaml` and the working thesis in `thesis.md`.
 You are looking at one of three situations. Your job is to decide which, then

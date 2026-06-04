@@ -11,7 +11,7 @@ Use present tense for paper content ("The paper measures..." → "The method mea
 
 Make direct claims. Do not hedge with "it seems that" or "one might argue" when you have the evidence in front of you. Save hedges for genuinely uncertain inferences, and mark them `[low]`.
 
-Language: use whatever language the project's existing notes use. If `notes/01_*.md` is in Chinese, write new notes in Chinese. If the corpus mixes Chinese and English (e.g., technical terms in English, narrative in Chinese), match that mix. Do not introduce a new language without reason. Default to English when the corpus has no established language.
+Language: when `project.yaml` declares `meta.language` (and the stage prompt's "Output language" section names it), that is authoritative — write all prose in it, overriding everything below. Otherwise fall back to the corpus: use whatever language the project's existing notes use (if `notes/01_*.md` is in Chinese, write new notes in Chinese); match an established Chinese/English mix (e.g., technical terms in English, narrative in Chinese); and default to English when the corpus has no established language. In all cases keep technical terms, paper titles, math, and code in their original language.
 
 Do not use emoji in notes or landscape unless they are already in use throughout the project.
 

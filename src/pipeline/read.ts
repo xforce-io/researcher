@@ -44,6 +44,7 @@ export async function read(ctx: RunContext): Promise<void> {
 
   const tpl = loadPromptTemplate('stage-read.md');
   const userPrompt = renderTemplate(tpl, {
+    language: ctx.language,
     methodology_reading: ctx.methodology.get('01-reading.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     project_yaml: readFileSync(join(ctx.researcherDir, 'project.yaml'), 'utf8'),

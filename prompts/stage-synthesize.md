@@ -1,5 +1,9 @@
 # Researcher: Synthesize stage
 
+## Output language
+
+Write ALL prose output (report, landscape, README, contradictions) in **{{language}}** (`zh`=简体中文, `en`=English). Technical terms, paper titles, math, and code keep their original language. This OVERRIDES the "follow existing notes" rule.
+
 ## Methodology — synthesis discipline
 
 {{methodology_synthesis}}

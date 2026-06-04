@@ -1,5 +1,9 @@
 # Researcher: Verify + Package stage
 
+## Output language
+
+Write ALL prose output (run summary, devil's-advocate pass) in **{{language}}** (`zh`=简体中文, `en`=English). Technical terms, paper titles, math, and code keep their original language. This OVERRIDES the "follow existing notes" rule.
+
 ## Methodology — verification discipline
 
 {{methodology_verification}}
