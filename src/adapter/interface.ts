@@ -16,6 +16,8 @@ export interface InvokeResult {
   modifiedFiles: string[];
   /** Exit code of the underlying process. */
   exitCode: number;
+  /** stderr of the underlying process ('' on success). Persisted on failure for diagnosis. */
+  stderr?: string;
 }
 
 export interface AgentRuntime {

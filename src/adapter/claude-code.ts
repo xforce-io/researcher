@@ -31,6 +31,7 @@ export class ClaudeCodeAdapter implements AgentRuntime {
       output: result.stdout ?? '',
       exitCode: result.exitCode ?? 1,
       modifiedFiles: parseFilesModified(result.stdout ?? ''),
+      stderr: result.stderr ?? '',
     };
   }
 }

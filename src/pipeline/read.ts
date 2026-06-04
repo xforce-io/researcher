@@ -7,6 +7,7 @@ import { urlPathSlug } from '../sources/url.js';
 import { readTextCache, writeTextCache } from '../sources/cache.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import type { RunContext } from './context.js';
+import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -58,7 +59,7 @@ export async function read(ctx: RunContext): Promise<void> {
     userPrompt,
     timeoutMs: TIMEOUT_MS,
   });
-  if (result.exitCode !== 0) throw new Error(`read stage agent exited ${result.exitCode}`);
+  assertAgentOk(ctx.runDir, 'read', result);
 
   const fullPath = join(notesDir, nextFilename);
   ctx.newNoteFilename = nextFilename;
