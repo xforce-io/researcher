@@ -11,10 +11,13 @@ export class ProjectYamlError extends Error {
 
 const ResearchQuestion = z.object({ id: z.string(), text: z.string() });
 const Source = z.object({
-  kind: z.enum(['arxiv', 'semantic_scholar', 'openreview', 'github', 'rss']),
+  kind: z.enum(['arxiv', 'semantic_scholar', 'openreview', 'github', 'rss', 'x-inbox']),
   queries: z.array(z.string()).optional(),
   seed_papers: z.array(z.string()).optional(),
   follow: z.array(z.enum(['citations', 'references'])).optional(),
+  /** For kind: x-inbox — repo-external directory of digest files produced by the
+   * preprocessing layer (researcher-invest-feeds). Supports a leading ~. */
+  inbox_dir: z.string().optional(),
   priority: z.enum(['high', 'normal', 'low']).default('normal'),
 });
 const Axis = z.object({ name: z.string(), values: z.array(z.string()).min(1) });
