@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { execaSync } from 'execa';
 import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
-import type { FeedTriaged } from '../../src/config/feed-triaged.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 
 class ScriptedAdapter implements AgentRuntime {
@@ -32,27 +31,8 @@ count: 1
 metrics: 👁1 ❤2 🔁3
 `;
 
-const keptOne: FeedTriaged = {
-  kept: [{ id: 'xtweet:200', handle: 'value_investor_cn', relevance: 3, alignment: 'supports', reason: 'RQ1: supports — 储能订单超预期' }],
-  dropped: [],
-  summary: '1 条,保留 1 条',
-};
-const keptNone: FeedTriaged = {
-  kept: [],
-  dropped: [{ id: 'xtweet:200', reason: '纯情绪,无 thesis 关联' }],
-  summary: '1 条,保留 0 条',
-};
-
 function soulStep(): (opts: InvokeOptions) => InvokeResult {
   return () => ({ output: 'no changes needed\nSOUL_DECISION: skip\n', modifiedFiles: [], exitCode: 0 });
-}
-function feedTriageStep(payload: FeedTriaged) {
-  return (opts: InvokeOptions): InvokeResult => {
-    const m = /`([^`]+feed-triaged\.json)`/.exec(opts.userPrompt);
-    if (!m) throw new Error('feed-triage step: no triaged path in prompt');
-    writeFileSync(m[1], JSON.stringify(payload, null, 2));
-    return { output: `done\n\nFILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
-  };
 }
 function feedSynthesizeStep(): (opts: InvokeOptions) => InvokeResult {
   return (opts) => {
@@ -77,7 +57,7 @@ function packageStep(): (opts: InvokeOptions) => InvokeResult {
   };
 }
 
-describe('researcher run (feed / x-inbox)', () => {
+describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () => {
   let proj: string;
   let inbox: string;
   beforeEach(async () => {
@@ -90,7 +70,6 @@ describe('researcher run (feed / x-inbox)', () => {
     process.env.RESEARCHER_NO_REMOTE = '1';
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
-    // Swap the arxiv source for an x-inbox source pointing at our tmp inbox.
     const pyPath = join(proj, '.researcher/project.yaml');
     const py = readFileSync(pyPath, 'utf8').replace(
       /sources:\n[\s\S]*?\npaper_axes:/,
@@ -103,33 +82,18 @@ describe('researcher run (feed / x-inbox)', () => {
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
   });
 
-  it('runs soul→feed-triage→feed-synthesize→package when a digest has relevant tweets', async () => {
+  it('runs soul→feed-synthesize→package on a digest (no triage stage)', async () => {
     writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
-    const adapter = new ScriptedAdapter([soulStep(), feedTriageStep(keptOne), feedSynthesizeStep(), packageStep()]);
+    const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
     const { runRun } = await import('../../src/commands/run.js');
     const res = await runRun({ cwd: proj, adapter });
 
     expect(res.outcome).toBe('completed');
-    expect(adapter.callCount).toBe(4);
+    expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package — one LLM filtering stage fewer
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
-    expect(seen).toContain('xtweet:200'); // kept tweet recorded
-    expect(seen).toContain('xfeed:200'); // digest consumed (by package, addSourceId)
+    expect(seen).toContain('xfeed:200'); // digest consumed (no per-tweet seen anymore)
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
       .toMatch(/^researcher\/01_x-following-/);
-  });
-
-  it('consumes the digest without a PR when no tweet is thesis-relevant', async () => {
-    writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
-    const adapter = new ScriptedAdapter([soulStep(), feedTriageStep(keptNone)]);
-    const { runRun } = await import('../../src/commands/run.js');
-    const res = await runRun({ cwd: proj, adapter });
-
-    expect(res.outcome).toBe('no-candidate');
-    expect(adapter.callCount).toBe(2); // soul + feed-triage only
-    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
-    // Digest still marked consumed in the working tree so it isn't re-triaged next tick.
-    const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
-    expect(seen).toContain('xfeed:200');
   });
 
   it('exits cleanly when the inbox has no unconsumed digest', async () => {

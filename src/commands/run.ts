@@ -13,7 +13,6 @@ import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
 import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
-import { feedTriage } from '../pipeline/feed_triage.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { packageStage } from '../pipeline/package.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
@@ -91,20 +90,14 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         return;
       }
       ctx!.feedDigest = pick;
-      await runStages(runDir, [{ name: 'feed-triage', fn: async () => feedTriage(ctx!) }]);
-      if (!ctx!.keptItems || ctx!.keptItems.length === 0) {
-        process.stdout.write(
-          `autonomous tick: no thesis-relevant tweets in ${pick.filename} — digest consumed, no PR. (${runDir.id})\n`,
-        );
-        outcome = 'no-candidate';
-        return;
-      }
+      // No semantic triage: the digest's tweets are already account-allowlisted upstream.
+      // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
       await runStages(runDir, [
         { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
         { name: 'package', fn: async () => packageStage(ctx!) },
       ]);
       process.stdout.write(
-        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, kept ${ctx!.keptItems.length})\n`,
+        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} tweet(s))\n`,
       );
       reportContradictions(ctx!);
       return;

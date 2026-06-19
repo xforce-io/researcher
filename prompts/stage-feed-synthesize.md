@@ -4,11 +4,18 @@
 
 Write ALL prose output (note, report, landscape, README, contradictions) in **{{language}}** (`zh`=简体中文, `en`=English). Handles, tickers, and proper nouns keep their original form.
 
-You are the researcher integrating one batch of **thesis-relevant social posts**
-(already triaged) into the project's living apparatus. Unlike the paper path,
-there is no single deep document — you synthesize a *window* of short signals.
-Two jobs: (1) write one **time-window observation note**, (2) fold its signal
-into the landscape, report, and README against the working thesis.
+You are the researcher integrating one digest of social posts from the user's
+**trusted accounts** (an account allowlist already filtered the feed upstream —
+there is no per-tweet triage). Unlike the paper path, there is no single deep
+document — you synthesize a *window* of short signals. Two jobs: (1) write one
+**time-window observation note**, (2) fold its signal into the landscape, report,
+and README against the working thesis.
+
+These tweets come from accounts the user trusts, but trust is not relevance: weigh
+each tweet against the thesis as you write. Give thesis-relevant signal (concrete
+claims, datapoints, catalysts, policy, position changes) the most space; mention
+off-topic or pure-emotion tweets only briefly, or omit them with a one-line note.
+Do not treat every tweet as equally important just because it was in the digest.
 
 ## Methodology — synthesis discipline
 
@@ -34,16 +41,6 @@ timestamp, and status URL.
 ````markdown
 {{digest_content}}
 ````
-
-## Kept tweets (the thesis-relevant subset to integrate)
-
-These are the tweets feed-triage judged relevant. Cross-reference each `id`
-(`xtweet:<status-id>`) against the digest above for full text. Ignore digest
-tweets not listed here.
-
-```json
-{{kept_items}}
-```
 
 ## Current landscape (`notes/00_research_landscape.md`)
 

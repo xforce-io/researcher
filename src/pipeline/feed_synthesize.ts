@@ -10,15 +10,13 @@ const TIMEOUT_MS = 45 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
 /**
- * Feed-mode synthesize: turn the kept tweets into ONE time-window note and fold
- * them into the landscape/report against the thesis. Combines what read+synthesize
- * do for the paper path, since the input is already-filtered short text (no deep-read).
+ * Feed-mode synthesize: turn one digest of allowlisted tweets into ONE time-window
+ * note and fold its signal into the landscape/report against the thesis. Combines
+ * what read+synthesize do for the paper path, since the input is already-filtered
+ * short text (no deep-read, no semantic triage — the account allowlist is the filter).
  */
 export async function feedSynthesize(ctx: RunContext): Promise<void> {
   if (!ctx.feedDigest) throw new Error('feed-synthesize requires ctx.feedDigest');
-  if (!ctx.keptItems || ctx.keptItems.length === 0) {
-    throw new Error('feed-synthesize requires non-empty ctx.keptItems');
-  }
 
   const notesDir = join(ctx.projectRoot, 'notes');
   const existing = existsSync(notesDir)
@@ -50,7 +48,6 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
     thesis: ctx.thesis.body,
     charter: ctx.charter ?? '(no charter synced)',
     digest_content: ctx.feedDigest.content,
-    kept_items: JSON.stringify(ctx.keptItems, null, 2),
     landscape_current: readFileSync(landscapePath, 'utf8'),
     report_current: existsSync(reportPath)
       ? readFileSync(reportPath, 'utf8')
@@ -76,7 +73,7 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
 
   // Hand the digest id to package as the consumed-source marker.
   ctx.addSourceId = digestId(ctx.feedDigest.meta);
-  ctx.triageReason = `x-inbox digest ${ctx.feedDigest.filename}: kept ${ctx.keptItems.length} tweet(s)`;
+  ctx.triageReason = `x-inbox digest ${ctx.feedDigest.filename}: ${ctx.feedDigest.meta.count} tweet(s)`;
 
   try {
     const { stdout } = await execa('git', ['diff', '--', LANDSCAPE], { cwd: ctx.projectRoot });
