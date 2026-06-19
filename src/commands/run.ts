@@ -1,19 +1,30 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
 import { withLock } from '../state/lock.js';
+import { Seen } from '../state/seen.js';
 import { runStages } from '../pipeline/runner.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
 import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
+import { feedTriage } from '../pipeline/feed_triage.js';
+import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { packageStage } from '../pipeline/package.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
+import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
+
+/** Resolve a configured inbox_dir, expanding a leading ~. */
+function resolveInboxDir(p: string | undefined): string | null {
+  if (!p) return null;
+  return p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
+}
 
 export interface RunOptions {
   cwd: string;
@@ -60,6 +71,45 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       return;
     }
 
+    // Feed mode: an x-inbox source side-mounts a second pipeline that consumes
+    // the repo-external inbox queue. The arxiv/url discover→read path is untouched.
+    const feedSource = ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox');
+    if (feedSource) {
+      const inboxDir = resolveInboxDir(feedSource.inbox_dir);
+      if (!inboxDir) {
+        process.stdout.write(
+          `autonomous tick: x-inbox source has no inbox_dir configured — nothing to consume. (${runDir.id})\n`,
+        );
+        outcome = 'no-queries';
+        return;
+      }
+      const seen = new Seen(join(researcherDir, 'state/seen.jsonl'));
+      const pick = pickOldestUnconsumed(inboxDir, (id) => seen.has(id));
+      if (!pick) {
+        process.stdout.write(`autonomous tick: no unconsumed digest in ${inboxDir} (${runDir.id}).\n`);
+        outcome = 'no-candidate';
+        return;
+      }
+      ctx!.feedDigest = pick;
+      await runStages(runDir, [{ name: 'feed-triage', fn: async () => feedTriage(ctx!) }]);
+      if (!ctx!.keptItems || ctx!.keptItems.length === 0) {
+        process.stdout.write(
+          `autonomous tick: no thesis-relevant tweets in ${pick.filename} — digest consumed, no PR. (${runDir.id})\n`,
+        );
+        outcome = 'no-candidate';
+        return;
+      }
+      await runStages(runDir, [
+        { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
+        { name: 'package', fn: async () => packageStage(ctx!) },
+      ]);
+      process.stdout.write(
+        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, kept ${ctx!.keptItems.length})\n`,
+      );
+      reportContradictions(ctx!);
+      return;
+    }
+
     const hasRealQueries = ctx!.projectYaml.sources.some(
       (s) => s.queries && s.queries.some((q) => q.trim() !== '' && q !== 'your topic keyword')
     );
@@ -88,18 +138,22 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);
     process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addSourceId})\n`);
-    if (ctx!.contradictionsPath && existsSync(ctx!.contradictionsPath)) {
-      const report = classifyContradictions(readFileSync(ctx!.contradictionsPath, 'utf8'));
-      if (report.hasContradictions) {
-        process.stdout.write(`\ncontradictions found — consider updating .researcher/thesis.md\n`);
-      }
-      if (report.hasTaxonomyProposal) {
-        process.stdout.write(`\nlandscape proposal pending review — see contradictions.md §"Proposed taxonomy extension"\n`);
-      }
-      if (report.hasCharterTension) {
-        process.stdout.write(`\ncharter tension surfaced — see contradictions.md §"Charter tension" (adjudicate: fix pillar or update super-repo CHARTER.md)\n`);
-      }
-    }
+    reportContradictions(ctx!);
   });
   return { outcome, runId: runDir.id };
+}
+
+/** Surface contradiction/landscape/charter signals from this run's contradictions.md. */
+function reportContradictions(ctx: RunContext): void {
+  if (!ctx.contradictionsPath || !existsSync(ctx.contradictionsPath)) return;
+  const report = classifyContradictions(readFileSync(ctx.contradictionsPath, 'utf8'));
+  if (report.hasContradictions) {
+    process.stdout.write(`\ncontradictions found — consider updating .researcher/thesis.md\n`);
+  }
+  if (report.hasTaxonomyProposal) {
+    process.stdout.write(`\nlandscape proposal pending review — see contradictions.md §"Proposed taxonomy extension"\n`);
+  }
+  if (report.hasCharterTension) {
+    process.stdout.write(`\ncharter tension surfaced — see contradictions.md §"Charter tension" (adjudicate: fix pillar or update super-repo CHARTER.md)\n`);
+  }
 }

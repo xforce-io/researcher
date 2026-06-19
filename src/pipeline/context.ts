@@ -2,6 +2,8 @@ import type { ProjectYaml } from '../config/project-yaml.js';
 import type { Thesis } from '../config/thesis-md.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import type { RunDir } from '../state/runs.js';
+import type { PickedDigest } from '../sources/inbox.js';
+import type { KeptItem } from '../config/feed-triaged.js';
 
 export interface RunContext {
   projectRoot: string;
@@ -17,6 +19,11 @@ export interface RunContext {
   runDir: RunDir;
   // mode-specific
   addSourceId?: string;
+  // feed mode (x-inbox)
+  /** The inbox digest picked for this tick (set by the inline ingest in run.ts). */
+  feedDigest?: PickedDigest;
+  /** Thesis-relevant tweets kept by feed-triage; drives feed-synthesize. */
+  keptItems?: KeptItem[];
   /** When discover_triage chose this paper, the reason it recorded — used by
    * package stage when writing seen.jsonl in autonomous mode. */
   triageReason?: string;
