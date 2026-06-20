@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from 'node:path';
 import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
-import { digestId } from '../sources/inbox.js';
+import { digestId, digestSourceSlug } from '../sources/inbox.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
 
@@ -10,7 +10,7 @@ const TIMEOUT_MS = 45 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
 /**
- * Feed-mode synthesize: turn one digest of allowlisted tweets into ONE time-window
+ * Feed-mode synthesize: turn one digest of allowlisted feed items into ONE time-window
  * note and fold its signal into the landscape/report against the thesis. Combines
  * what read+synthesize do for the paper path, since the input is already-filtered
  * short text (no deep-read, no semantic triage — the account allowlist is the filter).
@@ -29,7 +29,8 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
   }, 0);
   const nextNum = (maxNum + 1).toString().padStart(2, '0');
   const date = ctx.feedDigest.meta.fetchedAt.slice(0, 10);
-  const noteFilename = `${nextNum}_x-following-${date}.md`;
+  const sourceSlug = digestSourceSlug(ctx.feedDigest.meta.source);
+  const noteFilename = `${nextNum}_${sourceSlug}-${date}.md`;
 
   const landscapePath = join(ctx.projectRoot, LANDSCAPE);
   if (!existsSync(landscapePath)) {
@@ -73,7 +74,7 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
 
   // Hand the digest id to package as the consumed-source marker.
   ctx.addSourceId = digestId(ctx.feedDigest.meta);
-  ctx.triageReason = `x-inbox digest ${ctx.feedDigest.filename}: ${ctx.feedDigest.meta.count} tweet(s)`;
+  ctx.triageReason = `x-inbox digest ${ctx.feedDigest.filename}: ${ctx.feedDigest.meta.count} item(s)`;
 
   try {
     const { stdout } = await execa('git', ['diff', '--', LANDSCAPE], { cwd: ctx.projectRoot });

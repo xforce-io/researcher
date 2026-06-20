@@ -20,7 +20,7 @@ export interface RunContext {
   addSourceId?: string;
   // feed mode (x-inbox)
   /** The inbox digest picked for this tick (set by the inline ingest in run.ts).
-   * Its tweets are already account-allowlisted upstream; feed-synthesize consumes them directly. */
+   * Its items are already source-allowlisted upstream; feed-synthesize consumes them directly. */
   feedDigest?: PickedDigest;
   /** When discover_triage chose this paper, the reason it recorded — used by
    * package stage when writing seen.jsonl in autonomous mode. */

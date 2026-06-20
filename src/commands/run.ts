@@ -90,14 +90,14 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         return;
       }
       ctx!.feedDigest = pick;
-      // No semantic triage: the digest's tweets are already account-allowlisted upstream.
+      // No semantic triage: the digest's items are already source-allowlisted upstream.
       // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
       await runStages(runDir, [
         { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
         { name: 'package', fn: async () => packageStage(ctx!) },
       ]);
       process.stdout.write(
-        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} tweet(s))\n`,
+        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
       );
       reportContradictions(ctx!);
       return;

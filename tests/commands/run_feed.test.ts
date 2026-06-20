@@ -36,7 +36,9 @@ function soulStep(): (opts: InvokeOptions) => InvokeResult {
 }
 function feedSynthesizeStep(): (opts: InvokeOptions) => InvokeResult {
   return (opts) => {
-    const nm = /notes\/(\d+_x-following-[\d-]+\.md)/.exec(opts.userPrompt);
+    // Source-agnostic: the note slug derives from the digest's `source`, so this
+    // matches `01_x-following-…` as well as `01_substack-…`.
+    const nm = /notes\/(\d+_[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.md)/.exec(opts.userPrompt);
     if (!nm) throw new Error('feed-synthesize step: no note filename in prompt');
     writeFileSync(join(opts.cwd, 'notes', nm[1]), '# 2026-06-19 关注流\n\n## 宁德时代\n- 储能订单超预期 [@value_investor_cn](https://x.com/value_investor_cn/status/200)\n');
     const landscape = join(opts.cwd, 'notes/00_research_landscape.md');
@@ -94,6 +96,22 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     expect(seen).toContain('xfeed:200'); // digest consumed (no per-tweet seen anymore)
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
       .toMatch(/^researcher\/01_x-following-/);
+  });
+
+  it('names the window note from the digest source, not a hardcoded "x-following"', async () => {
+    // A non-Twitter source must flow through unchanged — the feed path is source-agnostic.
+    writeFileSync(
+      join(inbox, 'substack-20260619T110000Z.md'),
+      DIGEST.replace('source: x-following', 'source: substack'),
+    );
+    const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
+    const { runRun } = await import('../../src/commands/run.js');
+    const res = await runRun({ cwd: proj, adapter });
+
+    expect(res.outcome).toBe('completed');
+    expect(existsSync(join(proj, 'notes/01_substack-2026-06-19.md'))).toBe(true);
+    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
+      .toMatch(/^researcher\/01_substack-/);
   });
 
   it('exits cleanly when the inbox has no unconsumed digest', async () => {
