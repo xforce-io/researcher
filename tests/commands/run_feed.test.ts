@@ -84,18 +84,63 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
   });
 
-  it('runs soul→feed-synthesize→package on a digest (no triage stage)', async () => {
+  it('commits the feed window to main in place — no per-window branch, no PR (A-main)', async () => {
     writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
     const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
     const { runRun } = await import('../../src/commands/run.js');
     const res = await runRun({ cwd: proj, adapter });
 
     expect(res.outcome).toBe('completed');
-    expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package — one LLM filtering stage fewer
+    expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package-review
+
+    // Stays on main — the feed path no longer forks a `researcher/NN` branch.
+    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
+    const branches = execaSync('git', ['branch', '--format=%(refname:short)'], { cwd: proj }).stdout;
+    expect(branches).not.toMatch(/researcher\//);
+
+    // The note is committed ON main (was scattered onto an unmerged branch before).
+    const tracked = execaSync('git', ['ls-files'], { cwd: proj }).stdout;
+    expect(tracked).toContain('notes/01_x-following-2026-06-19.md');
+    expect(readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8')).toContain('xfeed:200');
+
+    // ONE commit, and it carries note + state together (not the paper path's 2-commit split).
+    const head = execaSync('git', ['log', '-1', '--format=%s'], { cwd: proj }).stdout.trim();
+    expect(head).toMatch(/^feed:/);
+    const headFiles = execaSync('git', ['show', '--stat', '--format=', 'HEAD'], { cwd: proj }).stdout;
+    expect(headFiles).toContain('notes/01_x-following-2026-06-19.md');
+    expect(headFiles).toContain('.researcher/state/seen.jsonl');
+  });
+
+  it('consecutive feed runs accumulate on main (the consolidation #25 was missing before)', async () => {
+    const DIGEST_B = DIGEST
+      .replace('cursor_to: 200', 'cursor_to: 300')
+      .replace('cursor_from: 100', 'cursor_from: 200')
+      .replace('status/200', 'status/300');
+    writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
+    writeFileSync(join(inbox, 'x-following-20260619T120000Z.md'), DIGEST_B);
+    const { runRun } = await import('../../src/commands/run.js');
+
+    const r1 = await runRun({ cwd: proj, adapter: new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]) });
+    const r2 = await runRun({ cwd: proj, adapter: new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]) });
+
+    expect(r1.outcome).toBe('completed');
+    expect(r2.outcome).toBe('completed');
+    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
+
+    // BOTH window notes are present on the one branch (before #25 they fanned into 2 isolated branches).
+    const tracked = execaSync('git', ['ls-files'], { cwd: proj }).stdout;
+    expect(tracked).toContain('notes/01_x-following-2026-06-19.md');
+    expect(tracked).toContain('notes/02_x-following-2026-06-19.md');
+
+    // Cumulative dedup state: both digests consumed.
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
-    expect(seen).toContain('xfeed:200'); // digest consumed (no per-tweet seen anymore)
-    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
-      .toMatch(/^researcher\/01_x-following-/);
+    expect(seen).toContain('xfeed:200');
+    expect(seen).toContain('xfeed:300');
+
+    // Two feed commits on main, one per window.
+    const feedCommits = execaSync('git', ['log', '--format=%s'], { cwd: proj }).stdout
+      .split('\n').filter((s) => s.startsWith('feed:'));
+    expect(feedCommits).toHaveLength(2);
   });
 
   it('names the window note from the digest source, not a hardcoded "x-following"', async () => {
@@ -110,8 +155,8 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
 
     expect(res.outcome).toBe('completed');
     expect(existsSync(join(proj, 'notes/01_substack-2026-06-19.md'))).toBe(true);
-    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
-      .toMatch(/^researcher\/01_substack-/);
+    expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
+    expect(execaSync('git', ['ls-files'], { cwd: proj }).stdout).toContain('notes/01_substack-2026-06-19.md');
   });
 
   it('exits cleanly when the inbox has no unconsumed digest', async () => {

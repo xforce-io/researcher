@@ -10,7 +10,13 @@ import { assertAgentOk } from './runner.js';
 const TIMEOUT_MS = 10 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
-export async function packageStage(ctx: RunContext): Promise<void> {
+/**
+ * Shared packaging head used by both the paper path (`packageStage`) and the feed path
+ * (`feedPackage`): guard the context, reject unrelated dirty files, then run the
+ * devil's-advocate / run-summary adapter pass. Returns the run-summary path. The two paths
+ * diverge only in how they commit (PR branch vs. in-place on main).
+ */
+export async function packageReview(ctx: RunContext): Promise<string> {
   if (!ctx.newNoteFilename || !ctx.newNoteContent) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
   if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
@@ -60,13 +66,27 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     mkdirSync(dirname(runSummaryPath), { recursive: true });
     writeFileSync(runSummaryPath, '# Run summary\n\n_(adapter did not write a summary)_\n');
   }
+  return runSummaryPath;
+}
+
+/**
+ * Paper-path packaging: branch FROM MAIN, two commits, push, open a PR for human review.
+ * Each paper run produces an independent PR; the human merges it to main between runs, and
+ * that merge is how the corpus accumulates. The feed path can't rely on that (an autonomous
+ * high-frequency stream has nobody merging PRs), so it uses `feedPackage` instead.
+ */
+export async function packageStage(ctx: RunContext): Promise<void> {
+  const runSummaryPath = await packageReview(ctx);
+  // packageReview already asserted these are present; narrow for the rest of the stage.
+  const newNoteFilename = ctx.newNoteFilename!;
+  const addSourceId = ctx.addSourceId!;
 
   // 2. snapshot the to-be-committed files into memory before the branch dance.
   //    We branch from main to keep each PR independent, but synthesize/read just wrote into the
   //    working tree on the previous branch. After we switch to main, those files will revert
   //    to main's content — so we capture the cumulative content here and restore on the new branch.
   const candidatePaths = [
-    join('notes', ctx.newNoteFilename),
+    join('notes', newNoteFilename),
     LANDSCAPE,
     'README.md',
     'report.md',
@@ -92,7 +112,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
   // Branch name = the note filename (without .md). Readable PR titles when the
   // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
-  const branch = `researcher/${ctx.newNoteFilename.replace(/\.md$/, '')}`;
+  const branch = `researcher/${newNoteFilename.replace(/\.md$/, '')}`;
   const stashMsg = `researcher-pkg-${ctx.runDir.id}`;
   const stashed = await gitops.stash({ cwd: ctx.projectRoot, message: stashMsg });
   await gitops.checkout({ cwd: ctx.projectRoot, branch: 'main' });
@@ -112,12 +132,12 @@ export async function packageStage(ctx: RunContext): Promise<void> {
 
   // 5. update state files (Seen.append + watermark) on the new branch's checked-out tree.
   const seen = new Seen(seenPath);
-  if (!seen.has(ctx.addSourceId)) {
+  if (!seen.has(addSourceId)) {
     seen.append({
-      id: ctx.addSourceId,
-      source: ctx.addSourceId.startsWith('arxiv:')
+      id: addSourceId,
+      source: addSourceId.startsWith('arxiv:')
         ? 'arxiv'
-        : ctx.addSourceId.startsWith('xfeed:')
+        : addSourceId.startsWith('xfeed:')
         ? 'x-inbox'
         : 'url',
       first_seen_run: ctx.runDir.id,
@@ -139,7 +159,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   await gitops.commit({
     cwd: ctx.projectRoot,
     paths: researchPaths,
-    message: `research: add note on ${ctx.newNoteFilename.replace(/\.md$/, '')} + landscape update`,
+    message: `research: add note on ${newNoteFilename.replace(/\.md$/, '')} + landscape update`,
   });
   await gitops.commit({
     cwd: ctx.projectRoot,
@@ -147,7 +167,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     message: `state: seen +1, watermark ${now}`,
   });
   await gitops.pushBranch({ cwd: ctx.projectRoot, branch });
-  const prTitle = `research: add ${ctx.newNoteFilename.replace(/\.md$/, '')}`;
+  const prTitle = `research: add ${newNoteFilename.replace(/\.md$/, '')}`;
   await gitops.ghPrCreate({ cwd: ctx.projectRoot, title: prTitle, bodyFile: runSummaryPath });
 
   process.stdout.write(`\nworking tree is on branch ${branch}.\n`);

@@ -15,6 +15,7 @@ import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { packageStage } from '../pipeline/package.js';
+import { feedPackage } from '../pipeline/package_feed.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
 import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
@@ -94,7 +95,8 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
       await runStages(runDir, [
         { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
-        { name: 'package', fn: async () => packageStage(ctx!) },
+        // #25: feed commits in place to main (one commit/window), not the paper path's branch+PR.
+        { name: 'package', fn: async () => feedPackage(ctx!) },
       ]);
       process.stdout.write(
         `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
