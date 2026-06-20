@@ -9,7 +9,6 @@ export type Stage =
   | 'read'
   | 'synthesize'
   | 'package'
-  | 'feed-triage'
   | 'feed-synthesize';
 
 export function newRunId(): string {

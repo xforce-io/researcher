@@ -43,6 +43,19 @@ export function digestId(meta: DigestMeta): string {
   return `xfeed:${meta.cursorTo}`;
 }
 
+/**
+ * Filesystem-safe slug derived from a digest's `source` field, used to name the
+ * window note. The slug — not a hardcoded "x-following" — keeps the feed path
+ * source-agnostic: any source (newsletter, slack, rss) flows through unchanged.
+ */
+export function digestSourceSlug(source: string): string {
+  const slug = source
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'feed';
+}
+
 /** All digest markdown files, oldest-first (filenames are timestamp-keyed). */
 export function listDigestFiles(inboxDir: string): string[] {
   if (!existsSync(inboxDir)) return [];

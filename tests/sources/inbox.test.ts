@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseDigestMeta, digestId, listDigestFiles, pickOldestUnconsumed } from '../../src/sources/inbox.js';
+import {
+  parseDigestMeta,
+  digestId,
+  digestSourceSlug,
+  listDigestFiles,
+  pickOldestUnconsumed,
+} from '../../src/sources/inbox.js';
 
 const DIGEST = `---
 source: x-following
@@ -42,6 +48,22 @@ describe('parseDigestMeta', () => {
 describe('digestId', () => {
   it('keys the digest by its cursor_to (the new high-water mark)', () => {
     expect(digestId(parseDigestMeta(DIGEST))).toBe('xfeed:200');
+  });
+});
+
+describe('digestSourceSlug', () => {
+  it('keeps a clean source unchanged (the note name stays source-derived, not hardcoded)', () => {
+    expect(digestSourceSlug('x-following')).toBe('x-following');
+  });
+
+  it('normalizes an arbitrary source into a filesystem-safe slug', () => {
+    expect(digestSourceSlug('Substack Newsletter!')).toBe('substack-newsletter');
+    expect(digestSourceSlug('  Slack #invest  ')).toBe('slack-invest');
+  });
+
+  it('falls back to "feed" when the source has no usable characters', () => {
+    expect(digestSourceSlug('')).toBe('feed');
+    expect(digestSourceSlug('---')).toBe('feed');
   });
 });
 
