@@ -7,13 +7,14 @@ import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
 import { withLock } from '../state/lock.js';
 import { Seen } from '../state/seen.js';
-import { runStages } from '../pipeline/runner.js';
+import { runStages, type StageDef } from '../pipeline/runner.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
 import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
+import { feedEnrich } from '../pipeline/feed_enrich.js';
 import { packageStage } from '../pipeline/package.js';
 import { feedPackage } from '../pipeline/package_feed.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
@@ -93,11 +94,17 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       ctx!.feedDigest = pick;
       // No semantic triage: the digest's items are already source-allowlisted upstream.
       // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
-      await runStages(runDir, [
+      const feedStages: StageDef[] = [
         { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
-        // #25: feed commits in place to main (one commit/window), not the paper path's branch+PR.
-        { name: 'package', fn: async () => feedPackage(ctx!) },
-      ]);
+      ];
+      // #27: opt-in researcher-side enrich/verify pass — turns the report's "下一步:补 X 数据"
+      // items into primary-sourced, confidence-tagged evidence. Off = synthesize-only (current).
+      if (feedSource.enrich) {
+        feedStages.push({ name: 'feed-enrich', fn: async () => feedEnrich(ctx!) });
+      }
+      // #25: feed commits in place to main (one commit/window), not the paper path's branch+PR.
+      feedStages.push({ name: 'package', fn: async () => feedPackage(ctx!) });
+      await runStages(runDir, feedStages);
       process.stdout.write(
         `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
       );

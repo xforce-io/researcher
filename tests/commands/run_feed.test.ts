@@ -58,6 +58,30 @@ function packageStep(): (opts: InvokeOptions) => InvokeResult {
     return { output: 'ok', modifiedFiles: [], exitCode: 0 };
   };
 }
+function enrichStep(): (opts: InvokeOptions) => InvokeResult {
+  return (opts) => {
+    // The enrich stage hands the agent the just-written window note; it verifies the
+    // note's targets against primary sources and folds the evidence back IN PLACE (B1).
+    const nm = /(\d+_[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.md)/.exec(opts.userPrompt);
+    if (!nm) throw new Error('enrich step: no note filename in prompt');
+    const notePath = join(opts.cwd, 'notes', nm[1]);
+    writeFileSync(
+      notePath,
+      readFileSync(notePath, 'utf8') +
+        '\n- 已核实:宁德时代 2026Q2 储能订单 12GWh(同比+40%)https://primary.example.com/catl-q2 [med]\n',
+    );
+    return { output: 'ok', modifiedFiles: [], exitCode: 0 };
+  };
+}
+
+/** Turn on the opt-in enrich stage for the x-inbox source. */
+function enableEnrich(projDir: string): void {
+  const p = join(projDir, '.researcher/project.yaml');
+  writeFileSync(
+    p,
+    readFileSync(p, 'utf8').replace(/(\n {4}inbox_dir: [^\n]+\n)/, `$1    enrich: true\n`),
+  );
+}
 
 describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () => {
   let proj: string;
@@ -157,6 +181,33 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     expect(existsSync(join(proj, 'notes/01_substack-2026-06-19.md'))).toBe(true);
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
     expect(execaSync('git', ['ls-files'], { cwd: proj }).stdout).toContain('notes/01_substack-2026-06-19.md');
+  });
+
+  it('runs feed-enrich between synthesize and package when source.enrich is on, and commits the verified evidence', async () => {
+    enableEnrich(proj);
+    writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
+    const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), enrichStep(), packageStep()]);
+    const { runRun } = await import('../../src/commands/run.js');
+    const res = await runRun({ cwd: proj, adapter });
+
+    expect(res.outcome).toBe('completed');
+    expect(adapter.callCount).toBe(4); // soul + feed-synthesize + feed-enrich + package
+
+    // The enriched evidence (primary-source URL) lands in the committed note on main.
+    const note = readFileSync(join(proj, 'notes/01_x-following-2026-06-19.md'), 'utf8');
+    expect(note).toContain('https://primary.example.com/catl-q2');
+    const headNote = execaSync('git', ['show', 'HEAD:notes/01_x-following-2026-06-19.md'], { cwd: proj }).stdout;
+    expect(headNote).toContain('https://primary.example.com/catl-q2');
+  });
+
+  it('skips feed-enrich when source.enrich is absent (opt-in, default off)', async () => {
+    writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
+    const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
+    const { runRun } = await import('../../src/commands/run.js');
+    const res = await runRun({ cwd: proj, adapter });
+
+    expect(res.outcome).toBe('completed');
+    expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package — no enrich call
   });
 
   it('exits cleanly when the inbox has no unconsumed digest', async () => {

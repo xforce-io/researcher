@@ -9,7 +9,8 @@ export type Stage =
   | 'read'
   | 'synthesize'
   | 'package'
-  | 'feed-synthesize';
+  | 'feed-synthesize'
+  | 'feed-enrich';
 
 export function newRunId(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
