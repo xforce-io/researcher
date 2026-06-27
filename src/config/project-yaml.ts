@@ -40,8 +40,17 @@ const Meta = z
   })
   .default({ language: 'zh' });
 
+// How a run's output is delivered. Per-topic, single source of truth (there is no
+// global env override). `local` = commit only (paper path still branches + commits,
+// but no push / no PR); `remote` = commit + push + `gh pr create`. Default local so a
+// fresh topic with no git remote works out of the box and never fails hard on push.
+const Delivery = z
+  .object({ mode: z.enum(['local', 'remote']).default('local') })
+  .default({ mode: 'local' });
+
 export const ProjectYamlSchema = z.object({
   meta: Meta,
+  delivery: Delivery,
   research_questions: z.array(ResearchQuestion).min(1),
   inclusion_criteria: z.array(z.string()),
   exclusion_criteria: z.array(z.string()),

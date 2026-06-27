@@ -33,6 +33,7 @@ export async function bootstrap(input: BootstrapInput): Promise<RunContext> {
     researcherDir,
     projectYaml,
     language: projectYaml.meta.language,
+    pushRemote: projectYaml.delivery.mode === 'remote',
     thesis,
     methodology,
     charter,

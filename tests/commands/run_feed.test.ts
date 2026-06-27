@@ -93,7 +93,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     execaSync('git', ['config', 'user.email', 't@t'], { cwd: proj });
     execaSync('git', ['config', 'user.name', 't'], { cwd: proj });
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
-    process.env.RESEARCHER_NO_REMOTE = '1';
+    // delivery.mode defaults to local, so the feed path commits without push/PR.
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
     const pyPath = join(proj, '.researcher/project.yaml');

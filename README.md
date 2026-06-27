@@ -60,8 +60,9 @@ researcher methodology install   # one-time, populates ~/.researcher/methodology
 
 Requires:
 - `claude` CLI on `PATH` (the agent runtime). Override with `RESEARCHER_CLAUDE_BIN`.
-- `gh` CLI authenticated (for `gh pr create`). Set `RESEARCHER_NO_REMOTE=1` to
-  skip push + PR (useful for local-only topic repos).
+- `gh` CLI authenticated — only needed when a topic sets `delivery.mode: remote`
+  (for `git push` + `gh pr create`). Topics default to local (commit only), so a
+  local-only repo needs neither a remote nor `gh`.
 - `pdftotext` (poppler) for PDF extraction. Falls back to abstract if missing.
 
 ## Quick start
@@ -234,7 +235,9 @@ A pillar failing does not abort the rest — errors are collected in the summary
 ## Environment
 
 - `RESEARCHER_CLAUDE_BIN` — path to `claude` if not on `PATH`.
-- `RESEARCHER_NO_REMOTE=1` — skip `git push` and `gh pr create` (local-only mode).
+
+Delivery (push + PR vs. local commit only) is per-topic, set via `delivery.mode`
+in `.researcher/project.yaml` (`local` default, or `remote`) — not an env var.
 
 ## Methodology
 
