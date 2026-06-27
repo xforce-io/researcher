@@ -46,6 +46,7 @@ Implemented:
 - `add <arxiv-id | arxiv-url | http(s)-url>` — manually deep-read one paper or web source end-to-end
 - `run` — autonomous tick: discover → triage → (deep-read pick) → synthesize → package; workspace-aware (at a super-repo root, advances every active pillar)
 - `methodology install / show / edit` — manage the portable methodology bundle
+- `serve [path]` — local web console over a workspace super-repo
 
 Not yet wired: focused-instruction mode (manual override of triage decisions).
 
@@ -230,7 +231,21 @@ A pillar failing does not abort the rest — errors are collected in the summary
 | `researcher methodology install` | Copy methodology files to `~/.researcher/` |
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
+| `researcher serve [path]` | Start a local web console over a workspace super-repo |
 | `researcher version` | Print version |
+
+### `researcher serve [path]`
+
+Start a local read-only web console over a workspace super-repo (a directory with
+`researcher.workspace.yml`). Lists each topic, renders its thesis / landscape /
+report / notes, and lets you trigger `researcher run` per topic with live logs.
+
+```bash
+researcher serve                 # serves the current super-repo on :4500
+researcher serve ../research -p 8080
+```
+
+Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering.
 
 ## Environment
 
