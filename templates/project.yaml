@@ -5,6 +5,12 @@ meta:
   topic_oneline: ""
   language: zh            # output language for all agent prose: zh=简体中文 / en=English
 
+# How runs are delivered. Default (omitted) is local: commit only, no push / no PR —
+# works with no git remote. Set mode: remote to push the branch and open a draft PR
+# (needs an `origin` remote + authenticated `gh` CLI).
+# delivery:
+#   mode: local           # local (default) | remote
+
 research_questions:
   - id: RQ1
     text: "Replace this with your first research question."

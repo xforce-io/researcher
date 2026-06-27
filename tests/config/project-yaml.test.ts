@@ -57,4 +57,27 @@ describe('loadProjectYaml', () => {
     const cfg = loadProjectYaml(p);
     expect(cfg.meta.language).toBe('en');
   });
+
+  it('defaults delivery.mode to local when delivery is absent', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+    const p = join(dir, 'project.yaml');
+    writeFileSync(p, VALID); // VALID has no delivery block
+    const cfg = loadProjectYaml(p);
+    expect(cfg.delivery.mode).toBe('local');
+  });
+
+  it('reads an explicit delivery.mode: remote', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+    const p = join(dir, 'project.yaml');
+    writeFileSync(p, VALID + '\ndelivery:\n  mode: remote\n');
+    const cfg = loadProjectYaml(p);
+    expect(cfg.delivery.mode).toBe('remote');
+  });
+
+  it('rejects an unknown delivery.mode', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+    const p = join(dir, 'project.yaml');
+    writeFileSync(p, VALID + '\ndelivery:\n  mode: push\n');
+    expect(() => loadProjectYaml(p)).toThrow(ProjectYamlError);
+  });
 });

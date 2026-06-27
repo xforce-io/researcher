@@ -35,8 +35,8 @@ export async function dirtyPathsOutside(o: { cwd: string; allowedPrefixes: strin
   return paths.filter((p) => !o.allowedPrefixes.some((pref) => p === pref || p.startsWith(pref)));
 }
 
-export async function pushBranch(o: { cwd: string; branch: string }): Promise<void> {
-  if (process.env.RESEARCHER_NO_REMOTE === '1') return;
+export async function pushBranch(o: { cwd: string; branch: string; remote: boolean }): Promise<void> {
+  if (!o.remote) return;
   await execa('git', ['push', '-u', 'origin', o.branch], { cwd: o.cwd });
 }
 
@@ -50,9 +50,9 @@ export async function stashDrop(o: { cwd: string }): Promise<void> {
   await execa('git', ['stash', 'drop'], { cwd: o.cwd });
 }
 
-/** Best-effort fast-forward pull from origin/<branch>. Silently no-ops when no remote / offline / RESEARCHER_NO_REMOTE=1. */
-export async function pullFastForward(o: { cwd: string; branch: string }): Promise<void> {
-  if (process.env.RESEARCHER_NO_REMOTE === '1') return;
+/** Best-effort fast-forward pull from origin/<branch>. Silently no-ops when local-only / offline / no remote. */
+export async function pullFastForward(o: { cwd: string; branch: string; remote: boolean }): Promise<void> {
+  if (!o.remote) return;
   try {
     await execa('git', ['pull', '--ff-only', 'origin', o.branch], { cwd: o.cwd });
   } catch {
@@ -60,8 +60,8 @@ export async function pullFastForward(o: { cwd: string; branch: string }): Promi
   }
 }
 
-export async function ghPrCreate(o: { cwd: string; title: string; bodyFile: string; base?: string }): Promise<string> {
-  if (process.env.RESEARCHER_NO_REMOTE === '1') return '(skipped: RESEARCHER_NO_REMOTE=1)';
+export async function ghPrCreate(o: { cwd: string; title: string; bodyFile: string; remote: boolean; base?: string }): Promise<string> {
+  if (!o.remote) return '(skipped: delivery.mode is local)';
   const base = o.base ?? 'main';
   const { stdout } = await execa('gh', ['pr', 'create', '--draft', '--base', base, '--title', o.title, '--body-file', o.bodyFile], { cwd: o.cwd });
   return stdout.trim();

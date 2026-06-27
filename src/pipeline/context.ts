@@ -10,6 +10,9 @@ export interface RunContext {
   projectYaml: ProjectYaml;
   /** Output language for all agent prose (from project.yaml meta.language). */
   language: string;
+  /** Resolved from project.yaml delivery.mode — true only when mode: remote.
+   * Gates push + PR in the package stage; local-only topics leave it false. */
+  pushRemote: boolean;
   thesis: Thesis;
   methodology: Map<string, string>; // filename → content
   /** Synced anchor from the super-repo CHARTER.md (.researcher/charter.md), if present. */

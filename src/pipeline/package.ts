@@ -116,7 +116,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   const stashMsg = `researcher-pkg-${ctx.runDir.id}`;
   const stashed = await gitops.stash({ cwd: ctx.projectRoot, message: stashMsg });
   await gitops.checkout({ cwd: ctx.projectRoot, branch: 'main' });
-  await gitops.pullFastForward({ cwd: ctx.projectRoot, branch: 'main' });
+  await gitops.pullFastForward({ cwd: ctx.projectRoot, branch: 'main', remote: ctx.pushRemote });
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
   if (stashed) await gitops.stashDrop({ cwd: ctx.projectRoot });
 
@@ -166,10 +166,11 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     paths: ['.researcher/state/seen.jsonl', '.researcher/state/watermark.json'],
     message: `state: seen +1, watermark ${now}`,
   });
-  await gitops.pushBranch({ cwd: ctx.projectRoot, branch });
+  await gitops.pushBranch({ cwd: ctx.projectRoot, branch, remote: ctx.pushRemote });
   const prTitle = `research: add ${newNoteFilename.replace(/\.md$/, '')}`;
-  await gitops.ghPrCreate({ cwd: ctx.projectRoot, title: prTitle, bodyFile: runSummaryPath });
+  await gitops.ghPrCreate({ cwd: ctx.projectRoot, title: prTitle, bodyFile: runSummaryPath, remote: ctx.pushRemote });
 
   process.stdout.write(`\nworking tree is on branch ${branch}.\n`);
-  process.stdout.write(`when you're done reviewing the PR, switch back: \`git checkout ${baseBranch}\`.\n`);
+  const reviewTarget = ctx.pushRemote ? 'the PR' : 'this branch';
+  process.stdout.write(`when you're done reviewing ${reviewTarget}, switch back: \`git checkout ${baseBranch}\`.\n`);
 }

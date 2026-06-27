@@ -55,8 +55,9 @@ researcher methodology install   # 一次性，把方法论装到 ~/.researcher/
 
 依赖：
 - `PATH` 上有 `claude` CLI（agent 运行时）。可用 `RESEARCHER_CLAUDE_BIN` 覆盖。
-- 已认证的 `gh` CLI（`gh pr create` 用）。设置 `RESEARCHER_NO_REMOTE=1` 可
-  跳过 push 和开 PR（适合纯本地的主题仓库）。
+- 已认证的 `gh` CLI —— 仅当主题设置 `delivery.mode: remote` 时需要（用于
+  `git push` + `gh pr create`）。主题默认本地（只 commit），纯本地仓库无需
+  remote 也无需 `gh`。
 - `pdftotext`（poppler）做 PDF 抽取。缺失时会回退到 abstract。
 
 ## 快速开始
@@ -135,7 +136,9 @@ researcher add 2401.12345            # 也可以：researcher add https://arxiv.
 ## 环境变量
 
 - `RESEARCHER_CLAUDE_BIN` —— 当 `claude` 不在 `PATH` 上时指定路径。
-- `RESEARCHER_NO_REMOTE=1` —— 跳过 `git push` 和 `gh pr create`（纯本地模式）。
+
+投递方式（push + PR 还是只本地 commit）是 per-topic 的，通过 `.researcher/project.yaml`
+的 `delivery.mode`（默认 `local`，或 `remote`）设置 —— 不再用环境变量。
 
 ## 方法论
 

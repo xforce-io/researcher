@@ -26,7 +26,7 @@ describe('package stage', () => {
     execaSync('git', ['config', 'user.email', 't@t'], { cwd: proj });
     execaSync('git', ['config', 'user.name', 't'], { cwd: proj });
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
-    process.env.RESEARCHER_NO_REMOTE = '1';
+    // delivery.mode defaults to local, so the package stage commits without push/PR.
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
     // Commit only .researcher/ as the initial main-branch state.
