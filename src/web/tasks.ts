@@ -20,7 +20,9 @@ export function defaultRunner(cliEntry: string): Runner {
   return async (cwd, onLine) => {
     const child = execa(process.execPath, [cliEntry, 'run'], { cwd, all: true, reject: false });
     let buf = '';
-    child.all?.on('data', (chunk: Buffer) => {
+    const all = child.all;
+    if (!all) throw new Error('execa child has no merged stdio stream (all:true expected)');
+    all.on('data', (chunk: Buffer) => {
       buf += chunk.toString();
       let nl: number;
       while ((nl = buf.indexOf('\n')) >= 0) {
@@ -64,9 +66,10 @@ export class TaskRegistry {
       if (task.lines.length > this.bufferLines) task.lines.shift();
       for (const l of this.listeners.get(task.id) ?? []) l.onLine(line);
     };
-    this.runner(cwd, onLine)
-      .then((code) => this.finish(task, code))
-      .catch(() => this.finish(task, 1));
+    this.runner(cwd, onLine).then(
+      (code) => this.finish(task, code),
+      () => this.finish(task, 1),
+    );
     return task;
   }
 
