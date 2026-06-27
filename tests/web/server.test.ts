@@ -62,3 +62,16 @@ it('serves css', async () => {
   expect(res.status).toBe(200);
   expect(res.headers.get('content-type')).toContain('text/css');
 });
+
+it('crafted slug on /doc returns 404 (slug guard blocks path escape)', async () => {
+  // slug encodes "../../etc" — without the guard, topicDir would escape root
+  const craftedSlug = encodeURIComponent('../../etc');
+  const res = await fetch(base + `/t/${craftedSlug}/doc?path=passwd.md`);
+  expect(res.status).toBe(404);
+});
+
+it('crafted slug on POST /run returns 404 (slug guard prevents arbitrary spawn)', async () => {
+  const craftedSlug = encodeURIComponent('../../etc');
+  const res = await fetch(base + `/t/${craftedSlug}/run`, { method: 'POST' });
+  expect(res.status).toBe(404);
+});

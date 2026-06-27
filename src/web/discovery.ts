@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { loadWorkspaceManifest, resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { loadProjectYaml } from '../config/project-yaml.js';
 import { Seen, type SeenEntry } from '../state/seen.js';
@@ -104,6 +104,22 @@ export function loadDashboard(root: string): DashboardModel {
     };
   });
   return { root, topics };
+}
+
+/**
+ * Resolve a URL slug to its on-disk topic directory, but ONLY if the decoded
+ * slug is a topic declared in the workspace manifest AND the resulting path
+ * stays inside `root`. Returns null otherwise — the single guard that stops a
+ * crafted slug (e.g. "..%2F..%2Fsecrets") from escaping the workspace.
+ */
+export function resolveTopicDir(root: string, slug: string): string | null {
+  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(root));
+  const decoded = decodeURIComponent(slug);
+  if (!manifest.topics.some((t) => t.path === decoded)) return null;
+  const dir = resolve(root, decoded);
+  const base = resolve(root);
+  if (dir !== base && !dir.startsWith(base + sep)) return null; // defense in depth
+  return dir;
 }
 
 export function loadTopic(root: string, slug: string): TopicView | null {
