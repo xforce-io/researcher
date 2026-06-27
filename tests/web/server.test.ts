@@ -12,7 +12,7 @@ let base: string;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'rsw-srv-'));
   writeFileSync(join(root, 'researcher.workspace.yml'),
-    'version: 1\ntopics:\n  - { path: trace, active: true }\n');
+    'version: 1\ntopics:\n  - { path: trace, active: true }\n  - { path: feeds/ai-safety, active: true }\n');
   const trace = join(root, 'trace');
   mkdirSync(join(trace, '.researcher/state'), { recursive: true });
   writeFileSync(join(trace, '.researcher/project.yaml'),
@@ -20,6 +20,17 @@ beforeAll(async () => {
     'inclusion_criteria: []\nexclusion_criteria: []\nsources:\n  - { kind: arxiv, queries: [a] }\n' +
     'cadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
   writeFileSync(join(trace, '.researcher/thesis.md'), '# Thesis\n\nbody');
+
+  // nested topic "feeds/ai-safety"
+  const feedsAi = join(root, 'feeds/ai-safety');
+  mkdirSync(join(feedsAi, '.researcher'), { recursive: true });
+  writeFileSync(join(feedsAi, '.researcher/project.yaml'),
+    'meta:\n  topic_oneline: ai safety feeds\n  language: en\n' +
+    'research_questions:\n  - { id: RQ1, text: safe }\n' +
+    'inclusion_criteria: []\nexclusion_criteria: []\n' +
+    'sources:\n  - { kind: arxiv, queries: [safety] }\ncadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
+  writeFileSync(join(feedsAi, '.researcher/thesis.md'), '# AI Safety Thesis\n\nbody');
+
   // a registry with a fake runner so POST /run never spawns a real process
   const registry = new TaskRegistry({ runner: async (_c, onLine) => { onLine('hello'); return 0; }, idSeq: (() => { let n = 0; return () => `t${++n}`; })() });
   server = await startServer({ root, port: 0, registry });
@@ -74,4 +85,16 @@ it('crafted slug on POST /run returns 404 (slug guard prevents arbitrary spawn)'
   const craftedSlug = encodeURIComponent('../../etc');
   const res = await fetch(base + `/t/${craftedSlug}/run`, { method: 'POST' });
   expect(res.status).toBe(404);
+});
+
+it('nested slug: GET /t/feeds%2Fai-safety returns 200 with topic content', async () => {
+  const res = await fetch(base + '/t/feeds%2Fai-safety');
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain('ai safety feeds');
+});
+
+it('nested slug: GET /t/feeds%2Fai-safety/doc returns 200 for thesis', async () => {
+  const res = await fetch(base + '/t/feeds%2Fai-safety/doc?path=' + encodeURIComponent('.researcher/thesis.md'));
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain('<h1>AI Safety Thesis</h1>');
 });

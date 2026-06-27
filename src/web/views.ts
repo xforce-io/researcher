@@ -6,7 +6,8 @@ export function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export function renderDoc(markdown: string): string {
@@ -30,7 +31,7 @@ export function renderDashboard(m: DashboardModel): string {
         `· ${t.decisionCounts['deep-read']}/${t.decisionCounts.skim}/${t.decisionCounts.reject} (deep/skim/reject)</div>`
       : `<div class="card-meta">submodule missing or not a researcher topic</div>`;
     const head = t.available
-      ? `<a class="card-title" href="/t/${encodeURIComponent(t.slug)}">${escapeHtml(t.path)}</a>`
+      ? `<a class="card-title" href="/t/${t.slug}">${escapeHtml(t.path)}</a>`
       : `<span class="card-title">${escapeHtml(t.path)}</span>`;
     return `<div class="card${t.available ? '' : ' card-disabled'}">` +
       `<div class="card-head">${head} ${tags.join(' ')}</div>` +
@@ -50,10 +51,10 @@ export function renderTopic(v: TopicView): string {
     return page(`${v.path} · unavailable`, body);
   }
   const docTree = v.docs.map((d) =>
-    `<li><a href="/t/${encodeURIComponent(v.slug)}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
+    `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
   const paperList = v.papers.map((p) =>
-    `<li><a href="/t/${encodeURIComponent(v.slug)}/paper?id=${encodeURIComponent(p.id)}" target="_blank">${escapeHtml(p.id)}</a></li>`
+    `<li><a href="/t/${v.slug}/paper?id=${encodeURIComponent(p.id)}" target="_blank">${escapeHtml(p.id)}</a></li>`
   ).join('');
   const sourceList = v.sources.map((s) =>
     `<li><b>${escapeHtml(s.kind)}</b>: ${escapeHtml(s.summary)}</li>`).join('');
@@ -68,7 +69,7 @@ export function renderTopic(v: TopicView): string {
   const body =
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
-    `<button id="run-btn" data-slug="${encodeURIComponent(v.slug)}" data-run="/t/${encodeURIComponent(v.slug)}/run">Run</button></header>` +
+    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run">Run</button></header>` +
     `<main class="three-col">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +

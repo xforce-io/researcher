@@ -62,6 +62,7 @@ function listNoteNotes(topicDir: string): DocRef[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => /^\d\d_.*\.md$/.test(f))
+    // `00_research_landscape.md` matches the regex above, but is surfaced separately as "Landscape"
     .filter((f) => f !== '00_research_landscape.md')
     .sort()
     .map((f) => ({ path: `notes/${f}`, label: f }));
@@ -131,7 +132,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
   const available = isAvailable(topicDir);
   if (!available) {
     return {
-      slug, path: topic.path, available: false, oneline: '', language: '',
+      slug: slugOf(topic.path), path: topic.path, available: false, oneline: '', language: '',
       sources: [], researchQuestions: [], docs: [], papers: [], seen: [], watermark: null,
     };
   }
@@ -145,7 +146,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     rqs = py.research_questions;
   } catch { /* partial topic: leave config-derived fields empty */ }
   return {
-    slug, path: topic.path, available: true, oneline, language,
+    slug: slugOf(topic.path), path: topic.path, available: true, oneline, language,
     sources, researchQuestions: rqs,
     docs: buildDocs(topicDir),
     papers: listPdfs(topicDir),
