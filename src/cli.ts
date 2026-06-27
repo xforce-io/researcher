@@ -57,6 +57,17 @@ program
     }
   });
 
+program
+  .command('serve [path]')
+  .description('Start a local web console over a workspace super-repo (researcher.workspace.yml)')
+  .option('-p, --port <port>', 'port to listen on', '4500')
+  .action(async (path: string | undefined, opts: { port: string }) => {
+    const root = path ? (await import('node:path')).resolve(path) : process.cwd();
+    const { startServer } = await import('./web/server.js');
+    const { port } = await startServer({ root, port: Number(opts.port) });
+    process.stdout.write(`researcher web console → http://127.0.0.1:${port}  (root: ${root})\n`);
+  });
+
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exitCode = 1;

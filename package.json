@@ -12,7 +12,7 @@
     "templates"
   ],
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && mkdir -p dist/web/static && cp src/web/static/* dist/web/static/",
     "dev": "tsc -p . --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,6 +23,7 @@
     "commander": "^14.0.3",
     "execa": "^9.6.1",
     "js-yaml": "^4.1.1",
+    "marked": "^14.1.4",
     "simple-git": "^3.36.0",
     "zod": "^4.3.6"
   },

@@ -28,6 +28,9 @@ export class Seen {
   get(id: string): SeenEntry | undefined {
     return this.index.get(id);
   }
+  entries(): SeenEntry[] {
+    return [...this.index.values()];
+  }
   append(entry: SeenEntry): void {
     if (this.index.has(entry.id)) {
       throw new Error(`seen.jsonl already contains id=${entry.id}`);
