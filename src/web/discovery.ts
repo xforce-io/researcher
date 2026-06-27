@@ -1,0 +1,139 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { loadWorkspaceManifest, resolveWorkspaceManifestPath } from '../workspace/manifest.js';
+import { loadProjectYaml } from '../config/project-yaml.js';
+import { Seen, type SeenEntry } from '../state/seen.js';
+import { readWatermark, type Watermark } from '../state/watermark.js';
+import { resolveProjectResearcherDir } from '../paths.js';
+
+export interface TopicCard {
+  slug: string;
+  path: string;
+  active: boolean;
+  available: boolean;
+  oneline: string;
+  paperCount: number;
+  lastRun: string | null;
+  decisionCounts: { 'deep-read': number; skim: number; reject: number };
+}
+export interface DashboardModel {
+  root: string;
+  topics: TopicCard[];
+}
+export interface DocRef { path: string; label: string; }
+export interface SourceSummary { kind: string; summary: string; }
+export interface TopicView {
+  slug: string;
+  path: string;
+  available: boolean;
+  oneline: string;
+  language: string;
+  sources: SourceSummary[];
+  researchQuestions: { id: string; text: string }[];
+  docs: DocRef[];
+  papers: { id: string; file: string }[];
+  seen: SeenEntry[];
+  watermark: Watermark | null;
+}
+
+const slugOf = (p: string) => encodeURIComponent(p);
+
+function isAvailable(topicDir: string): boolean {
+  return existsSync(topicDir) && existsSync(resolveProjectResearcherDir(topicDir));
+}
+
+function readSeen(topicDir: string): SeenEntry[] {
+  const path = join(resolveProjectResearcherDir(topicDir), 'state/seen.jsonl');
+  if (!existsSync(path)) return [];
+  return new Seen(path).entries();
+}
+
+function listPdfs(topicDir: string): { id: string; file: string }[] {
+  const dir = join(topicDir, 'papers');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.pdf'))
+    .sort()
+    .map((f) => ({ id: f.replace(/\.pdf$/, ''), file: `papers/${f}` }));
+}
+
+function listNoteNotes(topicDir: string): DocRef[] {
+  const dir = join(topicDir, 'notes');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^\d\d_.*\.md$/.test(f))
+    .filter((f) => f !== '00_research_landscape.md')
+    .sort()
+    .map((f) => ({ path: `notes/${f}`, label: f }));
+}
+
+function buildDocs(topicDir: string): DocRef[] {
+  const docs: DocRef[] = [];
+  const add = (rel: string, label: string) => {
+    if (existsSync(join(topicDir, rel))) docs.push({ path: rel, label });
+  };
+  add('.researcher/thesis.md', 'Thesis');
+  add('notes/00_research_landscape.md', 'Landscape');
+  add('report.md', 'Report');
+  docs.push(...listNoteNotes(topicDir));
+  return docs;
+}
+
+function sourceSummary(s: { kind: string; queries?: string[]; inbox_dir?: string }): SourceSummary {
+  if (s.kind === 'x-inbox') return { kind: s.kind, summary: s.inbox_dir ?? '(no inbox_dir)' };
+  return { kind: s.kind, summary: (s.queries ?? []).join(', ') };
+}
+
+export function loadDashboard(root: string): DashboardModel {
+  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(root));
+  const topics: TopicCard[] = manifest.topics.map((t) => {
+    const topicDir = join(root, t.path);
+    const available = isAvailable(topicDir);
+    let oneline = '';
+    const counts = { 'deep-read': 0, skim: 0, reject: 0 } as TopicCard['decisionCounts'];
+    let lastRun: string | null = null;
+    if (available) {
+      const rDir = resolveProjectResearcherDir(topicDir);
+      try { oneline = loadProjectYaml(join(rDir, 'project.yaml')).meta.topic_oneline ?? ''; } catch { /* leave blank */ }
+      for (const e of readSeen(topicDir)) counts[e.decision]++;
+      lastRun = readWatermark(join(rDir, 'state/watermark.json'))?.last_run_completed_at ?? null;
+    }
+    return {
+      slug: slugOf(t.path), path: t.path, active: t.active, available,
+      oneline, paperCount: listPdfs(topicDir).length, lastRun, decisionCounts: counts,
+    };
+  });
+  return { root, topics };
+}
+
+export function loadTopic(root: string, slug: string): TopicView | null {
+  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(root));
+  const decoded = decodeURIComponent(slug);
+  const topic = manifest.topics.find((t) => t.path === decoded);
+  if (!topic) return null;
+  const topicDir = join(root, topic.path);
+  const available = isAvailable(topicDir);
+  if (!available) {
+    return {
+      slug, path: topic.path, available: false, oneline: '', language: '',
+      sources: [], researchQuestions: [], docs: [], papers: [], seen: [], watermark: null,
+    };
+  }
+  const rDir = resolveProjectResearcherDir(topicDir);
+  let oneline = '', language = '', sources: SourceSummary[] = [], rqs: { id: string; text: string }[] = [];
+  try {
+    const py = loadProjectYaml(join(rDir, 'project.yaml'));
+    oneline = py.meta.topic_oneline ?? '';
+    language = py.meta.language;
+    sources = py.sources.map(sourceSummary);
+    rqs = py.research_questions;
+  } catch { /* partial topic: leave config-derived fields empty */ }
+  return {
+    slug, path: topic.path, available: true, oneline, language,
+    sources, researchQuestions: rqs,
+    docs: buildDocs(topicDir),
+    papers: listPdfs(topicDir),
+    seen: readSeen(topicDir),
+    watermark: readWatermark(join(rDir, 'state/watermark.json')),
+  };
+}
