@@ -1,7 +1,7 @@
 # Design: `researcher serve` — workspace topics 只读 Web Console
 
 > Issue: xforce-io/researcher#31
-> Status: brainstormed; pending implementation on `feat/31-serve-web-console`.
+> Status: 已实现并合并(#32)。后续演进:run 进度 popover(#33)、dashboard/话题页视觉打磨与若干修复(#36)—— 细节见各自 issue/PR,本文仅记 v1 设计。
 
 ## Problem
 
@@ -82,7 +82,7 @@ unavailable 并在卡片上提示(对齐 orchestrator 的同类判定)。
 
 | 方法 | 路由 | 功能 |
 |------|------|------|
-| GET | `/` | Dashboard:topics 卡片网格(简介、active 状态、论文数、上次 run、最近 decision 数) |
+| GET | `/` | Dashboard:topics 卡片网格(简介、active 状态、笔记数、上次 run、最近 decision 数) |
 | GET | `/t/{slug}` | Topic 详情:左栏文档树 + 中栏选中文档渲染 + 右栏元数据 |
 | GET | `/t/{slug}/doc?path=…` | 渲染单个文档(markdown → HTML) |
 | GET | `/t/{slug}/paper?id=…` | 内联打开 `papers/` 下的 PDF |
