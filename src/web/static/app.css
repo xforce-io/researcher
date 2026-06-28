@@ -264,6 +264,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   background:#1c1a14; color:#d9d2bf; border:1px solid #2c281f; border-radius:8px;
   box-shadow:0 16px 40px -12px rgba(0,0,0,.55); z-index:50;
 }
+.run-pop[hidden] { display:none; }  /* class display:flex would otherwise override the hidden attr */
 .run-bar {
   display:flex; align-items:center; gap:12px;
   padding:9px 14px; background:#16140f; border-bottom:1px solid #2c281f;
