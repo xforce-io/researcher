@@ -79,7 +79,9 @@ describe('loadTopic', () => {
     const v = loadTopic(root, 'trace')!;
     expect(v.available).toBe(true);
     expect(v.docs.map((d) => d.path)).toEqual(
-      ['.researcher/thesis.md', 'notes/00_research_landscape.md', 'report.md', 'notes/01_paper.md']);
+      ['.researcher/thesis.md', 'notes/00_research_landscape.md', 'report.md']);
+    expect(v.notes.map((n) => n.path)).toEqual(['notes/01_paper.md']);  // numbered notes split out
+    expect(v.notes[0].title).toBe('Paper note');                        // from the note's H1
     expect(v.papers).toEqual([{ id: '2401.00001', file: 'papers/2401.00001.pdf' }]);
     expect(v.seen).toHaveLength(2);
     expect(v.watermark?.last_run_id).toBe('r1');
