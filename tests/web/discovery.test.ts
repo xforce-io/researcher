@@ -53,7 +53,7 @@ describe('loadDashboard', () => {
     expect(trace.active).toBe(true);
     expect(trace.available).toBe(true);
     expect(trace.oneline).toBe('triage traces');
-    expect(trace.paperCount).toBe(1);
+    expect(trace.noteCount).toBe(1);     // notes/01_paper.md (00_landscape excluded)
     expect(trace.lastRun).toBe('2026-06-20T10:00:00Z');
     expect(trace.decisionCounts).toEqual({ 'deep-read': 1, skim: 1, reject: 0 });
     expect(decision.active).toBe(false);

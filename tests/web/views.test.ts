@@ -19,9 +19,9 @@ describe('renderDashboard', () => {
     root: '/ws',
     topics: [
       { slug: 'trace', path: 'trace', active: true, available: true, oneline: 'triage <x>',
-        paperCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
+        noteCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
       { slug: 'decision', path: 'decision', active: false, available: false, oneline: '',
-        paperCount: 0, lastRun: null, decisionCounts: { 'deep-read': 0, skim: 0, reject: 0 } },
+        noteCount: 0, lastRun: null, decisionCounts: { 'deep-read': 0, skim: 0, reject: 0 } },
     ],
   };
   it('lists topic paths and links to detail pages', () => {
@@ -31,6 +31,16 @@ describe('renderDashboard', () => {
     expect(html).toContain('class="card-foot"');     // meta row must match the styled CSS class
     expect(html).toMatch(/dormant|inactive/i);       // dormant marker for decision
     expect(html).toMatch(/unavailable|missing/i);    // unavailable marker
+  });
+  it('uses the styled triage bar / legend / stats, note count, and formatted date', () => {
+    const html = renderDashboard(m);
+    expect(html).toContain('class="triage"');        // colored intake bar
+    expect(html).toContain('class="legend"');        // deep/skim/reject legend
+    expect(html).toContain('class="stats"');         // note count + date row
+    expect(html).toContain('3 notes');               // noteCount, not "papers"
+    expect(html).toContain('2026-06-20');            // formatted date
+    expect(html).not.toContain('2026-06-20T10:00:00Z'); // never the raw ISO timestamp
+    expect(html).not.toContain('papers');            // dropped the misleading PDF count
   });
 });
 
