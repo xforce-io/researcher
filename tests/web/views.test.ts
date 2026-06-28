@@ -76,6 +76,8 @@ describe('renderTopic', () => {
     expect(html).toContain('RQ1');
     expect(html).toContain('class="note-tree"');      // numbered notes use the styled tree
     expect(html).toContain('Signals: trajectory triage'); // frontmatter-derived note title
+    expect(html).toContain('class="about"');           // About uses the styled paragraph
+    expect(html).toContain('class="meta-list"');        // Sources/Questions use the styled list
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
     expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
     expect(html).not.toContain('<table');              // no narrow 3-col table
