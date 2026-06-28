@@ -12,6 +12,20 @@ describe('renderDoc', () => {
   it('renders markdown headings to html', () => {
     expect(renderDoc('# Hello')).toContain('<h1>Hello</h1>');
   });
+  it('lifts a report H1 + key/value blockquote into the aligned fm table', () => {
+    const md = '# Decision Agent: Research Report\n\n> **Version:** v19 (19 papers)\n> **Last Updated:** 2026-06-04\n> **Papers:** [01](notes/01.md), [02](notes/02.md)\n\n---\n\n## Body';
+    const html = renderDoc(md);
+    expect(html).toContain('<h1>Decision Agent: Research Report</h1>');
+    expect(html).toContain('class="fm"');
+    expect(html).toContain('<dt>Version</dt><dd>v19 (19 papers)</dd>');
+    expect(html).toContain('<dt>Last Updated</dt><dd>2026-06-04</dd>');
+    expect(html).toContain('href="notes/01.md"');   // inline links rendered in the value
+    expect(html).toContain('<h2>Body</h2>');
+    expect(html).not.toContain('<blockquote>');      // not left as a flowing blockquote
+  });
+  it('leaves an ordinary blockquote alone', () => {
+    expect(renderDoc('# T\n\n> just a quote, not metadata')).toContain('<blockquote>');
+  });
   it('renders a note masthead from YAML frontmatter instead of dumping raw YAML', () => {
     const md = '---\npaper: "Why Reasoning Fails to Plan"\narxiv: "2601.22311"\nauthors: ["Zehong Wang", "Fang Wu"]\nyear: 2026\nnote_number: 3\n---\n\n## Claims\n\n- a claim';
     const html = renderDoc(md);
