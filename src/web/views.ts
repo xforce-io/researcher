@@ -59,10 +59,34 @@ function noteMasthead(fm: Record<string, string>): string {
     (rows ? `<dl class="fm">${rows}</dl>` : '');
 }
 
+// A leading `# H1` + a `> **Key:** value` blockquote (report.md / H1-titled notes)
+// is really a masthead — markdown collapses the lines into one flowing paragraph.
+// Lift it into the aligned .fm table instead. Returns null when the block isn't a
+// clean key/value masthead, so ordinary blockquotes render normally.
+function mastheadBlockquote(body: string): { html: string; rest: string } | null {
+  const m = /^(#[ \t][^\n]*\n)\s*\n?((?:[ \t]*>[^\n]*(?:\n|$))+)/.exec(body);
+  if (!m) return null;
+  const rows: { k: string; v: string }[] = [];
+  for (const line of m[2].split('\n')) {
+    const content = line.trim().replace(/^>\s?/, '').trim();
+    if (!content) continue;
+    const km = /^\*\*\s*(.+?)\s*[:：]?\s*\*\*[:：]?\s*(.*)$/.exec(content);
+    if (!km) return null; // a non key/value line → not a masthead, let marked handle it
+    rows.push({ k: km[1].trim(), v: km[2].trim() });
+  }
+  if (rows.length < 2) return null;
+  const dl = `<dl class="fm">` + rows.map((r) =>
+    `<div><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+  ).join('') + `</dl>`;
+  return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
+}
+
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
-  const head = fm ? noteMasthead(fm) : '';
-  return head + (marked.parse(body, { async: false }) as string);
+  if (fm) return noteMasthead(fm) + (marked.parse(body, { async: false }) as string);
+  const mast = mastheadBlockquote(body);
+  if (mast) return mast.html + (marked.parse(mast.rest, { async: false }) as string);
+  return marked.parse(body, { async: false }) as string;
 }
 
 function page(title: string, body: string): string {

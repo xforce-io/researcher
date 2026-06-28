@@ -181,7 +181,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .note-title { font-size:25px; line-height:1.25; letter-spacing:-.02em; margin:0 0 12px; }
 .fm { font:13px var(--mono); color:var(--ink-soft); margin:0 0 24px; padding-bottom:16px; border-bottom:1px solid var(--line); }
 .fm div { display:flex; gap:10px; padding:3px 0; }
-.fm dt { color:var(--ink-faint); min-width:96px; }
+.fm dt { color:var(--ink-faint); flex:none; width:112px; }
 .fm dd { margin:0; }
 .meta-list li { padding:5px 0; font-size:13px; color:var(--ink-soft); border-bottom:1px solid var(--line-soft); }
 .meta-list b { color:var(--ink); font-weight:600; }
