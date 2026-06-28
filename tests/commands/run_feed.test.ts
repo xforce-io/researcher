@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -86,6 +86,14 @@ function enableEnrich(projDir: string): void {
 describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () => {
   let proj: string;
   let inbox: string;
+  let _origSend: typeof process.send;
+  beforeEach(() => {
+    _origSend = process.send;
+    (process as { send?: unknown }).send = undefined;
+  });
+  afterEach(() => {
+    (process as { send?: unknown }).send = _origSend;
+  });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-feed-'));
     inbox = mkdtempSync(join(tmpdir(), 'r-inbox-'));

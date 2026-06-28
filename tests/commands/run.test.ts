@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,6 +103,14 @@ function packageStep(): (opts: InvokeOptions) => InvokeResult {
 
 describe('researcher run (autonomous)', () => {
   let proj: string;
+  let _origSend: typeof process.send;
+  beforeEach(() => {
+    _origSend = process.send;
+    (process as { send?: unknown }).send = undefined;
+  });
+  afterEach(() => {
+    (process as { send?: unknown }).send = _origSend;
+  });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-run-'));
     execaSync('git', ['init', '-b', 'main'], { cwd: proj });
@@ -129,18 +137,29 @@ describe('researcher run (autonomous)', () => {
       synthesizeStep(),
       packageStep(),
     ]);
+    const sent: Array<{ type: string; stages?: string[]; name?: string }> = [];
+    const orig = process.send;
+    (process as { send?: unknown }).send = (m: unknown) => { sent.push(m as never); return true; };
     const { runRun } = await import('../../src/commands/run.js');
-    await runRun({ cwd: proj, adapter });
+    try {
+      await runRun({ cwd: proj, adapter });
+    } finally {
+      (process as { send?: unknown }).send = orig;
+    }
+
+    expect(sent).toContainEqual({
+      type: 'plan',
+      stages: ['bootstrap', 'soul', 'discover', 'read', 'synthesize', 'package'],
+    });
+    expect(sent).toContainEqual({ type: 'stage', name: 'synthesize' });
 
     expect(adapter.callCount).toBe(5);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.55555'); // deep-read pick
     expect(seen).toContain('arxiv:2401.66666'); // skim
-    // The deep-read entry's reason is the discover-time reason, not "manual feed".
     const deepReadLine = seen.split('\n').find((l) => l.includes('arxiv:2401.55555'))!;
     expect(deepReadLine).toContain('RQ1: extends');
     expect(deepReadLine).not.toContain('manual feed');
-    // Branch + 2 commits.
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
       .toMatch(/^researcher\//);
   });

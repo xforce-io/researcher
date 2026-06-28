@@ -1,5 +1,6 @@
 import type { RunDir, Stage } from '../state/runs.js';
 import type { InvokeResult } from '../adapter/interface.js';
+import { emitEvent } from './events.js';
 
 export interface StageDef {
   name: Stage;
@@ -9,6 +10,7 @@ export interface StageDef {
 export async function runStages(rd: RunDir, stages: readonly StageDef[]): Promise<void> {
   for (const s of stages) {
     rd.markStart(s.name);
+    emitEvent({ type: 'stage', name: s.name });
     await s.fn();
     rd.markDone(s.name);
   }
