@@ -185,10 +185,12 @@ export function renderTopic(
         (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3><ol class="note-tree">${noteTree}</ol>` : '') +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
       `<section class="reader" id="reader"><p class="hint">Select a document.</p></section>` +
-      `<aside class="right"><h3>About</h3><p>${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'} <i>(${escapeHtml(v.language)})</i></p>` +
-        `<h3>Sources</h3><ul>${sourceList || '<li>—</li>'}</ul>` +
-        `<h3>Questions</h3><ul>${rqList || '<li>—</li>'}</ul>` +
-        `<h3>State</h3><p>${wm}</p>` +
+      `<aside class="right"><h3>About</h3>` +
+        `<p class="about">${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'}` +
+        `${v.language ? ` <span class="lang">${escapeHtml(v.language)}</span>` : ''}</p>` +
+        `<h3>Sources</h3><ul class="meta-list">${sourceList || '<li>—</li>'}</ul>` +
+        `<h3>Questions</h3><ul class="meta-list">${rqList || '<li>—</li>'}</ul>` +
+        `<h3>State</h3><p class="state">${wm}</p>` +
         `<h3>Seen <span class="h3-count">${v.seen.length}</span></h3>` +
         `<ul class="seen-list">${seenRows || '<li class="muted">—</li>'}</ul>` +
       `</aside>` +
