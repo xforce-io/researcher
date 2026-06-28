@@ -218,13 +218,21 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .state { font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
 
 /* seen ledger */
-.seen { width:100%; font-size:12px; border-collapse:collapse; margin-top:4px; }
-.seen th {
-  text-align:left; font:600 10px/1 var(--mono); text-transform:uppercase; letter-spacing:.1em;
-  color:var(--ink-faint); padding:0 6px 6px; border-bottom:1px solid var(--line);
+/* seen ledger: a list, not a 3-col table — reason gets full width in the narrow rail */
+.seen-list { list-style:none; padding:0; margin:4px 0 0; }
+.seen-item { padding:9px 0; border-bottom:1px solid var(--line-soft); }
+.seen-item:last-child { border-bottom:none; }
+.seen-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.seen-id { font-size:11px; color:var(--ink-faint); }
+.seen-dec {
+  margin-left:auto; white-space:nowrap;
+  font:600 10px/1 var(--mono); text-transform:uppercase; letter-spacing:.06em;
+  padding:3px 6px; border-radius:4px;
 }
-.seen td { padding:6px; border-bottom:1px solid var(--line-soft); vertical-align:top; }
-.seen td.mono { font-family:var(--mono); font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+.seen-dec.deep-read { background:var(--accent-soft); color:var(--deep); }
+.seen-dec.skim { background:#f6ecd6; color:var(--skim); }
+.seen-dec.reject { background:var(--line-soft); color:#9a8e78; }
+.seen-reason { margin:0; font-size:12.5px; line-height:1.5; color:var(--ink-soft); }
 .chip {
   font:600 10px/1 var(--mono); padding:3px 6px; border-radius:4px; white-space:nowrap;
   text-transform:uppercase; letter-spacing:.04em;

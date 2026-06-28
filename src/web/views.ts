@@ -98,7 +98,13 @@ export function renderTopic(
   const rqList = v.researchQuestions.map((q) =>
     `<li><b>${escapeHtml(q.id)}</b> ${escapeHtml(q.text)}</li>`).join('');
   const seenRows = v.seen.slice(-20).reverse().map((e) =>
-    `<tr><td>${escapeHtml(e.id)}</td><td>${escapeHtml(e.decision)}</td><td>${escapeHtml(e.reason)}</td></tr>`).join('');
+    `<li class="seen-item">` +
+      `<div class="seen-head">` +
+        `<span class="seen-id mono">${escapeHtml(e.id)}</span>` +
+        `<span class="seen-dec ${escapeHtml(e.decision)}">${escapeHtml(e.decision)}</span>` +
+      `</div>` +
+      `<p class="seen-reason">${escapeHtml(e.reason)}</p>` +
+    `</li>`).join('');
   const wm = v.watermark
     ? `last run ${fmtDate(v.watermark.last_run_completed_at)} · <span class="mono">${escapeHtml(v.watermark.last_run_id)}</span>`
     : 'never run';
@@ -132,7 +138,8 @@ export function renderTopic(
         `<h3>Sources</h3><ul>${sourceList || '<li>—</li>'}</ul>` +
         `<h3>Questions</h3><ul>${rqList || '<li>—</li>'}</ul>` +
         `<h3>State</h3><p>${wm}</p>` +
-        `<table class="seen"><thead><tr><th>id</th><th>decision</th><th>reason</th></tr></thead><tbody>${seenRows}</tbody></table>` +
+        `<h3>Seen <span class="h3-count">${v.seen.length}</span></h3>` +
+        `<ul class="seen-list">${seenRows || '<li class="muted">—</li>'}</ul>` +
       `</aside>` +
     `</main>` +
     `<script>${TOPIC_JS}</script>`;

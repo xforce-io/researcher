@@ -63,6 +63,9 @@ describe('renderTopic', () => {
     expect(html).toContain('RQ1');
     expect(html).toContain('class="note-tree"');      // numbered notes use the styled tree
     expect(html).toContain('Signals: trajectory triage'); // frontmatter-derived note title
+    expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
+    expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
+    expect(html).not.toContain('<table');              // no narrow 3-col table
   });
   it('shows an unavailable notice when topic has no .researcher', () => {
     const html = renderTopic({ ...v, available: false, docs: [], papers: [], seen: [], sources: [], researchQuestions: [] });
