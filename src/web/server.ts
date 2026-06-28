@@ -94,6 +94,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
       const unsub = registry.subscribe(
         taskId,
         (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
+        () => {},
         () => { res.write(`event: end\ndata: {}\n\n`); res.end(); },
       );
       req.on('close', unsub);
