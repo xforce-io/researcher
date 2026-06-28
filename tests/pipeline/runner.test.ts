@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,15 @@ import { runStages, assertAgentOk } from '../../src/pipeline/runner.js';
 import { RunDir, newRunId } from '../../src/state/runs.js';
 
 describe('runStages', () => {
+  let _origSend: typeof process.send;
+  beforeEach(() => {
+    _origSend = process.send;
+    (process as { send?: unknown }).send = undefined;
+  });
+  afterEach(() => {
+    (process as { send?: unknown }).send = _origSend;
+  });
+
   it('runs each stage and writes start/done markers', async () => {
     const base = mkdtempSync(join(tmpdir(), 'r-runner-'));
     const rd = new RunDir(base, newRunId());
@@ -26,6 +35,26 @@ describe('runStages', () => {
     ] as const)).rejects.toThrow('boom');
     expect(existsSync(rd.path('bootstrap.start'))).toBe(true);
     expect(existsSync(rd.path('bootstrap.done'))).toBe(false);
+  });
+
+  it('emits a {type:"stage"} event for each stage via process.send', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-runner-'));
+    const rd = new RunDir(base, newRunId());
+    const sent: unknown[] = [];
+    const orig = process.send;
+    (process as { send?: unknown }).send = (m: unknown) => { sent.push(m); return true; };
+    try {
+      await runStages(rd, [
+        { name: 'bootstrap', fn: async () => {} },
+        { name: 'discover', fn: async () => {} },
+      ] as const);
+    } finally {
+      (process as { send?: unknown }).send = orig;
+    }
+    expect(sent).toEqual([
+      { type: 'stage', name: 'bootstrap' },
+      { type: 'stage', name: 'discover' },
+    ]);
   });
 });
 

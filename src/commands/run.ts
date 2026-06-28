@@ -8,6 +8,7 @@ import { newRunId, RunDir } from '../state/runs.js';
 import { withLock } from '../state/lock.js';
 import { Seen } from '../state/seen.js';
 import { runStages, type StageDef } from '../pipeline/runner.js';
+import { emitEvent } from '../pipeline/events.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
@@ -104,6 +105,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       }
       // #25: feed commits in place to main (one commit/window), not the paper path's branch+PR.
       feedStages.push({ name: 'package', fn: async () => feedPackage(ctx!) });
+      emitEvent({ type: 'plan', stages: ['bootstrap', 'soul', ...feedStages.map((s) => s.name)] });
       await runStages(runDir, feedStages);
       process.stdout.write(
         `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
@@ -124,6 +126,10 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       return;
     }
 
+    emitEvent({
+      type: 'plan',
+      stages: ['bootstrap', 'soul', 'discover', 'read', 'synthesize', 'package'],
+    });
     await runStages(runDir, [
       { name: 'discover', fn: async () => discoverTriage(ctx!) },
     ]);

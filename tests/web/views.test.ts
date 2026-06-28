@@ -55,3 +55,29 @@ describe('renderTopic', () => {
     expect(html).toMatch(/unavailable|missing/i);
   });
 });
+
+describe('renderTopic run controls', () => {
+  const baseView: TopicView = {
+    slug: 'trace', path: 'trace', available: true, oneline: 'o', language: 'zh',
+    sources: [], researchQuestions: [], docs: [], papers: [], seen: [], watermark: null,
+  };
+
+  it('renders the run popover skeleton', () => {
+    const html = renderTopic(baseView);
+    expect(html).toContain('id="run-pop"');
+    expect(html).toContain('id="run-stages"');
+    expect(html).toContain('id="run-out"');
+    expect(html).toContain('id="run-wrap"');
+    expect(html).toContain('id="run-bar"');
+    expect(html).toContain('id="run-status"');
+    expect(html).toContain('id="run-elapsed"');
+    expect(html).toContain('id="run-hide"');
+    expect(html).not.toContain('data-active-task');
+  });
+
+  it('embeds the active run when one is passed', () => {
+    const html = renderTopic(baseView, { taskId: 'task-7', startedAt: 1719000000000 });
+    expect(html).toContain('data-active-task="task-7"');
+    expect(html).toContain('data-started-at="1719000000000"');
+  });
+});

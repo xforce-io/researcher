@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -86,6 +86,14 @@ function enableEnrich(projDir: string): void {
 describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () => {
   let proj: string;
   let inbox: string;
+  let _origSend: typeof process.send;
+  beforeEach(() => {
+    _origSend = process.send;
+    (process as { send?: unknown }).send = undefined;
+  });
+  afterEach(() => {
+    (process as { send?: unknown }).send = _origSend;
+  });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-feed-'));
     inbox = mkdtempSync(join(tmpdir(), 'r-inbox-'));
@@ -112,10 +120,15 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     writeFileSync(join(inbox, 'x-following-20260619T110000Z.md'), DIGEST);
     const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
     const { runRun } = await import('../../src/commands/run.js');
+    const sent: unknown[] = [];
+    (process as { send?: unknown }).send = (m: unknown) => { sent.push(m); return true; };
     const res = await runRun({ cwd: proj, adapter });
 
     expect(res.outcome).toBe('completed');
     expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package-review
+
+    // Feed plan event was emitted with the correct stages (enrich is OFF by default).
+    expect(sent).toContainEqual({ type: 'plan', stages: ['bootstrap', 'soul', 'feed-synthesize', 'package'] });
 
     // Stays on main — the feed path no longer forks a `researcher/NN` branch.
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');

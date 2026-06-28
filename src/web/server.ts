@@ -60,7 +60,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
     if (req.method === 'GET' && !sub) {
       const view = loadTopic(root, slug);
       if (!view) return send(res, 404, 'text/plain', 'unknown topic');
-      return send(res, 200, 'text/html; charset=utf-8', renderTopic(view));
+      const active = registry.activeTask(decodeURIComponent(slug));
+      const activeRun = active ? { taskId: active.id, startedAt: active.startedAt } : null;
+      return send(res, 200, 'text/html; charset=utf-8', renderTopic(view, activeRun));
     }
 
     // All sub-routes: validate slug against the manifest before any FS/process use
@@ -94,6 +96,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
       const unsub = registry.subscribe(
         taskId,
         (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
+        (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
         () => { res.write(`event: end\ndata: {}\n\n`); res.end(); },
       );
       req.on('close', unsub);

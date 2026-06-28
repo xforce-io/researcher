@@ -43,7 +43,10 @@ export function renderDashboard(m: DashboardModel): string {
   return page('researcher · workspace', body);
 }
 
-export function renderTopic(v: TopicView): string {
+export function renderTopic(
+  v: TopicView,
+  activeRun: { taskId: string; startedAt: number } | null = null,
+): string {
   if (!v.available) {
     const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
       `<span class="root">${escapeHtml(v.path)}</span></header>` +
@@ -66,10 +69,26 @@ export function renderTopic(v: TopicView): string {
     ? `last run ${escapeHtml(v.watermark.last_run_completed_at)} (${escapeHtml(v.watermark.last_run_id)})`
     : 'never run';
 
+  const runAttrs = activeRun
+    ? ` data-active-task="${escapeHtml(activeRun.taskId)}" data-started-at="${activeRun.startedAt}"`
+    : '';
+  const runWrap =
+    `<div class="run-wrap" id="run-wrap">` +
+    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}>Run</button>` +
+    `<div id="run-pop" class="run-pop" hidden>` +
+      `<div id="run-bar" class="run-bar">` +
+        `<span id="run-status" class="run-status">idle</span>` +
+        `<span id="run-elapsed" class="run-elapsed mono"></span>` +
+        `<button id="run-hide" class="run-hide" type="button">hide</button>` +
+      `</div>` +
+      `<ol id="run-stages" class="run-stages"></ol>` +
+      `<pre id="run-out"></pre>` +
+    `</div></div>`;
+
   const body =
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
-    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run">Run</button></header>` +
+    `${runWrap}</header>` +
     `<main class="three-col">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
@@ -81,7 +100,6 @@ export function renderTopic(v: TopicView): string {
         `<table class="seen"><thead><tr><th>id</th><th>decision</th><th>reason</th></tr></thead><tbody>${seenRows}</tbody></table>` +
       `</aside>` +
     `</main>` +
-    `<div id="run-log" class="run-log" hidden><pre id="run-out"></pre></div>` +
     `<script>${TOPIC_JS}</script>`;
   return page(`${v.path} · researcher`, body);
 }
@@ -95,15 +113,99 @@ document.querySelectorAll('.doc-link').forEach(a => a.addEventListener('click', 
   document.getElementById('reader').innerHTML = await res.text();
 }));
 const runBtn = document.getElementById('run-btn');
-if (runBtn) runBtn.addEventListener('click', async () => {
-  runBtn.disabled = true;
-  const log = document.getElementById('run-log'); const out = document.getElementById('run-out');
-  log.hidden = false; out.textContent = '';
-  const res = await fetch('/t/' + slug + '/run', { method: 'POST' });
-  if (res.status === 409) { out.textContent = 'already running…'; runBtn.disabled = false; return; }
-  const { taskId } = await res.json();
+const pop = document.getElementById('run-pop');
+const out = document.getElementById('run-out');
+const stagesEl = document.getElementById('run-stages');
+const statusEl = document.getElementById('run-status');
+const elapsedEl = document.getElementById('run-elapsed');
+const wrap = document.getElementById('run-wrap');
+
+let running = false, plan = null, current = null, timer = null, finished = false;
+
+function fmtElapsed(s) {
+  const m = Math.floor(s / 60), ss = s % 60;
+  return m ? m + 'm' + String(ss).padStart(2, '0') + 's' : ss + 's';
+}
+function setBtnLabel() {
+  if (!running) { runBtn.textContent = 'Run'; return; }
+  const i = (plan && current) ? plan.indexOf(current) : -1;
+  runBtn.textContent = i >= 0
+    ? '\\u27f3 ' + current + ' (' + (i + 1) + '/' + plan.length + ')'
+    : '\\u27f3 ' + (current || 'starting');
+}
+function renderStages() {
+  if (!plan) { stagesEl.innerHTML = ''; return; }
+  const ci = current ? plan.indexOf(current) : -1;
+  stagesEl.innerHTML = plan.map((name, i) => {
+    let cls = 'pending', mk = '\\u00b7';
+    if (finished || (ci >= 0 && i < ci)) { cls = 'done'; mk = '\\u2713'; }
+    else if (i === ci) { cls = 'active'; mk = '\\u27f3'; }
+    return '<li class="' + cls + '"><span class="mk">' + mk + '</span>' + name + '</li>';
+  }).join('');
+}
+const append = (t) => { out.textContent += t; out.scrollTop = out.scrollHeight; };
+function openPop() { pop.hidden = false; runBtn.setAttribute('aria-expanded', 'true'); }
+function closePop() { pop.hidden = true; runBtn.setAttribute('aria-expanded', 'false'); }
+
+function startTimer(t0) {
+  const tick = () => { elapsedEl.textContent = fmtElapsed(Math.floor((Date.now() - t0) / 1000)); };
+  tick();
+  timer = setInterval(tick, 1000);
+}
+function finish(label, cls) {
+  running = false;
+  if (timer) { clearInterval(timer); timer = null; }
+  finished = (cls === 'ok');
+  statusEl.textContent = label; statusEl.className = 'run-status ' + cls;
+  renderStages(); setBtnLabel();
+  runBtn.classList.remove('is-running');
+}
+
+function subscribe(taskId, t0) {
+  running = true;
+  runBtn.classList.add('is-running');
+  statusEl.textContent = 'running'; statusEl.className = 'run-status running';
+  startTimer(t0); setBtnLabel();
   const es = new EventSource('/t/' + slug + '/run/' + taskId + '/stream');
-  es.addEventListener('line', (ev) => { out.textContent += JSON.parse(ev.data) + '\\n'; out.scrollTop = out.scrollHeight; });
-  es.addEventListener('end', () => { es.close(); runBtn.disabled = false; });
+  es.addEventListener('plan', (ev) => { plan = JSON.parse(ev.data).stages; renderStages(); setBtnLabel(); });
+  es.addEventListener('stage', (ev) => { current = JSON.parse(ev.data).name; renderStages(); setBtnLabel(); });
+  es.addEventListener('line', (ev) => append(JSON.parse(ev.data) + '\\n'));
+  es.addEventListener('end', () => { es.close(); append('\\n\\u2713 run finished.\\n'); finish('done', 'ok'); });
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED) { append('\\n\\u2717 connection closed.\\n'); finish('disconnected', 'err'); } };
+}
+
+async function startRun() {
+  out.textContent = ''; plan = null; current = null; stagesEl.innerHTML = ''; finished = false;
+  openPop();
+  running = true; runBtn.classList.add('is-running');
+  statusEl.textContent = 'starting'; statusEl.className = 'run-status running';
+  setBtnLabel();
+  try {
+    const res = await fetch('/t/' + slug + '/run', { method: 'POST' });
+    if (res.status === 409) { append('A run is already in progress for this topic.\\n'); finish('busy', 'err'); return; }
+    if (!res.ok) { append('Could not start run (HTTP ' + res.status + ').\\n'); finish('failed', 'err'); return; }
+    const { taskId } = await res.json();
+    append('\\u25b6 run started — stages call the model and can be quiet for minutes.\\n   Safe to leave this open; the elapsed clock shows it is still alive.\\n\\n');
+    subscribe(taskId, Date.now());
+  } catch (err) {
+    append('\\n\\u2717 ' + (err && err.message ? err.message : err) + '\\n');
+    finish('error', 'err');
+  }
+}
+
+if (runBtn) runBtn.addEventListener('click', () => {
+  if (running) { pop.hidden ? openPop() : closePop(); return; }
+  startRun();
 });
+document.getElementById('run-hide')?.addEventListener('click', closePop);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pop && !pop.hidden) closePop(); });
+document.addEventListener('click', (e) => {
+  if (pop && !pop.hidden && wrap && !wrap.contains(e.target)) closePop();
+});
+
+// Reconnect to an in-flight run after a page refresh — same subscribe path, popover stays collapsed.
+if (runBtn && runBtn.dataset.activeTask) {
+  append('\\u00b7 reconnected to a run in progress.\\n\\n');
+  subscribe(runBtn.dataset.activeTask, Number(runBtn.dataset.startedAt));
+}
 `;
