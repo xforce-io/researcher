@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { DashboardModel, TopicView } from './discovery.js';
+import type { DashboardModel, TopicCard, TopicView } from './discovery.js';
 
 export function escapeHtml(s: string): string {
   return s
@@ -21,25 +21,55 @@ function page(title: string, body: string): string {
     `<body>${body}</body></html>`;
 }
 
+// ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
+function fmtDate(iso: string | null): string {
+  if (!iso) return 'never run';
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
+  return m ? m[1] : escapeHtml(iso);
+}
+
+// Triage intake bar + legend, built from the committed seen-ledger counts.
+function triageBar(c: TopicCard['decisionCounts']): string {
+  const total = c['deep-read'] + c.skim + c.reject;
+  if (total === 0) return '';
+  const segs = ([['deep', c['deep-read']], ['skim', c.skim], ['reject', c.reject]] as const)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `<span class="seg ${k}" style="flex:${n}"></span>`)
+    .join('');
+  return `<div class="triage">${segs}</div>` +
+    `<div class="legend">` +
+      `<span class="lg deep">${c['deep-read']}</span>` +
+      `<span class="lg skim">${c.skim}</span>` +
+      `<span class="lg reject">${c.reject}</span>` +
+      `<span class="lg-key">deep / skim / reject</span>` +
+    `</div>`;
+}
+
 export function renderDashboard(m: DashboardModel): string {
   const cards = m.topics.map((t) => {
     const tags: string[] = [];
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
     if (!t.available) tags.push('<span class="tag missing">unavailable</span>');
-    const meta = t.available
-      ? `<div class="card-foot">${t.paperCount} papers · last run ${t.lastRun ? escapeHtml(t.lastRun) : '—'} ` +
-        `· ${t.decisionCounts['deep-read']}/${t.decisionCounts.skim}/${t.decisionCounts.reject} (deep/skim/reject)</div>`
-      : `<div class="card-foot">submodule missing or not a researcher topic</div>`;
-    const head = t.available
-      ? `<a class="card-title" href="/t/${t.slug}">${escapeHtml(t.path)}</a>`
+    const title = t.available
+      ? `<a class="card-title" href="/t/${t.slug}">` +
+        `${t.active ? '<span class="dot"></span>' : ''}${escapeHtml(t.path)}</a>`
       : `<span class="card-title">${escapeHtml(t.path)}</span>`;
+    const oneline = t.available
+      ? `<p class="card-oneline">${escapeHtml(t.oneline) || '<span class="muted">no one-line set</span>'}</p>`
+      : `<p class="card-oneline muted">submodule missing or not a researcher topic</p>`;
+    const foot = t.available
+      ? `<div class="card-foot">` +
+          `<div class="stats">${t.noteCount} ${t.noteCount === 1 ? 'note' : 'notes'} · ${fmtDate(t.lastRun)}</div>` +
+          triageBar(t.decisionCounts) +
+        `</div>`
+      : '';
     return `<div class="card${t.available ? '' : ' card-disabled'}">` +
-      `<div class="card-head">${head} ${tags.join(' ')}</div>` +
-      `<div class="card-oneline">${escapeHtml(t.oneline)}</div>${meta}</div>`;
+      `<div class="card-head">${title} ${tags.join(' ')}</div>` +
+      `${oneline}${foot}</div>`;
   }).join('');
   const body = `<header class="topbar"><span class="brand">researcher</span>` +
     `<span class="root">${escapeHtml(m.root)}</span></header>` +
-    `<main class="grid">${cards || '<p>No topics in manifest.</p>'}</main>`;
+    `<main class="grid">${cards || '<p class="empty-state">No topics in manifest.</p>'}</main>`;
   return page('researcher · workspace', body);
 }
 

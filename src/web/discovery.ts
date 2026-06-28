@@ -12,7 +12,7 @@ export interface TopicCard {
   active: boolean;
   available: boolean;
   oneline: string;
-  paperCount: number;
+  noteCount: number;
   lastRun: string | null;
   decisionCounts: { 'deep-read': number; skim: number; reject: number };
 }
@@ -101,7 +101,7 @@ export function loadDashboard(root: string): DashboardModel {
     }
     return {
       slug: slugOf(t.path), path: t.path, active: t.active, available,
-      oneline, paperCount: listPdfs(topicDir).length, lastRun, decisionCounts: counts,
+      oneline, noteCount: listNoteNotes(topicDir).length, lastRun, decisionCounts: counts,
     };
   });
   return { root, topics };
