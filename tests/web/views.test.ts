@@ -15,11 +15,12 @@ describe('renderDoc', () => {
   it('renders a note masthead from YAML frontmatter instead of dumping raw YAML', () => {
     const md = '---\npaper: "Why Reasoning Fails to Plan"\narxiv: "2601.22311"\nauthors: ["Zehong Wang", "Fang Wu"]\nyear: 2026\nnote_number: 3\n---\n\n## Claims\n\n- a claim';
     const html = renderDoc(md);
-    expect(html).toContain('class="note-head"');
     expect(html).toContain('class="note-title">Why Reasoning Fails to Plan');
-    expect(html).toContain('Zehong Wang, Fang Wu');
+    expect(html).toContain('class="fm"');           // aligned key/value table
+    expect(html).toContain('<dt>authors</dt><dd>Zehong Wang, Fang Wu</dd>');
+    expect(html).toContain('<dt>arxiv</dt>');
     expect(html).toContain('arxiv.org/abs/2601.22311');
-    expect(html).toContain('Note 3 · 2026');
+    expect(html).toContain('<dt>year</dt><dd>2026</dd>');
     expect(html).toContain('<h2>Claims</h2>');     // body still rendered
     expect(html).not.toContain('note_number:');     // raw YAML not leaked
     expect(html).not.toContain('paper:');
