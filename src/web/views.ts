@@ -10,8 +10,53 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, '').trim();
+
+// Split a leading YAML frontmatter block from the markdown body. Returns fm=null
+// when there is no `---` fence so plain docs (thesis, report, H1-titled notes)
+// render untouched.
+function splitFrontmatter(md: string): { fm: Record<string, string> | null; body: string } {
+  if (!md.startsWith('---')) return { fm: null, body: md };
+  const end = md.indexOf('\n---', 3);
+  if (end < 0) return { fm: null, body: md };
+  const fm: Record<string, string> = {};
+  for (const line of md.slice(3, end).split('\n')) {
+    const m = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
+    if (m) fm[m[1]] = m[2].trim();
+  }
+  return { fm, body: md.slice(end + 4).replace(/^\s*\n/, '') };
+}
+
+// A per-paper note's structured frontmatter → a proper masthead, instead of
+// dumping the raw YAML into the body. Wires up the .note-head CSS kit.
+function noteMasthead(fm: Record<string, string>): string {
+  const title = unquote(fm.paper ?? fm.title ?? '');
+  const year = unquote(fm.year ?? '');
+  const arxiv = unquote(fm.arxiv ?? '');
+  let authors: string[] = [];
+  if (fm.authors) {
+    try { authors = JSON.parse(fm.authors); }
+    catch { authors = fm.authors.replace(/^\[|\]$/g, '').split(',').map(unquote).filter(Boolean); }
+  }
+  if (!title && !authors.length && !arxiv) return '';
+  const eyebrow = [fm.note_number ? `Note ${unquote(fm.note_number)}` : 'Note', year].filter(Boolean).join(' · ');
+  const authorStr = authors.length
+    ? `<p class="note-meta">${authors.slice(0, 6).map((a) => escapeHtml(String(a))).join(', ')}${authors.length > 6 ? ' …' : ''}</p>`
+    : '';
+  const badge = arxiv
+    ? `<a class="arxiv-badge" href="https://arxiv.org/abs/${encodeURIComponent(arxiv)}" target="_blank">arXiv ${escapeHtml(arxiv)}</a>`
+    : '';
+  return `<header class="note-head">` +
+    `<div class="note-eyebrow">${escapeHtml(eyebrow)}</div>` +
+    (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
+    authorStr + badge +
+  `</header>`;
+}
+
 export function renderDoc(markdown: string): string {
-  return marked.parse(markdown, { async: false }) as string;
+  const { fm, body } = splitFrontmatter(markdown);
+  const head = fm ? noteMasthead(fm) : '';
+  return head + (marked.parse(body, { async: false }) as string);
 }
 
 function page(title: string, body: string): string {
