@@ -73,6 +73,7 @@ it('starts a run and streams via SSE', async () => {
   const sse = await fetch(base + `/t/trace/run/${taskId}/stream`);
   const text = await sse.text();
   expect(text).toContain('hello');
+  expect(text).toContain('event: line');
   expect(text).toContain('event: stage');
   expect(text).toContain('event: plan');
   expect(text).toContain('event: end');

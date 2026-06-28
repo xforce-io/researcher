@@ -67,6 +67,11 @@ describe('renderTopic run controls', () => {
     expect(html).toContain('id="run-pop"');
     expect(html).toContain('id="run-stages"');
     expect(html).toContain('id="run-out"');
+    expect(html).toContain('id="run-wrap"');
+    expect(html).toContain('id="run-bar"');
+    expect(html).toContain('id="run-status"');
+    expect(html).toContain('id="run-elapsed"');
+    expect(html).toContain('id="run-hide"');
     expect(html).not.toContain('data-active-task');
   });
 

@@ -76,7 +76,7 @@ export function renderTopic(
     `<div class="run-wrap" id="run-wrap">` +
     `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}>Run</button>` +
     `<div id="run-pop" class="run-pop" hidden>` +
-      `<div class="run-bar">` +
+      `<div id="run-bar" class="run-bar">` +
         `<span id="run-status" class="run-status">idle</span>` +
         `<span id="run-elapsed" class="run-elapsed mono"></span>` +
         `<button id="run-hide" class="run-hide" type="button">hide</button>` +
