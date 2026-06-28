@@ -7,6 +7,10 @@ papers, maintains a working thesis, a research-landscape document, and a
 thesis-driven report — and opens a PR for every update so the human stays in
 the loop via diff review.
 
+A single topic is the atom. Several can be composed into a multi-pillar
+**workspace** — a super-repo advanced from one root and browsable via
+`researcher serve` — see [Workspace mode](#workspace-mode-multi-pillar).
+
 The CLI itself does not call any LLM. It assembles methodology + project
 context into prompts and shells out to a headless agent runtime (Claude Code
 today; Codex slot reserved). All persistent state — thesis, notes, landscape,
@@ -37,6 +41,11 @@ produces:
 
 - **[research-agent-triage](https://github.com/xforce-io/research-agent-triage/blob/main/report.md)** — production agent trace triage
 - **[research-agent-decision](https://github.com/xforce-io/research-agent-decision/blob/main/report.md)** — decision-agent layer for KWeaver
+
+…and the **workspace** that stitches pillars like these together, advanced from
+one root (see [Workspace mode](#workspace-mode-multi-pillar)):
+
+- **[research-harness](https://github.com/xforce-io/research-harness)** — multi-pillar super-repo (trace / decision / data)
 
 ## Status
 
@@ -100,6 +109,14 @@ researcher add 2401.12345            # or: researcher add https://arxiv.org/abs/
 `add` runs four stages — bootstrap → read → synthesize → package — then
 creates a `researcher/<run-id>` branch with two commits (note + landscape, then
 state updates) and opens a draft PR.
+
+### Scaling up to a workspace
+
+One topic is the atom. When a program needs several **pillars** researched in
+parallel — each its own thesis — compose them into a **workspace** super-repo and
+advance them all from one root with a single `researcher run`, then browse them
+in a local web console with `researcher serve`. See
+[Workspace mode](#workspace-mode-multi-pillar) for the full setup.
 
 ## Layout
 
@@ -245,7 +262,8 @@ researcher serve                 # serves the current super-repo on :4500
 researcher serve ../research -p 8080
 ```
 
-Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering.
+Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering. Requires a
+[workspace super-repo](#workspace-mode-multi-pillar).
 
 ## Environment
 

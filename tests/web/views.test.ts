@@ -28,6 +28,7 @@ describe('renderDashboard', () => {
     const html = renderDashboard(m);
     expect(html).toContain('/t/trace');
     expect(html).toContain('triage &lt;x&gt;');     // escaped
+    expect(html).toContain('class="card-foot"');     // meta row must match the styled CSS class
     expect(html).toMatch(/dormant|inactive/i);       // dormant marker for decision
     expect(html).toMatch(/unavailable|missing/i);    // unavailable marker
   });

@@ -6,6 +6,9 @@
 工作论题、维护研究 landscape 文档与论题驱动的 `report.md`，每次更新都开一条 PR ——
 让人通过 diff review 始终留在闭环里。
 
+单个主题是原子。多个主题可以组合成一个多支柱**工作区** —— 一个从单一根目录
+统一推进、并可用 `researcher serve` 浏览的超级仓，详见[工作区模式](#工作区模式多支柱)。
+
 CLI 自身不调用任何 LLM。它把方法论和项目上下文拼成 prompt，交给一个无头的
 agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持久化状态 ——
 论题、笔记、landscape、report、已读集合 —— 都以纯文本文件、Git 版本化的方式
@@ -33,6 +36,10 @@ agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持�
 - **[research-agent-triage](https://github.com/xforce-io/research-agent-triage/blob/main/report.md)** — 生产 agent 轨迹分诊
 - **[research-agent-decision](https://github.com/xforce-io/research-agent-decision/blob/main/report.md)** — KWeaver 决策 agent 层
 
+……以及把这些支柱缝合到一起、从单一根目录推进的**工作区**（见[工作区模式](#工作区模式多支柱)）：
+
+- **[research-harness](https://github.com/xforce-io/research-harness)** — 多支柱超级仓（trace / decision / data）
+
 ## 当前状态
 
 已实现：
@@ -41,6 +48,7 @@ agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持�
 - `add <arxiv-id | arxiv-url | http(s)-url>` —— 手动把一篇论文或网络来源端到端深读完
 - `run` —— 自动 tick：discover → triage →（挑一篇）深读 → synthesize → package
 - `methodology install / show / edit` —— 管理可移植的方法论包
+- `serve [path]` —— 在工作区超级仓上启动本地只读 web 控制台
 
 尚未接入：focused-instruction 模式（手动覆盖 triage 决策）。
 
@@ -95,6 +103,12 @@ researcher add 2401.12345            # 也可以：researcher add https://arxiv.
 然后建一个 `researcher/<run-id>` 分支，分两个 commit（笔记 + landscape，
 然后 state 更新），最后开一条 draft PR。
 
+### 扩展到工作区
+
+单个主题是原子。当一个计划需要并行研究多个**支柱**（每个有自己收窄的论题）时，
+把它们组合成一个**工作区**超级仓，用一条 `researcher run` 从单一根目录统一推进，
+再用 `researcher serve` 在本地 web 控制台里浏览。完整搭建见[工作区模式](#工作区模式多支柱)。
+
 ## 目录结构
 
 ```
@@ -120,6 +134,73 @@ researcher add 2401.12345            # 也可以：researcher add https://arxiv.
 某条论题主张、设计目标或可证伪点上，**绝不**锚在"每篇论文讲了什么"上。
 见 `methodology/06-writing.md`。
 
+## 工作区模式（多支柱）
+
+单一收窄的论题是一个主题的正确粒度。当一个更大的计划需要并行研究多个**支柱**
+（每个支柱有自己收窄的论题、各自独立深耕）时，用一个 **super-repo**（超级仓）
+通过 git submodule 把它们缝合起来，从单一根目录统一推进。
+
+### 两份 spec，两种范围
+
+- **research spec** = `thesis.md` —— 单个支柱收窄的主张；驱动该支柱的
+  triage / read / synthesize。
+- **anchor** = `CHARTER.md`（超级仓）—— 跨**所有**支柱共享的不变量。每次运行前
+  把它的切片（共享核心 + 该支柱的摘录）写入支柱只读的 `.researcher/charter.md`。
+  漂移会以 `## Charter tension` 浮现，供你**双向**裁决：是支柱漂了，还是
+  CHARTER 本身该改。
+
+一句话：**thesis 管单个支柱往哪里收窄；CHARTER 管支柱之间不互相漂移。**
+
+### 超级仓结构
+
+```
+<super-repo>/
+├── CHARTER.md                 # 共享 anchor：北极星 + 支柱图/不变量 + 各支柱摘录
+├── researcher.workspace.yml   # 控制面板：topics + active/dormant
+├── docs/                      # 人类维护的集成笔记（researcher 不读）
+└── <pillar>/                  # 每个 = 一个独立 topic 仓（git submodule）
+```
+
+> `researcher` 只读超级仓的**两个**文件：`researcher.workspace.yml`（跑哪些支柱）
+> 和 `CHARTER.md`（切片成各支柱的 anchor）。其余一切都给人看。
+
+### 快速开始 B —— 立一个工作区
+
+```sh
+# 1. 建超级仓
+mkdir my-research && cd my-research && git init
+cp <researcher>/templates/CHARTER.md CHARTER.md   # 然后编辑：北极星、不变量、摘录
+
+# 2. 以 submodule 加入一个支柱（每个支柱是独立 topic 仓）
+git submodule add <pillar-repo-url> trace
+( cd trace && researcher init && researcher onboard )
+
+# 3. 在控制面板登记
+cat > researcher.workspace.yml <<'YML'
+version: 1
+topics:
+  - { path: trace, active: true }
+YML
+
+# 4. 从超级仓根目录推进所有 active 支柱
+researcher run
+```
+
+每个 active 支柱推进一个 tick（先同步 charter）并在各自的 submodule 仓开自己的
+PR。Dormant（`active: false`）支柱完全不碰。某个支柱失败不会中断其余 ——
+错误会汇总在 summary 里。
+
+### `researcher serve [path]`
+
+在一个工作区超级仓（含 `researcher.workspace.yml` 的目录）上启动本地**只读** web
+控制台：列出每个主题，渲染其 thesis / landscape / report / 笔记，并允许你按主题
+触发 `researcher run` 并看实时日志。只绑定 `127.0.0.1`、无鉴权；v1 为只读加触发运行。
+
+```bash
+researcher serve                 # 在当前超级仓上以 :4500 启动
+researcher serve ../research -p 8080
+```
+
 ## 命令
 
 | 命令 | 作用 |
@@ -131,6 +212,7 @@ researcher add 2401.12345            # 也可以：researcher add https://arxiv.
 | `researcher methodology install` | 把方法论文件装到 `~/.researcher/` |
 | `researcher methodology show` | 打印当前已装的方法论 |
 | `researcher methodology edit <name>` | 用 `$EDITOR` 打开某个方法论文件 |
+| `researcher serve [path]` | 在工作区超级仓上启动本地只读 web 控制台 |
 | `researcher version` | 打印版本 |
 
 ## 环境变量
