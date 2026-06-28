@@ -27,9 +27,9 @@ export function renderDashboard(m: DashboardModel): string {
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
     if (!t.available) tags.push('<span class="tag missing">unavailable</span>');
     const meta = t.available
-      ? `<div class="card-meta">${t.paperCount} papers · last run ${t.lastRun ? escapeHtml(t.lastRun) : '—'} ` +
+      ? `<div class="card-foot">${t.paperCount} papers · last run ${t.lastRun ? escapeHtml(t.lastRun) : '—'} ` +
         `· ${t.decisionCounts['deep-read']}/${t.decisionCounts.skim}/${t.decisionCounts.reject} (deep/skim/reject)</div>`
-      : `<div class="card-meta">submodule missing or not a researcher topic</div>`;
+      : `<div class="card-foot">submodule missing or not a researcher topic</div>`;
     const head = t.available
       ? `<a class="card-title" href="/t/${t.slug}">${escapeHtml(t.path)}</a>`
       : `<span class="card-title">${escapeHtml(t.path)}</span>`;
