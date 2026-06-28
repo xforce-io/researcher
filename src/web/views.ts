@@ -225,12 +225,31 @@ export function renderTopic(
 
 const TOPIC_JS = `
 const slug = document.getElementById('run-btn')?.dataset.slug;
-document.querySelectorAll('.doc-link').forEach(a => a.addEventListener('click', async (e) => {
+const reader = document.getElementById('reader');
+async function loadDoc(path) {
+  const res = await fetch('/t/' + slug + '/doc?path=' + encodeURIComponent(path));
+  if (res.ok) { reader.innerHTML = await res.text(); reader.scrollTop = 0; }
+}
+document.querySelectorAll('.doc-link').forEach(a => a.addEventListener('click', (e) => {
   e.preventDefault();
-  const path = a.dataset.path;
-  const res = await fetch('/t/' + slug + '/doc?path=' + path);
-  document.getElementById('reader').innerHTML = await res.text();
+  loadDoc(decodeURIComponent(a.dataset.path));
 }));
+// Relative links inside a rendered doc (e.g. report.md's Papers/Thesis links)
+// are in-workspace paths — load them into the reader instead of letting the
+// browser navigate to a non-existent route. External/scheme/anchor links pass through.
+reader.addEventListener('click', (e) => {
+  const a = e.target.closest('a');
+  if (!a || !reader.contains(a)) return;
+  const href = a.getAttribute('href') || '';
+  if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')) return;
+  e.preventDefault();
+  const path = href.split('#')[0];
+  if (/\\.pdf$/i.test(path)) {
+    window.open('/t/' + slug + '/paper?id=' + encodeURIComponent(path.replace(/^.*\\//, '').replace(/\\.pdf$/i, '')), '_blank');
+    return;
+  }
+  loadDoc(path);
+});
 const runBtn = document.getElementById('run-btn');
 const pop = document.getElementById('run-pop');
 const out = document.getElementById('run-out');

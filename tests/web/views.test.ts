@@ -88,6 +88,7 @@ describe('renderTopic', () => {
     expect(html).toContain('/t/trace/run');           // run endpoint referenced by JS
     expect(html).toContain('2401.00001');             // paper listed
     expect(html).toContain('RQ1');
+    expect(html).toContain('reader.addEventListener'); // in-doc links load into the reader
     expect(html).toContain('class="note-tree"');      // numbered notes use the styled tree
     expect(html).toContain('Signals: trajectory triage'); // frontmatter-derived note title
     expect(html).toContain('class="about"');           // About uses the styled paragraph
