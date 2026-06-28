@@ -120,7 +120,7 @@ const statusEl = document.getElementById('run-status');
 const elapsedEl = document.getElementById('run-elapsed');
 const wrap = document.getElementById('run-wrap');
 
-let running = false, plan = null, current = null, timer = null;
+let running = false, plan = null, current = null, timer = null, finished = false;
 
 function fmtElapsed(s) {
   const m = Math.floor(s / 60), ss = s % 60;
@@ -138,7 +138,7 @@ function renderStages() {
   const ci = current ? plan.indexOf(current) : -1;
   stagesEl.innerHTML = plan.map((name, i) => {
     let cls = 'pending', mk = '\\u00b7';
-    if (ci >= 0 && i < ci) { cls = 'done'; mk = '\\u2713'; }
+    if (finished || (ci >= 0 && i < ci)) { cls = 'done'; mk = '\\u2713'; }
     else if (i === ci) { cls = 'active'; mk = '\\u27f3'; }
     return '<li class="' + cls + '"><span class="mk">' + mk + '</span>' + name + '</li>';
   }).join('');
@@ -155,7 +155,7 @@ function startTimer(t0) {
 function finish(label, cls) {
   running = false;
   if (timer) { clearInterval(timer); timer = null; }
-  current = null;
+  finished = (cls === 'ok');
   statusEl.textContent = label; statusEl.className = 'run-status ' + cls;
   renderStages(); setBtnLabel();
   runBtn.classList.remove('is-running');
@@ -175,7 +175,7 @@ function subscribe(taskId, t0) {
 }
 
 async function startRun() {
-  out.textContent = ''; plan = null; current = null; stagesEl.innerHTML = '';
+  out.textContent = ''; plan = null; current = null; stagesEl.innerHTML = ''; finished = false;
   openPop();
   running = true; runBtn.classList.add('is-running');
   statusEl.textContent = 'starting'; statusEl.className = 'run-status running';
