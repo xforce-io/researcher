@@ -50,6 +50,7 @@ describe('renderTopic', () => {
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
+    notes: [{ path: 'notes/01_signals.md', num: '01', title: 'Signals: trajectory triage' }],
     papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
     seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
     watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },
@@ -60,6 +61,11 @@ describe('renderTopic', () => {
     expect(html).toContain('/t/trace/run');           // run endpoint referenced by JS
     expect(html).toContain('2401.00001');             // paper listed
     expect(html).toContain('RQ1');
+    expect(html).toContain('class="note-tree"');      // numbered notes use the styled tree
+    expect(html).toContain('Signals: trajectory triage'); // frontmatter-derived note title
+    expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
+    expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
+    expect(html).not.toContain('<table');              // no narrow 3-col table
   });
   it('shows an unavailable notice when topic has no .researcher', () => {
     const html = renderTopic({ ...v, available: false, docs: [], papers: [], seen: [], sources: [], researchQuestions: [] });
@@ -70,7 +76,7 @@ describe('renderTopic', () => {
 describe('renderTopic run controls', () => {
   const baseView: TopicView = {
     slug: 'trace', path: 'trace', available: true, oneline: 'o', language: 'zh',
-    sources: [], researchQuestions: [], docs: [], papers: [], seen: [], watermark: null,
+    sources: [], researchQuestions: [], docs: [], notes: [], papers: [], seen: [], watermark: null,
   };
 
   it('renders the run popover skeleton', () => {

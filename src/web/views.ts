@@ -86,6 +86,10 @@ export function renderTopic(
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
+  const noteTree = v.notes.map((n) =>
+    `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(n.path)}" class="doc-link" data-path="${encodeURIComponent(n.path)}">` +
+    `<span class="num">${escapeHtml(n.num)}</span><span class="t">${escapeHtml(n.title)}</span></a></li>`
+  ).join('');
   const paperList = v.papers.map((p) =>
     `<li><a href="/t/${v.slug}/paper?id=${encodeURIComponent(p.id)}" target="_blank">${escapeHtml(p.id)}</a></li>`
   ).join('');
@@ -94,9 +98,15 @@ export function renderTopic(
   const rqList = v.researchQuestions.map((q) =>
     `<li><b>${escapeHtml(q.id)}</b> ${escapeHtml(q.text)}</li>`).join('');
   const seenRows = v.seen.slice(-20).reverse().map((e) =>
-    `<tr><td>${escapeHtml(e.id)}</td><td>${escapeHtml(e.decision)}</td><td>${escapeHtml(e.reason)}</td></tr>`).join('');
+    `<li class="seen-item">` +
+      `<div class="seen-head">` +
+        `<span class="seen-id mono">${escapeHtml(e.id)}</span>` +
+        `<span class="seen-dec ${escapeHtml(e.decision)}">${escapeHtml(e.decision)}</span>` +
+      `</div>` +
+      `<p class="seen-reason">${escapeHtml(e.reason)}</p>` +
+    `</li>`).join('');
   const wm = v.watermark
-    ? `last run ${escapeHtml(v.watermark.last_run_completed_at)} (${escapeHtml(v.watermark.last_run_id)})`
+    ? `last run ${fmtDate(v.watermark.last_run_completed_at)} · <span class="mono">${escapeHtml(v.watermark.last_run_id)}</span>`
     : 'never run';
 
   const runAttrs = activeRun
@@ -121,13 +131,15 @@ export function renderTopic(
     `${runWrap}</header>` +
     `<main class="three-col">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
+        (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3><ol class="note-tree">${noteTree}</ol>` : '') +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
       `<section class="reader" id="reader"><p class="hint">Select a document.</p></section>` +
-      `<aside class="right"><h3>About</h3><p>${escapeHtml(v.oneline)} <i>(${escapeHtml(v.language)})</i></p>` +
+      `<aside class="right"><h3>About</h3><p>${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'} <i>(${escapeHtml(v.language)})</i></p>` +
         `<h3>Sources</h3><ul>${sourceList || '<li>—</li>'}</ul>` +
         `<h3>Questions</h3><ul>${rqList || '<li>—</li>'}</ul>` +
         `<h3>State</h3><p>${wm}</p>` +
-        `<table class="seen"><thead><tr><th>id</th><th>decision</th><th>reason</th></tr></thead><tbody>${seenRows}</tbody></table>` +
+        `<h3>Seen <span class="h3-count">${v.seen.length}</span></h3>` +
+        `<ul class="seen-list">${seenRows || '<li class="muted">—</li>'}</ul>` +
       `</aside>` +
     `</main>` +
     `<script>${TOPIC_JS}</script>`;

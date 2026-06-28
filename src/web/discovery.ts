@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { loadWorkspaceManifest, resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { loadProjectYaml } from '../config/project-yaml.js';
@@ -21,6 +21,7 @@ export interface DashboardModel {
   topics: TopicCard[];
 }
 export interface DocRef { path: string; label: string; }
+export interface NoteRef { path: string; num: string; title: string; }
 export interface SourceSummary { kind: string; summary: string; }
 export interface TopicView {
   slug: string;
@@ -31,6 +32,7 @@ export interface TopicView {
   sources: SourceSummary[];
   researchQuestions: { id: string; text: string }[];
   docs: DocRef[];
+  notes: NoteRef[];
   papers: { id: string; file: string }[];
   seen: SeenEntry[];
   watermark: Watermark | null;
@@ -76,8 +78,31 @@ function buildDocs(topicDir: string): DocRef[] {
   add('.researcher/thesis.md', 'Thesis');
   add('notes/00_research_landscape.md', 'Landscape');
   add('report.md', 'Report');
-  docs.push(...listNoteNotes(topicDir));
   return docs;
+}
+
+// Best-effort human title for a per-paper note: YAML frontmatter title/paper,
+// else the first markdown H1, else a de-slugged filename.
+function noteTitle(absFile: string, fallback: string): string {
+  let head = '';
+  try { head = readFileSync(absFile, 'utf8').slice(0, 2000); } catch { return fallback; }
+  if (head.startsWith('---')) {
+    const end = head.indexOf('\n---', 3);
+    const fm = end > 0 ? head.slice(3, end) : head;
+    const m = /^(?:title|paper)\s*:\s*"?(.+?)"?\s*$/m.exec(fm);
+    if (m) return m[1].trim();
+  }
+  const h1 = /^#\s+(.+)$/m.exec(head);
+  return h1 ? h1[1].trim() : fallback;
+}
+
+function listNotes(topicDir: string): NoteRef[] {
+  return listNoteNotes(topicDir).map(({ path }) => {
+    const file = path.replace(/^notes\//, '');
+    const num = /^(\d\d)_/.exec(file)?.[1] ?? '';
+    const fallback = file.replace(/^\d+_/, '').replace(/\.md$/, '').replace(/_/g, ' ');
+    return { path, num, title: noteTitle(join(topicDir, path), fallback) };
+  });
 }
 
 function sourceSummary(s: { kind: string; queries?: string[]; inbox_dir?: string }): SourceSummary {
@@ -133,7 +158,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
   if (!available) {
     return {
       slug: slugOf(topic.path), path: topic.path, available: false, oneline: '', language: '',
-      sources: [], researchQuestions: [], docs: [], papers: [], seen: [], watermark: null,
+      sources: [], researchQuestions: [], docs: [], notes: [], papers: [], seen: [], watermark: null,
     };
   }
   const rDir = resolveProjectResearcherDir(topicDir);
@@ -149,6 +174,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     slug: slugOf(topic.path), path: topic.path, available: true, oneline, language,
     sources, researchQuestions: rqs,
     docs: buildDocs(topicDir),
+    notes: listNotes(topicDir),
     papers: listPdfs(topicDir),
     seen: readSeen(topicDir),
     watermark: readWatermark(join(rDir, 'state/watermark.json')),
