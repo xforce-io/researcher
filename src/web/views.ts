@@ -43,7 +43,10 @@ export function renderDashboard(m: DashboardModel): string {
   return page('researcher · workspace', body);
 }
 
-export function renderTopic(v: TopicView): string {
+export function renderTopic(
+  v: TopicView,
+  activeRun: { taskId: string; startedAt: number } | null = null,
+): string {
   if (!v.available) {
     const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
       `<span class="root">${escapeHtml(v.path)}</span></header>` +
@@ -66,10 +69,26 @@ export function renderTopic(v: TopicView): string {
     ? `last run ${escapeHtml(v.watermark.last_run_completed_at)} (${escapeHtml(v.watermark.last_run_id)})`
     : 'never run';
 
+  const runAttrs = activeRun
+    ? ` data-active-task="${escapeHtml(activeRun.taskId)}" data-started-at="${activeRun.startedAt}"`
+    : '';
+  const runWrap =
+    `<div class="run-wrap" id="run-wrap">` +
+    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}>Run</button>` +
+    `<div id="run-pop" class="run-pop" hidden>` +
+      `<div class="run-bar">` +
+        `<span id="run-status" class="run-status">idle</span>` +
+        `<span id="run-elapsed" class="run-elapsed mono"></span>` +
+        `<button id="run-hide" class="run-hide" type="button">hide</button>` +
+      `</div>` +
+      `<ol id="run-stages" class="run-stages"></ol>` +
+      `<pre id="run-out"></pre>` +
+    `</div></div>`;
+
   const body =
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
-    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run">Run</button></header>` +
+    `${runWrap}</header>` +
     `<main class="three-col">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
@@ -81,7 +100,6 @@ export function renderTopic(v: TopicView): string {
         `<table class="seen"><thead><tr><th>id</th><th>decision</th><th>reason</th></tr></thead><tbody>${seenRows}</tbody></table>` +
       `</aside>` +
     `</main>` +
-    `<div id="run-log" class="run-log" hidden><pre id="run-out"></pre></div>` +
     `<script>${TOPIC_JS}</script>`;
   return page(`${v.path} · researcher`, body);
 }

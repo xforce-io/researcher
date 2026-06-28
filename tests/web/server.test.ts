@@ -32,7 +32,15 @@ beforeAll(async () => {
   writeFileSync(join(feedsAi, '.researcher/thesis.md'), '# AI Safety Thesis\n\nbody');
 
   // a registry with a fake runner so POST /run never spawns a real process
-  const registry = new TaskRegistry({ runner: async (_c, onLine) => { onLine('hello'); return 0; }, idSeq: (() => { let n = 0; return () => `t${++n}`; })() });
+  const registry = new TaskRegistry({
+    runner: async (_c, onLine, onEvent) => {
+      onEvent({ type: 'plan', stages: ['bootstrap', 'discover'] });
+      onEvent({ type: 'stage', name: 'discover' });
+      onLine('hello');
+      return 0;
+    },
+    idSeq: (() => { let n = 0; return () => `t${++n}`; })(),
+  });
   server = await startServer({ root, port: 0, registry });
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -65,6 +73,8 @@ it('starts a run and streams via SSE', async () => {
   const sse = await fetch(base + `/t/trace/run/${taskId}/stream`);
   const text = await sse.text();
   expect(text).toContain('hello');
+  expect(text).toContain('event: stage');
+  expect(text).toContain('event: plan');
   expect(text).toContain('event: end');
 });
 
