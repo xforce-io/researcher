@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execa } from 'execa';
@@ -6,6 +6,8 @@ import { fetchArxivMetadata, type ArxivMetadata } from '../sources/arxiv.js';
 import { urlPathSlug } from '../sources/url.js';
 import { readTextCache, writeTextCache } from '../sources/cache.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
+import { nextNoteNumber, listNotes } from '../state/note_index.js';
+import { parseNote, serializeNote, DEFAULT_FM } from '../state/zone.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
 
@@ -26,21 +28,14 @@ export async function read(ctx: RunContext): Promise<void> {
     ? readUrlSource(ctx.addSourceId)
     : (() => { throw new Error(`unknown source prefix in addSourceId: ${ctx.addSourceId}`); })();
 
-  const notesDir = join(ctx.projectRoot, 'notes');
-  // A freshly-created topic has no notes/ yet (synthesize creates it later);
-  // treat missing as empty so the first paper note becomes 01_*.
-  const existing = existsSync(notesDir)
-    ? readdirSync(notesDir).filter((f) => /^\d+_.*\.md$/.test(f)).sort()
-    : [];
-  // Pick max paper-note number + 1; skip 00_* (landscape index, not a paper).
-  const maxNum = existing.reduce((m, f) => {
-    if (f.startsWith('00_')) return m;
-    const n = parseInt(f.match(/^(\d+)_/)?.[1] ?? '0', 10);
-    return n > m ? n : m;
-  }, 0);
-  const nextNum = (maxNum + 1).toString().padStart(2, '0');
+  const activeDir = join(ctx.projectRoot, 'notes', 'active');
+  mkdirSync(activeDir, { recursive: true });
+  const nextNum = nextNoteNumber(ctx.projectRoot).toString().padStart(2, '0');
   const slug = slugify(material.slugSeed);
   const nextFilename = `${nextNum}_${slug}.md`;
+  const relPath = `notes/active/${nextFilename}`;
+  // 把已有 notes 列表喂给 prompt，保留原 notes_dir_listing 语义
+  const existing = listNotes(ctx.projectRoot).map((n) => n.relPath).sort();
 
   const tpl = loadPromptTemplate('stage-read.md');
   const userPrompt = renderTemplate(tpl, {
@@ -53,7 +48,7 @@ export async function read(ctx: RunContext): Promise<void> {
     paper_text: material.paperText.slice(0, 80_000),
     source_fetch_instruction: material.fetchInstruction,
     notes_dir_listing: existing.join('\n'),
-    next_note_filename: nextFilename,
+    next_note_filename: relPath,
   });
 
   const systemPrompt = loadPromptTemplate('system-preamble.md');
@@ -66,9 +61,15 @@ export async function read(ctx: RunContext): Promise<void> {
   });
   assertAgentOk(ctx.runDir, 'read', result);
 
-  const fullPath = join(notesDir, nextFilename);
+  const fullPath = join(ctx.projectRoot, relPath);
+  // 兜底:若 agent 没写 frontmatter,补一个默认 active 头,保证下游 listNotes 一致。
+  const written = readFileSync(fullPath, 'utf8');
+  const { fm, body } = parseNote(written);
+  if (!written.startsWith('---\n')) writeFileSync(fullPath, serializeNote({ ...DEFAULT_FM }, body));
   ctx.newNoteFilename = nextFilename;
+  ctx.newNoteRelPath = relPath;
   ctx.newNoteContent = readFileSync(fullPath, 'utf8');
+  void fm;
 }
 
 async function readArxivSource(canonicalId: string): Promise<SourceMaterial> {

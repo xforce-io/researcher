@@ -4,7 +4,9 @@ Every paper note follows a fixed skeleton. This is not a style preference — sy
 
 ## Reading template (mandatory)
 
-Every note in `notes/NN_<slug>.md` must open with a one-line **Frame** lede, then contain all six sections in this order:
+每篇 note 以最小 YAML frontmatter 起头（`zone`/`pin`/`score`/`dwell`），由系统维护分区；人可手动设 `pin: true` 钉住不被归档。frontmatter 在 H1 之上，不参与按 `## ` 标题的综合扫描。
+
+Every note in `notes/active/NN_<slug>.md` must open with a one-line **Frame** lede, then contain all six sections in this order:
 
 ### Frame (lede)
 
