@@ -129,7 +129,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package-review
 
     // Feed plan event was emitted with the correct stages (enrich is OFF by default).
-    expect(sent).toContainEqual({ type: 'plan', stages: ['bootstrap', 'soul', 'feed-synthesize', 'package'] });
+    expect(sent).toContainEqual({ type: 'plan', stages: ['bootstrap', 'soul', 'rebalance', 'feed-synthesize', 'package'] });
 
     // Stays on main — the feed path no longer forks a `researcher/NN` branch.
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');

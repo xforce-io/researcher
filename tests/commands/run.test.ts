@@ -150,7 +150,7 @@ describe('researcher run (autonomous)', () => {
 
     expect(sent).toContainEqual({
       type: 'plan',
-      stages: ['bootstrap', 'soul', 'discover', 'read', 'synthesize', 'package'],
+      stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
     });
     expect(sent).toContainEqual({ type: 'stage', name: 'synthesize' });
 

@@ -16,6 +16,7 @@ import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { feedEnrich } from '../pipeline/feed_enrich.js';
+import { rebalance } from '../pipeline/rebalance.js';
 import { packageStage } from '../pipeline/package.js';
 import { feedPackage } from '../pipeline/package_feed.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
@@ -96,6 +97,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       // No semantic triage: the digest's items are already source-allowlisted upstream.
       // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
       const feedStages: StageDef[] = [
+        { name: 'rebalance', fn: async () => rebalance(ctx!) },
         { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
       ];
       // #27: opt-in researcher-side enrich/verify pass — turns the report's "下一步:补 X 数据"
@@ -128,7 +130,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
 
     emitEvent({
       type: 'plan',
-      stages: ['bootstrap', 'soul', 'discover', 'read', 'synthesize', 'package'],
+      stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
     });
     await runStages(runDir, [
       { name: 'discover', fn: async () => discoverTriage(ctx!) },
@@ -142,6 +144,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
 
     await runStages(runDir, [
       { name: 'read',       fn: async () => read(ctx!) },
+      { name: 'rebalance',  fn: async () => rebalance(ctx!) },
       { name: 'synthesize', fn: async () => synthesize(ctx!) },
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);

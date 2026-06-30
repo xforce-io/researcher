@@ -16,7 +16,7 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
  * devil's-advocate / run-summary adapter pass. Returns the run-summary path. The two paths
  * diverge only in how they commit (PR branch vs. in-place on main).
  */
-export async function packageReview(ctx: RunContext): Promise<string> {
+export async function packageReview(ctx: RunContext, extraAllowedPrefixes: string[] = []): Promise<string> {
   if (!ctx.newNoteFilename || !ctx.newNoteContent || !ctx.newNoteRelPath) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
   if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
@@ -27,12 +27,15 @@ export async function packageReview(ctx: RunContext): Promise<string> {
   //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
   //    Notes other than the current one are rejected on purpose: they're orphans from a
   //    previous failed run, and silently sweeping them up here would mask that failure.
+  //    Callers may pass extraAllowedPrefixes to extend this list (e.g. feed path allows all
+  //    note zone dirs because rebalance legitimately rewrites frontmatter on prior notes).
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
       LANDSCAPE,
       ctx.newNoteRelPath,
+      ...extraAllowedPrefixes,
     ],
   });
   if (dirty.length > 0) {

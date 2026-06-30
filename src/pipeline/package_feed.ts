@@ -22,8 +22,12 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
  * Tradeoff: no PR review gate. Acceptable here because the output is a revertible, read-only
  * evidence report — one commit per window means a bad run is a precise `git revert`.
  */
+const NOTE_ZONES = ['notes/active', 'notes/buffer', 'notes/history'];
+
 export async function feedPackage(ctx: RunContext): Promise<void> {
-  await packageReview(ctx); // guards + dirty-check + devil's-advocate run summary
+  // Rebalance (which runs before feed-synthesize) may have rewritten zone frontmatter on
+  // pre-existing committed notes. Allow and commit all note zone dirs so those edits land.
+  await packageReview(ctx, NOTE_ZONES.map((z) => z + '/')); // guards + dirty-check + devil's-advocate run summary
 
   // State updates in place: seen.jsonl already holds every prior window (we never branched away),
   // so a plain append is cumulative. Both helpers create their own dirs.
@@ -47,10 +51,12 @@ export async function feedPackage(ctx: RunContext): Promise<void> {
   };
   writeWatermark(wmPath, wm);
 
-  // ONE commit: window note + landscape/report/README + state, together (not the paper
-  // path's research-then-state two-commit split).
+  // ONE commit: window note + all note zones (rebalance may have updated frontmatter on
+  // prior notes) + landscape/report/README + state, together (not the paper path's
+  // research-then-state two-commit split).
   const paths = [
     ctx.newNoteRelPath!,
+    ...NOTE_ZONES,
     LANDSCAPE,
     'README.md',
     'report.md',
