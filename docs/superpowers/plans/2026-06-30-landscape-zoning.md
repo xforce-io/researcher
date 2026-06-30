@@ -662,7 +662,6 @@ class StubAdapter implements AgentRuntime {
 
 ```typescript
 expect(ctx.newNoteRelPath).toBe('notes/active/01_stub_paper.md');
-import('node:fs').then(({ readFileSync }) => {});
 ```
 
 新增用例:
