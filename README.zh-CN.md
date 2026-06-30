@@ -196,6 +196,9 @@ PR。Dormant（`active: false`）支柱完全不碰。某个支柱失败不会�
 控制台：列出每个主题，渲染其 thesis / landscape / report / 笔记，并允许你按主题
 触发 `researcher run` 并看实时日志。只绑定 `127.0.0.1`、无鉴权；v1 为只读加触发运行。
 
+`path` 必须指向**工作区超级仓**（含 `researcher.workspace.yml` 的目录），不是
+`researcher` 工具自身的源码仓 —— 后者没有清单文件，会直接报错。
+
 ```bash
 researcher serve                 # 在当前超级仓上以 :4500 启动
 researcher serve ../research -p 8080

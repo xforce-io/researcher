@@ -49,7 +49,7 @@ END UNTRUSTED PAPER TEXT
 
 ## OUTPUT INSTRUCTIONS
 
-Write a single new file at `notes/{{next_note_filename}}` using the reading template (Claims / Assumptions / Method / Eval / Weaknesses / Relations).
+Write a single new file at `notes/{{next_note_filename}}` using the reading template (a one-line Frame lede + Claims / Assumptions / Method / Eval / Weaknesses / Relations).
 
 - Use `Write` tool, not `Edit` (the file does not exist yet).
 - Do NOT modify any other files in this stage.

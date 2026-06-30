@@ -39,6 +39,23 @@ describe('renderDoc', () => {
     expect(html).not.toContain('note_number:');     // raw YAML not leaked
     expect(html).not.toContain('paper:');
   });
+  it('renders the Frame lede as a blockquote without mangling a bullet-meta header', () => {
+    const md = '# 01 — Metadata Reasoner\n\n> Selecting tables from a big lake — vector search is noisy; an agent reasons over metadata to pick precisely.\n\n- **arXiv**: 2604.20144\n- **Axes**: data_kind = structured\n\n## Claims\n\n- a claim';
+    const html = renderDoc(md);
+    expect(html).toContain('<blockquote>');                          // Frame rendered as a lede
+    expect(html).toContain('an agent reasons over metadata');        // Frame text present
+    expect(html).toContain('2604.20144');                            // bullet meta preserved
+    expect(html).toContain('<h2>Claims</h2>');                       // sections still render
+    expect(html).not.toContain('<dt>');                              // single non-kv quote ≠ masthead table
+  });
+  it('renders the Frame lede under a YAML-frontmatter masthead', () => {
+    const md = '---\npaper: "Metadata Reasoner"\narxiv: "2604.20144"\n---\n\n> Vector search is noisy; an agent reasons over metadata to pick tables precisely.\n\n## Claims\n\n- a claim';
+    const html = renderDoc(md);
+    expect(html).toContain('class="note-title">Metadata Reasoner'); // masthead intact
+    expect(html).toContain('<blockquote>');                          // Frame lede under the masthead
+    expect(html).toContain('an agent reasons over metadata');
+    expect(html).toContain('<h2>Claims</h2>');
+  });
 });
 
 describe('renderDashboard', () => {
