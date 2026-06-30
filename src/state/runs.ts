@@ -7,6 +7,7 @@ export type Stage =
   | 'soul'
   | 'discover'
   | 'read'
+  | 'rebalance'
   | 'synthesize'
   | 'package'
   | 'feed-synthesize'
