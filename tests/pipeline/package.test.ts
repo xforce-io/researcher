@@ -33,9 +33,9 @@ describe('package stage', () => {
     // notes/ are created uncommitted so the package stage actually commits them.
     execaSync('git', ['add', '.researcher'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
-    mkdirSync(join(proj, 'notes'), { recursive: true });
+    mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
-    writeFileSync(join(proj, 'notes/01_stub.md'), '# Stub');
+    writeFileSync(join(proj, 'notes/active/01_stub.md'), '# Stub');
   });
   it('refuses to run when working tree is dirty outside notes/, .researcher/, and the workshop docs', async () => {
     // Simulate a user with uncommitted edits in src/ — those must not get swept into the researcher PR.
@@ -45,6 +45,7 @@ describe('package stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
     ctx.contradictionsPath = rd.path('contradictions.md');
@@ -61,6 +62,7 @@ describe('package stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
     ctx.contradictionsPath = rd.path('contradictions.md');
@@ -83,6 +85,7 @@ describe('package stage', () => {
     const rd1 = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx1 = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd1, addSourceId: 'arxiv:2401.00001' });
     ctx1.newNoteFilename = '01_stub.md';
+    ctx1.newNoteRelPath = 'notes/active/01_stub.md';
     ctx1.newNoteContent = '# Stub';
     ctx1.landscapeDiff = '+stub';
     ctx1.contradictionsPath = rd1.path('contradictions.md');
@@ -93,10 +96,12 @@ describe('package stage', () => {
     const mainTip = execaSync('git', ['rev-parse', 'main'], { cwd: proj }).stdout.trim();
 
     // Stage paper #2 in the working tree (still on researcher/01_stub branch).
-    writeFileSync(join(proj, 'notes/02_second.md'), '# Second');
+    mkdirSync(join(proj, 'notes/active'), { recursive: true });
+    writeFileSync(join(proj, 'notes/active/02_second.md'), '# Second');
     const rd2 = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx2 = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd2, addSourceId: 'arxiv:2401.00002' });
     ctx2.newNoteFilename = '02_second.md';
+    ctx2.newNoteRelPath = 'notes/active/02_second.md';
     ctx2.newNoteContent = '# Second';
     ctx2.landscapeDiff = '+second';
     ctx2.contradictionsPath = rd2.path('contradictions.md');
@@ -116,10 +121,12 @@ describe('package stage', () => {
     // Bug 1 regression: previously `notes/` was wholly allow-listed in the dirty check, so a
     // half-written note from a crashed earlier run would silently sit there forever (the package
     // commit only adds ctx.newNoteFilename). After fix: orphan notes trip the dirty check.
-    writeFileSync(join(proj, 'notes/05_orphan_from_failed_run.md'), '# Orphan from a previous crashed run');
+    mkdirSync(join(proj, 'notes/active'), { recursive: true });
+    writeFileSync(join(proj, 'notes/active/05_orphan_from_failed_run.md'), '# Orphan from a previous crashed run');
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
     ctx.contradictionsPath = rd.path('contradictions.md');
@@ -132,6 +139,7 @@ describe('package stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
     ctx.newNoteContent = '# Stub';
     ctx.landscapeDiff = '+stub';
     ctx.contradictionsPath = rd.path('contradictions.md');

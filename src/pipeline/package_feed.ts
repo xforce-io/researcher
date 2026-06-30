@@ -50,7 +50,7 @@ export async function feedPackage(ctx: RunContext): Promise<void> {
   // ONE commit: window note + landscape/report/README + state, together (not the paper
   // path's research-then-state two-commit split).
   const paths = [
-    join('notes', ctx.newNoteFilename!),
+    ctx.newNoteRelPath!,
     LANDSCAPE,
     'README.md',
     'report.md',

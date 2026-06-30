@@ -77,8 +77,9 @@ function discoverStep(payload: Triaged) {
 function readStep(): (opts: InvokeOptions) => InvokeResult {
   // Title in the mocked arxiv metadata is "stub" → slug "stub" → first new note is 01_stub.md.
   return (opts) => {
-    writeFileSync(join(opts.cwd, 'notes/01_stub.md'), '# Stub note\n\n## Claims\n- something\n');
-    return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_stub.md\n', modifiedFiles: ['notes/01_stub.md'], exitCode: 0 };
+    mkdirSync(join(opts.cwd, 'notes', 'active'), { recursive: true });
+    writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub.md'), '# Stub note\n\n## Claims\n- something\n');
+    return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_stub.md\n', modifiedFiles: ['notes/active/01_stub.md'], exitCode: 0 };
   };
 }
 function synthesizeStep(): (opts: InvokeOptions) => InvokeResult {
@@ -125,7 +126,7 @@ describe('researcher run (autonomous)', () => {
     writeFileSync(pyPath, readFileSync(pyPath, 'utf8').replace('your topic keyword', 'test query'));
     execaSync('git', ['add', '.researcher'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
-    mkdirSync(join(proj, 'notes'), { recursive: true });
+    mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
   });
 

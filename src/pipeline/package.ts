@@ -32,7 +32,7 @@ export async function packageReview(ctx: RunContext): Promise<string> {
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
       LANDSCAPE,
-      `notes/${ctx.newNoteFilename}`,
+      ctx.newNoteRelPath,
     ],
   });
   if (dirty.length > 0) {
