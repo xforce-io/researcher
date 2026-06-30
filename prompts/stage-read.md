@@ -49,7 +49,9 @@ END UNTRUSTED PAPER TEXT
 
 ## OUTPUT INSTRUCTIONS
 
-Write a single new file at `notes/{{next_note_filename}}` using the reading template (a one-line Frame lede + Claims / Assumptions / Method / Eval / Weaknesses / Relations).
+Write a single new file at `{{next_note_filename}}`（已含 `notes/active/` 前缀）using the reading template (a one-line Frame lede + Claims / Assumptions / Method / Eval / Weaknesses / Relations).
+
+笔记**第一行起**必须是 YAML frontmatter：`---\nzone: active\npin: false\nscore: 0\ndwell: 0\n---`，紧接 H1 标题与 Frame 引用块。frontmatter 之外的正文结构不变。
 
 - Use `Write` tool, not `Edit` (the file does not exist yet).
 - Do NOT modify any other files in this stage.
@@ -57,6 +59,6 @@ Write a single new file at `notes/{{next_note_filename}}` using the reading temp
 - After writing, end your response with the line:
 
 FILES_MODIFIED:
-notes/{{next_note_filename}}
+{{next_note_filename}}
 
 That trailing block is parsed by the runner; keep it exact.

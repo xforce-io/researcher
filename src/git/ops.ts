@@ -1,4 +1,6 @@
 import { execa } from 'execa';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 export interface CreateBranchOpts { cwd: string; branch: string; }
 export interface CommitOpts { cwd: string; paths: string[]; message: string; }
@@ -65,4 +67,10 @@ export async function ghPrCreate(o: { cwd: string; title: string; bodyFile: stri
   const base = o.base ?? 'main';
   const { stdout } = await execa('gh', ['pr', 'create', '--draft', '--base', base, '--title', o.title, '--body-file', o.bodyFile], { cwd: o.cwd });
   return stdout.trim();
+}
+
+/** git mv a tracked file, creating the destination's parent dir first. */
+export async function move(o: { cwd: string; from: string; to: string }): Promise<void> {
+  mkdirSync(dirname(join(o.cwd, o.to)), { recursive: true });
+  await execa('git', ['mv', o.from, o.to], { cwd: o.cwd });
 }

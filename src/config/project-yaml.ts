@@ -31,6 +31,14 @@ const Cadence = z.object({
   backoff_after_empty_runs: z.number().int().nonnegative(),
 });
 
+const Zoning = z
+  .object({
+    active_max: z.number().int().positive().default(12),
+    buffer_max: z.number().int().positive().default(30),
+    min_dwell: z.number().int().nonnegative().default(2),
+  })
+  .default({ active_max: 12, buffer_max: 30, min_dwell: 2 });
+
 const Meta = z
   .object({
     topic_oneline: z.string().optional(),
@@ -57,6 +65,7 @@ export const ProjectYamlSchema = z.object({
   sources: z.array(Source).min(1),
   paper_axes: z.array(Axis).default([]),
   cadence: Cadence,
+  zoning: Zoning,
 });
 
 export type ProjectYaml = z.infer<typeof ProjectYamlSchema>;

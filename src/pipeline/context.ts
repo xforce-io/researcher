@@ -35,4 +35,9 @@ export interface RunContext {
   newNoteContent?: string;
   contradictionsPath?: string;
   landscapeDiff?: string;
+  /** Relative path of the note written this run, including its zone subdir (e.g. notes/active/07_x.md). */
+  newNoteRelPath?: string;
+  /** Newline list "NN zone" for every note, injected into the synthesize prompt so it
+   *  demotes history-zone papers to landscape archive / report appendix. */
+  zoneManifest?: string;
 }

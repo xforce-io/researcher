@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadProjectYaml, ProjectYamlError } from '../../src/config/project-yaml.js';
 
+const writeYaml = (yaml: string): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'r-cfg-'));
+  const p = join(dir, 'project.yaml');
+  writeFileSync(p, yaml);
+  return p;
+};
+
 const VALID = `
 research_questions:
   - id: RQ1
@@ -79,5 +86,31 @@ describe('loadProjectYaml', () => {
     const p = join(dir, 'project.yaml');
     writeFileSync(p, VALID + '\ndelivery:\n  mode: push\n');
     expect(() => loadProjectYaml(p)).toThrow(ProjectYamlError);
+  });
+
+  it('defaults zoning when omitted', () => {
+    const p = writeYaml(`
+meta: { language: zh }
+research_questions: [{ id: q1, text: t }]
+inclusion_criteria: [a]
+exclusion_criteria: [b]
+sources: [{ kind: arxiv, queries: [x] }]
+cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
+`);
+    const cfg = loadProjectYaml(p);
+    expect(cfg.zoning).toEqual({ active_max: 12, buffer_max: 30, min_dwell: 2 });
+  });
+
+  it('accepts explicit zoning overrides', () => {
+    const p = writeYaml(`
+meta: { language: zh }
+research_questions: [{ id: q1, text: t }]
+inclusion_criteria: [a]
+exclusion_criteria: [b]
+sources: [{ kind: arxiv, queries: [x] }]
+cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
+zoning: { active_max: 5, buffer_max: 10, min_dwell: 1 }
+`);
+    expect(loadProjectYaml(p).zoning.active_max).toBe(5);
   });
 });

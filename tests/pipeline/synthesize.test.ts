@@ -18,6 +18,16 @@ class StubAdapter implements AgentRuntime {
   }
 }
 
+class CapturingAdapter implements AgentRuntime {
+  id = 'capture';
+  lastPrompt = '';
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.lastPrompt = opts.userPrompt;
+    writeFileSync(join(opts.cwd, 'notes/00_research_landscape.md'), '# Updated landscape\n\n[1] Stub Paper\n');
+    return { output: 'ok', modifiedFiles: [], exitCode: 0 };
+  }
+}
+
 describe('synthesize stage', () => {
   let proj: string;
   beforeEach(async () => {
@@ -33,6 +43,7 @@ describe('synthesize stage', () => {
     execaSync('git', ['add', '.'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
   });
+
   it('updates landscape and records diff', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
@@ -42,5 +53,42 @@ describe('synthesize stage', () => {
     await synthesize(ctx);
     expect(ctx.landscapeDiff).toContain('Updated landscape');
     expect(readFileSync(join(proj, 'notes/00_research_landscape.md'), 'utf8')).toContain('Stub Paper');
+  });
+
+  it('injects zone manifest into the synthesize prompt', async () => {
+    // Pre-create a history note so listNotes() returns it
+    mkdirSync(join(proj, 'notes', 'history'), { recursive: true });
+    writeFileSync(
+      join(proj, 'notes', 'history', '01_x.md'),
+      '---\nzone: history\n---\n# X Paper\n\n## Claims\n- something\n',
+    );
+
+    const adapter = new CapturingAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '02_stub.md';
+    ctx.newNoteContent = '# Stub Note';
+    mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
+    writeFileSync(join(proj, 'notes', 'active', '02_stub.md'), '# Stub Note');
+
+    await synthesize(ctx);
+
+    // The rendered prompt must contain the zone manifest entry for note 01 in history zone
+    expect(adapter.lastPrompt).toContain('01 history');
+  });
+
+  it('uses ctx.zoneManifest when already set by rebalance', async () => {
+    const adapter = new CapturingAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    ctx.zoneManifest = '01 active\n02 buffer';
+    writeFileSync(join(proj, 'notes', '01_stub.md'), '# Stub');
+
+    await synthesize(ctx);
+
+    expect(adapter.lastPrompt).toContain('01 active');
+    expect(adapter.lastPrompt).toContain('02 buffer');
   });
 });

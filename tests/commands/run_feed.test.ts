@@ -37,10 +37,11 @@ function soulStep(): (opts: InvokeOptions) => InvokeResult {
 function feedSynthesizeStep(): (opts: InvokeOptions) => InvokeResult {
   return (opts) => {
     // Source-agnostic: the note slug derives from the digest's `source`, so this
-    // matches `01_x-following-…` as well as `01_substack-…`.
-    const nm = /notes\/(\d+_[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.md)/.exec(opts.userPrompt);
+    // matches `notes/active/01_x-following-…` as well as `notes/active/01_substack-…`.
+    const nm = /notes\/active\/(\d+_[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.md)/.exec(opts.userPrompt);
     if (!nm) throw new Error('feed-synthesize step: no note filename in prompt');
-    writeFileSync(join(opts.cwd, 'notes', nm[1]), '# 2026-06-19 关注流\n\n## 宁德时代\n- 储能订单超预期 [@value_investor_cn](https://x.com/value_investor_cn/status/200)\n');
+    mkdirSync(join(opts.cwd, 'notes', 'active'), { recursive: true });
+    writeFileSync(join(opts.cwd, 'notes', 'active', nm[1]), '# 2026-06-19 关注流\n\n## 宁德时代\n- 储能订单超预期 [@value_investor_cn](https://x.com/value_investor_cn/status/200)\n');
     const landscape = join(opts.cwd, 'notes/00_research_landscape.md');
     writeFileSync(landscape, readFileSync(landscape, 'utf8') + '\n- 宁德时代\n');
     const cm = /`([^`]+contradictions\.md)`/.exec(opts.userPrompt);
@@ -64,7 +65,7 @@ function enrichStep(): (opts: InvokeOptions) => InvokeResult {
     // note's targets against primary sources and folds the evidence back IN PLACE (B1).
     const nm = /(\d+_[a-z0-9-]+-\d{4}-\d{2}-\d{2}\.md)/.exec(opts.userPrompt);
     if (!nm) throw new Error('enrich step: no note filename in prompt');
-    const notePath = join(opts.cwd, 'notes', nm[1]);
+    const notePath = join(opts.cwd, 'notes', 'active', nm[1]);
     writeFileSync(
       notePath,
       readFileSync(notePath, 'utf8') +
@@ -112,7 +113,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     writeFileSync(pyPath, py);
     execaSync('git', ['add', '.researcher'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
-    mkdirSync(join(proj, 'notes'), { recursive: true });
+    mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
   });
 
@@ -128,7 +129,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     expect(adapter.callCount).toBe(3); // soul + feed-synthesize + package-review
 
     // Feed plan event was emitted with the correct stages (enrich is OFF by default).
-    expect(sent).toContainEqual({ type: 'plan', stages: ['bootstrap', 'soul', 'feed-synthesize', 'package'] });
+    expect(sent).toContainEqual({ type: 'plan', stages: ['bootstrap', 'soul', 'rebalance', 'feed-synthesize', 'package'] });
 
     // Stays on main — the feed path no longer forks a `researcher/NN` branch.
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
@@ -137,14 +138,14 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
 
     // The note is committed ON main (was scattered onto an unmerged branch before).
     const tracked = execaSync('git', ['ls-files'], { cwd: proj }).stdout;
-    expect(tracked).toContain('notes/01_x-following-2026-06-19.md');
+    expect(tracked).toContain('notes/active/01_x-following-2026-06-19.md');
     expect(readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8')).toContain('xfeed:200');
 
     // ONE commit, and it carries note + state together (not the paper path's 2-commit split).
     const head = execaSync('git', ['log', '-1', '--format=%s'], { cwd: proj }).stdout.trim();
     expect(head).toMatch(/^feed:/);
     const headFiles = execaSync('git', ['show', '--stat', '--format=', 'HEAD'], { cwd: proj }).stdout;
-    expect(headFiles).toContain('notes/01_x-following-2026-06-19.md');
+    expect(headFiles).toContain('notes/active/01_x-following-2026-06-19.md');
     expect(headFiles).toContain('.researcher/state/seen.jsonl');
   });
 
@@ -166,8 +167,8 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
 
     // BOTH window notes are present on the one branch (before #25 they fanned into 2 isolated branches).
     const tracked = execaSync('git', ['ls-files'], { cwd: proj }).stdout;
-    expect(tracked).toContain('notes/01_x-following-2026-06-19.md');
-    expect(tracked).toContain('notes/02_x-following-2026-06-19.md');
+    expect(tracked).toContain('notes/active/01_x-following-2026-06-19.md');
+    expect(tracked).toContain('notes/active/02_x-following-2026-06-19.md');
 
     // Cumulative dedup state: both digests consumed.
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
@@ -191,9 +192,9 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     const res = await runRun({ cwd: proj, adapter });
 
     expect(res.outcome).toBe('completed');
-    expect(existsSync(join(proj, 'notes/01_substack-2026-06-19.md'))).toBe(true);
+    expect(existsSync(join(proj, 'notes/active/01_substack-2026-06-19.md'))).toBe(true);
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
-    expect(execaSync('git', ['ls-files'], { cwd: proj }).stdout).toContain('notes/01_substack-2026-06-19.md');
+    expect(execaSync('git', ['ls-files'], { cwd: proj }).stdout).toContain('notes/active/01_substack-2026-06-19.md');
   });
 
   it('runs feed-enrich between synthesize and package when source.enrich is on, and commits the verified evidence', async () => {
@@ -207,9 +208,9 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     expect(adapter.callCount).toBe(4); // soul + feed-synthesize + feed-enrich + package
 
     // The enriched evidence (primary-source URL) lands in the committed note on main.
-    const note = readFileSync(join(proj, 'notes/01_x-following-2026-06-19.md'), 'utf8');
+    const note = readFileSync(join(proj, 'notes/active/01_x-following-2026-06-19.md'), 'utf8');
     expect(note).toContain('https://primary.example.com/catl-q2');
-    const headNote = execaSync('git', ['show', 'HEAD:notes/01_x-following-2026-06-19.md'], { cwd: proj }).stdout;
+    const headNote = execaSync('git', ['show', 'HEAD:notes/active/01_x-following-2026-06-19.md'], { cwd: proj }).stdout;
     expect(headNote).toContain('https://primary.example.com/catl-q2');
   });
 
@@ -230,6 +231,6 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
 
     expect(res.outcome).toBe('no-candidate');
     expect(adapter.callCount).toBe(1); // soul only
-    expect(existsSync(join(proj, 'notes/01_x-following-2026-06-19.md'))).toBe(false);
+    expect(existsSync(join(proj, 'notes/active/01_x-following-2026-06-19.md'))).toBe(false);
   });
 });

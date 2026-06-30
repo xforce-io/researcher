@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -15,8 +15,8 @@ class StubAdapter implements AgentRuntime {
   id = 'stub';
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
     const noteContent = '# Stub note\n\n## Claims\n- something';
-    writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), noteContent);
-    return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_stub_paper.md\n', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+    writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub_paper.md'), noteContent);
+    return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_stub_paper.md\n', modifiedFiles: ['notes/active/01_stub_paper.md'], exitCode: 0 };
   }
 }
 
@@ -36,13 +36,14 @@ describe('read stage', () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
-    mkdirSync(join(proj, 'notes'), { recursive: true });
+    mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
   });
   it('writes a note file and records it in context', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     await read(ctx);
     expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
+    expect(ctx.newNoteRelPath).toBe('notes/active/01_stub_paper.md');
     expect(ctx.newNoteContent).toContain('Claims');
   });
 
@@ -52,9 +53,9 @@ describe('read stage', () => {
     class FreshStub implements AgentRuntime {
       id = 'fresh';
       async invoke(opts: InvokeOptions): Promise<InvokeResult> {
-        mkdirSync(join(opts.cwd, 'notes'), { recursive: true });
-        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
-        return { output: 'done', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+        mkdirSync(join(opts.cwd, 'notes', 'active'), { recursive: true });
+        writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
+        return { output: 'done', modifiedFiles: ['notes/active/01_stub_paper.md'], exitCode: 0 };
       }
     }
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
@@ -72,8 +73,8 @@ describe('read stage', () => {
       async invoke(opts: InvokeOptions): Promise<InvokeResult> {
         this.lastPrompt = opts.userPrompt;
         const noteContent = '# Stub note\n\n## Claims\n- something';
-        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), noteContent);
-        return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_stub_paper.md\n', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+        writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub_paper.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_stub_paper.md\n', modifiedFiles: ['notes/active/01_stub_paper.md'], exitCode: 0 };
       }
     }
     const adapter = new CapturingAdapter();
@@ -89,8 +90,8 @@ describe('read stage', () => {
       lastPrompt = '';
       async invoke(opts: InvokeOptions): Promise<InvokeResult> {
         this.lastPrompt = opts.userPrompt;
-        writeFileSync(join(opts.cwd, 'notes', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
-        return { output: 'done', modifiedFiles: ['notes/01_stub_paper.md'], exitCode: 0 };
+        writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub_paper.md'), '# n\n\n## Claims\n- x');
+        return { output: 'done', modifiedFiles: ['notes/active/01_stub_paper.md'], exitCode: 0 };
       }
     }
     const adapter = new CapturingAdapter();
@@ -111,8 +112,8 @@ describe('read stage', () => {
         // The read stage reads back the file the agent is supposed to write.
         // Mirror the filename it computes from the url path slug.
         const noteContent = '# Autodata\n\n## Claims\n- something';
-        writeFileSync(join(opts.cwd, 'notes', '01_autodata.md'), noteContent);
-        return { output: 'done\n\nFILES_MODIFIED:\nnotes/01_autodata.md\n', modifiedFiles: ['notes/01_autodata.md'], exitCode: 0 };
+        writeFileSync(join(opts.cwd, 'notes', 'active', '01_autodata.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_autodata.md\n', modifiedFiles: ['notes/active/01_autodata.md'], exitCode: 0 };
       }
     }
     const adapter = new CapturingAdapter();
@@ -127,6 +128,14 @@ describe('read stage', () => {
     expect(adapter.lastPrompt).toContain('### Source acquisition');
     expect(adapter.lastPrompt).toContain('https://facebookresearch.github.io/RAM/blogs/autodata/');
     expect(ctx.newNoteFilename).toBe('01_autodata.md');
+  });
+
+  it('ensures the new note carries zone frontmatter (active)', async () => {
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    await read(ctx);
+    const txt = readFileSync(join(proj, ctx.newNoteRelPath!), 'utf8');
+    expect(txt.startsWith('---\nzone: active\n')).toBe(true);
   });
 
 });

@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { Seen } from '../state/seen.js';
@@ -6,6 +6,7 @@ import { writeWatermark, type Watermark } from '../state/watermark.js';
 import * as gitops from '../git/ops.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
+import { listNotes, ZONE_DIRS } from '../state/note_index.js';
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -16,8 +17,8 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
  * devil's-advocate / run-summary adapter pass. Returns the run-summary path. The two paths
  * diverge only in how they commit (PR branch vs. in-place on main).
  */
-export async function packageReview(ctx: RunContext): Promise<string> {
-  if (!ctx.newNoteFilename || !ctx.newNoteContent) throw new Error('package requires note context');
+export async function packageReview(ctx: RunContext, extraAllowedPrefixes: string[] = []): Promise<string> {
+  if (!ctx.newNoteFilename || !ctx.newNoteContent || !ctx.newNoteRelPath) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
   if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
 
@@ -25,14 +26,17 @@ export async function packageReview(ctx: RunContext): Promise<string> {
   //    swept into the researcher branch when we stage workshop docs.
   //    Allowed: workshop docs the agent actually maintains (landscape + the current paper's note,
   //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
-  //    Notes other than the current one are rejected on purpose: they're orphans from a
-  //    previous failed run, and silently sweeping them up here would mask that failure.
+  //    Both paths pass the note zone dirs (notes/active|buffer|history/) via extraAllowedPrefixes:
+  //    rebalance runs before package on BOTH the paper and feed paths and legitimately rewrites
+  //    frontmatter on — and relocates — prior notes, so changes under notes/ are expected, not orphans.
+  //    Truly unrelated dirty files (anything outside the allow-list, e.g. src/foo.txt) still fail fast.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
-      LANDSCAPE,
-      `notes/${ctx.newNoteFilename}`,
+      'notes/',
+      ctx.newNoteRelPath,
+      ...extraAllowedPrefixes,
     ],
   });
   if (dirty.length > 0) {
@@ -76,7 +80,7 @@ export async function packageReview(ctx: RunContext): Promise<string> {
  * high-frequency stream has nobody merging PRs), so it uses `feedPackage` instead.
  */
 export async function packageStage(ctx: RunContext): Promise<void> {
-  const runSummaryPath = await packageReview(ctx);
+  const runSummaryPath = await packageReview(ctx, ZONE_DIRS.map((z) => z + '/'));
   // packageReview already asserted these are present; narrow for the rest of the stage.
   const newNoteFilename = ctx.newNoteFilename!;
   const addSourceId = ctx.addSourceId!;
@@ -85,8 +89,10 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    We branch from main to keep each PR independent, but synthesize/read just wrote into the
   //    working tree on the previous branch. After we switch to main, those files will revert
   //    to main's content — so we capture the cumulative content here and restore on the new branch.
+  //    Snapshot ALL live notes (not just the current one) so rebalance moves survive the branch dance.
+  const noteRelPaths = listNotes(ctx.projectRoot).map((n) => n.relPath);
   const candidatePaths = [
-    join('notes', newNoteFilename),
+    ...noteRelPaths,
     LANDSCAPE,
     'README.md',
     'report.md',
@@ -95,6 +101,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     '.researcher/thesis.md',
     '.researcher/.gitignore',
   ];
+  const currentNoteRels = new Set(noteRelPaths.concat(LANDSCAPE));
   const snapshots = new Map<string, string>();
   for (const rel of candidatePaths) {
     const abs = join(ctx.projectRoot, rel);
@@ -120,8 +127,19 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   await gitops.createBranch({ cwd: ctx.projectRoot, branch });
   if (stashed) await gitops.stashDrop({ cwd: ctx.projectRoot });
 
-  // 4. restore snapshots — everything except state files. State gets the cumulative content
-  //    plus this run's append below.
+  // 4a. remove note files that exist on main's tree but were relocated this run.
+  //     listNotes reads the current working tree (now on main's state), so it sees the old paths.
+  //     Any path not in currentNoteRels was moved away by rebalance; delete it so the note
+  //     doesn't appear at two locations after we restore snapshots.
+  for (const stale of listNotes(ctx.projectRoot).map((n) => n.relPath)) {
+    if (!currentNoteRels.has(stale)) {
+      const abs = join(ctx.projectRoot, stale);
+      if (existsSync(abs)) rmSync(abs);
+    }
+  }
+
+  // 4b. restore snapshots — everything except state files. State gets the cumulative content
+  //     plus this run's append below.
   for (const [rel, content] of snapshots) {
     const abs = join(ctx.projectRoot, rel);
     mkdirSync(dirname(abs), { recursive: true });
@@ -154,8 +172,17 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   writeWatermark(wmPath, wm);
 
   // 6. commit research, then state, then push + PR.
-  // git add fails fatally on a missing pathspec; filter by existsSync (some are optional).
-  const researchPaths = candidatePaths.filter((p) => existsSync(join(ctx.projectRoot, p)));
+  // Use 'notes' directory (not per-file paths) so git add -A covers both new and deleted note
+  // paths produced by rebalance moves. filter by existsSync for optional paths.
+  const researchPaths = [
+    'notes',
+    'README.md',
+    'report.md',
+    'papers/README.md',
+    '.researcher/project.yaml',
+    '.researcher/thesis.md',
+    '.researcher/.gitignore',
+  ].filter((p) => existsSync(join(ctx.projectRoot, p)));
   await gitops.commit({
     cwd: ctx.projectRoot,
     paths: researchPaths,

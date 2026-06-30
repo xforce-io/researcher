@@ -1,0 +1,25 @@
+import { describe, it, expect } from 'vitest';
+import { parseNote, serializeNote, DEFAULT_FM } from '../../src/state/zone.js';
+
+describe('note frontmatter', () => {
+  it('treats a legacy note without frontmatter as active/unpinned', () => {
+    const { fm, body } = parseNote('# Title\n\n## Claims\n- x');
+    expect(fm).toEqual(DEFAULT_FM);
+    expect(body).toBe('# Title\n\n## Claims\n- x');
+  });
+
+  it('parses an existing frontmatter block', () => {
+    const src = '---\nzone: history\npin: true\nscore: 0.4\ndwell: 3\n---\n# T\n\nbody';
+    const { fm, body } = parseNote(src);
+    expect(fm).toEqual({ zone: 'history', pin: true, score: 0.4, dwell: 3 });
+    expect(body).toBe('# T\n\nbody');
+  });
+
+  it('round-trips serialize(parse(x))', () => {
+    const src = '---\nzone: buffer\npin: false\nscore: 0\ndwell: 1\n---\n# T\n\nbody\n';
+    const { fm, body } = parseNote(src);
+    const out = serializeNote(fm, body);
+    expect(parseNote(out).fm).toEqual(fm);
+    expect(parseNote(out).body).toBe(body);
+  });
+});

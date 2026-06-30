@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
+import { listNotes } from '../state/note_index.js';
 
 const TIMEOUT_MS = 45 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -37,8 +38,14 @@ export async function synthesize(ctx: RunContext): Promise<void> {
   } else {
     referencesContext = '(no references/ directory — skip this section)';
   }
+  const zoneManifest = ctx.zoneManifest ?? listNotes(ctx.projectRoot)
+    .sort((a, b) => a.num - b.num)
+    .map((n) => `${String(n.num).padStart(2, '0')} ${n.zone}`)
+    .join('\n');
+
   const userPrompt = renderTemplate(loadPromptTemplate('stage-synthesize.md'), {
     language: ctx.language,
+    zone_manifest: zoneManifest || '(no notes)',
     methodology_synthesis: ctx.methodology.get('04-synthesis.md') ?? '',
     methodology_writing: ctx.methodology.get('06-writing.md') ?? '',
     thesis: ctx.thesis.body,
