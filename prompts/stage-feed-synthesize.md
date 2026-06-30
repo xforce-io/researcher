@@ -42,6 +42,18 @@ byline, timestamp, and item link.
 {{digest_content}}
 ````
 
+## 论文分区清单(zone manifest)
+
+下表是每篇笔记当前所在分区(由 rebalance 阶段维护):
+
+{{zone_manifest}}
+
+渲染规则:
+- `active` 论文:report 主线分析、landscape 重点位、完整 bullet。
+- `buffer` 论文:轻量提及,不占主线篇幅。
+- `history` 论文:landscape 归入"归档"子列表(单行),report 归入 `## 附录: Superseded works` 同区的"历史"段(单行);不在主线展开。
+- 这些笔记文件已被物理移动到 `notes/<zone>/`,你写入 landscape/report/README 的所有指向笔记的**路径型链接**必须使用移动后的 `notes/<zone>/NN_<slug>.md`。`[N]` 编号引用不变。
+
 ## Current landscape (`notes/00_research_landscape.md`)
 
 {{landscape_current}}

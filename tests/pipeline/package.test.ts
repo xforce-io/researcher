@@ -7,6 +7,7 @@ import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { packageStage } from '../../src/pipeline/package.js';
+import { rebalance } from '../../src/pipeline/rebalance.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 
@@ -157,7 +158,7 @@ describe('package stage', () => {
     await packageStage(ctx);
 
     // 1. File must exist on disk at the active/ path (not lost after branch dance).
-    const { existsSync: fsExists, readFileSync: fsRead } = await import('node:fs');
+    const { existsSync: fsExists } = await import('node:fs');
     expect(fsExists(join(proj, 'notes/active/01_stub.md'))).toBe(true);
 
     // 2. File must be in the research commit (HEAD~1, since HEAD is the state commit).
@@ -200,6 +201,45 @@ describe('package stage', () => {
     expect(lines[1]).toMatch(/^[a-f0-9]+ research:/);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.00001');
+  });
+
+  it('legacy flat notes rewritten by rebalance (no frontmatter) are allowed by the dirty-check', async () => {
+    // Reproduces: existing repos have flat notes/NN_*.md with no YAML frontmatter and no
+    // zone subdirectory. rebalance rewrites them IN PLACE at the flat path to add frontmatter
+    // (dwell 0→1; no move since min_dwell=2 blocks it). Before this fix, packageReview's
+    // dirtyPathsOutside flagged notes/03_legacy.md as dirty outside the allowed surface and
+    // threw — aborting the run. After adding 'notes/' to the base allowedPrefixes, it passes.
+    //
+    // RED→GREEN: remove 'notes/' from package.ts allowedPrefixes → this test throws on
+    // packageStage; add it back → passes cleanly and the committed note has frontmatter.
+
+    // Commit a legacy flat note to main (simulating a repo that predates zoning subdirs).
+    writeFileSync(join(proj, 'notes/03_legacy.md'), '# Legacy\n\n## Claims\n- x');
+    execaSync('git', ['add', 'notes/03_legacy.md'], { cwd: proj });
+    execaSync('git', ['commit', '-m', 'add legacy flat note'], { cwd: proj });
+
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+
+    // rebalance rewrites notes/03_legacy.md in-place: adds frontmatter (dwell 0→1).
+    // This makes it dirty. Before the fix packageReview would throw here.
+    await rebalance(ctx);
+    expect(readFileSync(join(proj, 'notes/03_legacy.md'), 'utf8')).toContain('dwell:');
+
+    // Must NOT throw — 'notes/' is now in the base allowedPrefixes.
+    await packageStage(ctx);
+
+    // notes/03_legacy.md must be committed WITH frontmatter on the researcher branch (HEAD~1).
+    const content = execaSync('git', ['show', 'HEAD~1:notes/03_legacy.md'], { cwd: proj }).stdout;
+    expect(content).toContain('zone:');
+    expect(content).toContain('dwell:');
   });
 
   it('move-aware: rebalance-moved note lands at new zone path on researcher branch', async () => {

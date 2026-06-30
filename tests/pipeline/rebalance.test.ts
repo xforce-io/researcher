@@ -64,5 +64,8 @@ describe('rebalance', () => {
     const ctx = makeCtx(proj, { active_max: 2, buffer_max: 2, min_dwell: 99 });
     await rebalance(ctx);
     expect(existsSync(join(proj, 'notes/active/01_p01.md'))).toBe(true); // stayed
+    // stayed unpinned notes still have their dwell counter incremented (9 → 10)
+    const fm = parseNote(readFileSync(join(proj, 'notes/active/01_p01.md'), 'utf8')).fm;
+    expect(fm.dwell).toBe(10);
   });
 });

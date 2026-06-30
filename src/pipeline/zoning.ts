@@ -2,7 +2,8 @@ import type { NoteEntry } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 
 /** Count [N] citations of note `num` across a corpus. Matches [N], [N:..], [N,..]
- *  but not a longer number ([12] is not a hit for 1). */
+ *  but not a longer number ([12] is not a hit for 1).
+ *  Known limitation: only matches num in LEADING position — [1, 3] counts 1 but [3, 1] does not. */
 export function countCitations(num: number, corpus: string): number {
   const re = new RegExp(`\\[\\s*${num}(?=[\\],:\\s])`, 'g');
   return (corpus.match(re) ?? []).length;

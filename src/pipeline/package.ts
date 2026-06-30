@@ -34,7 +34,7 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
-      LANDSCAPE,
+      'notes/',
       ctx.newNoteRelPath,
       ...extraAllowedPrefixes,
     ],
