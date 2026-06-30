@@ -135,6 +135,41 @@ describe('package stage', () => {
     await expect(packageStage(ctx)).rejects.toThrow(/05_orphan_from_failed_run/);
   });
 
+  it('new note at notes/active/ survives packageStage and lands in the committed tree', async () => {
+    // Regression for: candidatePaths used join('notes', newNoteFilename) instead of
+    // ctx.newNoteRelPath, so the note was never snapshotted, never restored on the new
+    // branch, and never committed — it was silently lost from disk.
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
+    ctx.newNoteContent = '# Stub note content';
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+    // Overwrite the file with known content so we can confirm it was committed exactly.
+    writeFileSync(join(proj, 'notes/active/01_stub.md'), '# Stub note content');
+
+    await packageStage(ctx);
+
+    // 1. File must exist on disk at the active/ path (not lost after branch dance).
+    const { existsSync: fsExists, readFileSync: fsRead } = await import('node:fs');
+    expect(fsExists(join(proj, 'notes/active/01_stub.md'))).toBe(true);
+
+    // 2. File must be in the research commit (HEAD~1, since HEAD is the state commit).
+    const { execaSync: sync } = await import('execa');
+    const treeContent = sync(
+      'git', ['show', 'HEAD~1:notes/active/01_stub.md'],
+      { cwd: proj }
+    ).stdout;
+    expect(treeContent).toContain('Stub note content');
+
+    // 3. notes/active/01_stub.md must appear in the research commit's diff.
+    const stat = sync('git', ['show', '--stat', 'HEAD~1'], { cwd: proj }).stdout;
+    expect(stat).toContain('notes/active/01_stub.md');
+  });
+
   it('produces 2 commits and updates state files', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });

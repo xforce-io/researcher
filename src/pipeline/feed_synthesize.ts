@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { digestId, digestSourceSlug } from '../sources/inbox.js';
 import { nextNoteNumber } from '../state/note_index.js';
+import { parseNote, serializeNote, DEFAULT_FM } from '../state/zone.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
 
@@ -64,6 +65,10 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
 
   const notePath = join(ctx.projectRoot, relPath);
   if (!existsSync(notePath)) throw new Error(`feed-synthesize: agent did not write ${notePath}`);
+  // 兜底:若 agent 没写 frontmatter,补一个默认 active 头,保证下游 listNotes 一致。
+  const written = readFileSync(notePath, 'utf8');
+  const { body } = parseNote(written);
+  if (!written.startsWith('---\n')) writeFileSync(notePath, serializeNote({ ...DEFAULT_FM }, body));
   ctx.newNoteFilename = noteFilename;
   ctx.newNoteRelPath = relPath;
   ctx.newNoteContent = readFileSync(notePath, 'utf8');

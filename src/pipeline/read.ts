@@ -64,12 +64,11 @@ export async function read(ctx: RunContext): Promise<void> {
   const fullPath = join(ctx.projectRoot, relPath);
   // 兜底:若 agent 没写 frontmatter,补一个默认 active 头,保证下游 listNotes 一致。
   const written = readFileSync(fullPath, 'utf8');
-  const { fm, body } = parseNote(written);
+  const { body } = parseNote(written);
   if (!written.startsWith('---\n')) writeFileSync(fullPath, serializeNote({ ...DEFAULT_FM }, body));
   ctx.newNoteFilename = nextFilename;
   ctx.newNoteRelPath = relPath;
   ctx.newNoteContent = readFileSync(fullPath, 'utf8');
-  void fm;
 }
 
 async function readArxivSource(canonicalId: string): Promise<SourceMaterial> {

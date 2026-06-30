@@ -17,7 +17,7 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
  * diverge only in how they commit (PR branch vs. in-place on main).
  */
 export async function packageReview(ctx: RunContext): Promise<string> {
-  if (!ctx.newNoteFilename || !ctx.newNoteContent) throw new Error('package requires note context');
+  if (!ctx.newNoteFilename || !ctx.newNoteContent || !ctx.newNoteRelPath) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
   if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
 
@@ -86,7 +86,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    working tree on the previous branch. After we switch to main, those files will revert
   //    to main's content — so we capture the cumulative content here and restore on the new branch.
   const candidatePaths = [
-    join('notes', newNoteFilename),
+    ctx.newNoteRelPath!,
     LANDSCAPE,
     'README.md',
     'report.md',
