@@ -5,6 +5,7 @@ import { writeWatermark, type Watermark } from '../state/watermark.js';
 import * as gitops from '../git/ops.js';
 import type { RunContext } from './context.js';
 import { packageReview } from './package.js';
+import { ZONE_DIRS } from '../state/note_index.js';
 
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
@@ -22,12 +23,11 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
  * Tradeoff: no PR review gate. Acceptable here because the output is a revertible, read-only
  * evidence report — one commit per window means a bad run is a precise `git revert`.
  */
-const NOTE_ZONES = ['notes/active', 'notes/buffer', 'notes/history'];
 
 export async function feedPackage(ctx: RunContext): Promise<void> {
   // Rebalance (which runs before feed-synthesize) may have rewritten zone frontmatter on
   // pre-existing committed notes. Allow and commit all note zone dirs so those edits land.
-  await packageReview(ctx, NOTE_ZONES.map((z) => z + '/')); // guards + dirty-check + devil's-advocate run summary
+  await packageReview(ctx, ZONE_DIRS.map((z) => z + '/')); // guards + dirty-check + devil's-advocate run summary
 
   // State updates in place: seen.jsonl already holds every prior window (we never branched away),
   // so a plain append is cumulative. Both helpers create their own dirs.
@@ -56,7 +56,7 @@ export async function feedPackage(ctx: RunContext): Promise<void> {
   // research-then-state two-commit split).
   const paths = [
     ctx.newNoteRelPath!,
-    ...NOTE_ZONES,
+    ...ZONE_DIRS,
     LANDSCAPE,
     'README.md',
     'report.md',

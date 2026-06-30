@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseNote, type NoteFrontmatter, type Zone } from './zone.js';
 
+export const ZONE_DIRS = ['notes/active', 'notes/buffer', 'notes/history'] as const;
+
 export interface NoteEntry {
   num: number;
   filename: string;

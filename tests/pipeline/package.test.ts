@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -117,12 +117,13 @@ describe('package stage', () => {
     expect(researchCommitParent).toBe(mainTip);
   });
 
-  it('refuses to run when an orphan note from a previous failed run sits untracked in notes/', async () => {
-    // Bug 1 regression: previously `notes/` was wholly allow-listed in the dirty check, so a
-    // half-written note from a crashed earlier run would silently sit there forever (the package
-    // commit only adds ctx.newNoteFilename). After fix: orphan notes trip the dirty check.
+  it('zone-dir notes from rebalance are allowed for the paper path (dirty check no longer rejects them)', async () => {
+    // Post-fix: rebalance runs before synthesize/package on the paper path and may produce
+    // additional zone-dir dirty files (moved/modified prior notes). The paper path now
+    // allow-lists all note zone dirs so these legitimate rebalance outputs don't trip the
+    // dirty check. A note at any notes/<zone>/ path is now accepted even if untracked.
     mkdirSync(join(proj, 'notes/active'), { recursive: true });
-    writeFileSync(join(proj, 'notes/active/05_orphan_from_failed_run.md'), '# Orphan from a previous crashed run');
+    writeFileSync(join(proj, 'notes/active/05_rebalanced_note.md'), '# Note written by rebalance');
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
     ctx.newNoteFilename = '01_stub.md';
@@ -131,8 +132,10 @@ describe('package stage', () => {
     ctx.landscapeDiff = '+stub';
     ctx.contradictionsPath = rd.path('contradictions.md');
     writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
 
-    await expect(packageStage(ctx)).rejects.toThrow(/05_orphan_from_failed_run/);
+    // Must NOT throw: zone dirs are now allow-listed for the paper path too.
+    await packageStage(ctx);
   });
 
   it('new note at notes/active/ survives packageStage and lands in the committed tree', async () => {
@@ -197,5 +200,54 @@ describe('package stage', () => {
     expect(lines[1]).toMatch(/^[a-f0-9]+ research:/);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.00001');
+  });
+
+  it('move-aware: rebalance-moved note lands at new zone path on researcher branch', async () => {
+    // Regression for move-unawareness: before this fix, candidatePaths only contained the
+    // current note, so a note moved by rebalance (e.g. active→history) was neither snapshotted
+    // nor cleaned up. After the branch dance, the old path still existed on main's tree and the
+    // new path was absent — the move was silently lost.
+    //
+    // Setup: commit landscape + 01_stub.md (the "old" note) to main so it appears in
+    // main's working tree during the branch dance.
+    execaSync('git', ['add', 'notes'], { cwd: proj });
+    execaSync('git', ['commit', '-m', 'add initial note'], { cwd: proj });
+
+    // Simulate rebalance: move 01_stub.md from active → history, update zone frontmatter.
+    mkdirSync(join(proj, 'notes', 'history'), { recursive: true });
+    writeFileSync(
+      join(proj, 'notes/history/01_stub.md'),
+      '---\nzone: history\npin: false\nscore: 0\ndwell: 0\n---\n# Stub\n',
+    );
+    rmSync(join(proj, 'notes/active/01_stub.md'));
+
+    // The new note being packaged this run.
+    writeFileSync(
+      join(proj, 'notes/active/02_new.md'),
+      '---\nzone: active\npin: false\nscore: 0\ndwell: 0\n---\n# New note\n',
+    );
+
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00002' });
+    ctx.newNoteFilename = '02_new.md';
+    ctx.newNoteRelPath = 'notes/active/02_new.md';
+    ctx.newNoteContent = '# New note';
+    ctx.landscapeDiff = '+new';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+
+    await packageStage(ctx);
+
+    // On-disk: moved note must exist at the new path, NOT the old path.
+    expect(existsSync(join(proj, 'notes/history/01_stub.md'))).toBe(true);
+    expect(existsSync(join(proj, 'notes/active/01_stub.md'))).toBe(false);
+
+    // In the research commit tree: new path present, old path absent.
+    const committedFiles = execaSync('git', ['ls-tree', '-r', '--name-only', 'HEAD~1'], { cwd: proj }).stdout;
+    expect(committedFiles).toContain('notes/history/01_stub.md');
+    expect(committedFiles).not.toContain('notes/active/01_stub.md');
+    // The new note for this run is also committed.
+    expect(committedFiles).toContain('notes/active/02_new.md');
   });
 });
