@@ -12,6 +12,14 @@ export function escapeHtml(s: string): string {
 
 const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, '').trim();
 
+// TOC display title: per-paper note headings share a fixed "…笔记：《title》" shell.
+// Strip the repetitive prefix and the 《》 brackets, keeping the inner title plus any
+// trailing annotation (e.g. （原始 + 综述）). A heading without 《》 is returned as-is.
+export function tocTitle(full: string): string {
+  const m = /《([^》]*)》(.*)$/.exec(full);
+  return m ? (m[1] + m[2]).trim() : full.trim();
+}
+
 // Split a leading YAML frontmatter block from the markdown body. Returns fm=null
 // when there is no `---` fence so plain docs (thesis, report, H1-titled notes)
 // render untouched.
@@ -162,8 +170,8 @@ export function renderTopic(
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
   const noteTree = v.notes.map((n) =>
-    `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(n.path)}" class="doc-link" data-path="${encodeURIComponent(n.path)}">` +
-    `<span class="num">${escapeHtml(n.num)}</span><span class="t">${escapeHtml(n.title)}</span></a></li>`
+    `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(n.path)}" class="doc-link" data-path="${encodeURIComponent(n.path)}" title="${escapeHtml(n.title)}">` +
+    `<span class="num">${escapeHtml(n.num)}</span><span class="t">${escapeHtml(tocTitle(n.title))}</span></a></li>`
   ).join('');
   const paperList = v.papers.map((p) =>
     `<li><a href="/t/${v.slug}/paper?id=${encodeURIComponent(p.id)}" target="_blank">${escapeHtml(p.id)}</a></li>`
@@ -203,13 +211,15 @@ export function renderTopic(
   const body =
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
+    `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
     `${runWrap}</header>` +
-    `<main class="three-col">` +
+    `<main class="three-col" id="cols">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3><ol class="note-tree">${noteTree}</ol>` : '') +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
+      `<div class="col-resizer" id="col-resizer" role="separator" aria-orientation="vertical" title="Drag to resize"></div>` +
       `<section class="reader" id="reader"><p class="hint">Select a document.</p></section>` +
-      `<aside class="right"><h3>About</h3>` +
+      `<aside class="right" id="right-panel"><h3>About</h3>` +
         `<p class="about">${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'}` +
         `${v.language ? ` <span class="lang">${escapeHtml(v.language)}</span>` : ''}</p>` +
         `<h3>Sources</h3><ul class="meta-list">${sourceList || '<li>—</li>'}</ul>` +
@@ -345,5 +355,48 @@ document.addEventListener('click', (e) => {
 if (runBtn && runBtn.dataset.activeTask) {
   append('\\u00b7 reconnected to a run in progress.\\n\\n');
   subscribe(runBtn.dataset.activeTask, Number(runBtn.dataset.startedAt));
+}
+
+// --- panel layout (#45): draggable left rail + collapsible right rail, both persisted ---
+const cols = document.getElementById('cols');
+const resizer = document.getElementById('col-resizer');
+const rightToggle = document.getElementById('right-toggle');
+const LEFT_W_KEY = 'researcher:leftW';
+const RIGHT_OPEN_KEY = 'researcher:rightOpen';
+
+const savedW = localStorage.getItem(LEFT_W_KEY);
+if (cols && savedW) cols.style.setProperty('--left-w', savedW + 'px');
+
+function applyRightOpen(open) {
+  if (cols) cols.classList.toggle('right-open', open);
+  if (rightToggle) rightToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+applyRightOpen(localStorage.getItem(RIGHT_OPEN_KEY) === '1');
+if (rightToggle) rightToggle.addEventListener('click', () => {
+  const open = !(cols && cols.classList.contains('right-open'));
+  applyRightOpen(open);
+  localStorage.setItem(RIGHT_OPEN_KEY, open ? '1' : '0');
+});
+
+if (resizer && cols) {
+  const MIN = 160, MAX = 560;
+  let dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    const w = Math.max(MIN, Math.min(MAX, e.clientX - cols.getBoundingClientRect().left));
+    cols.style.setProperty('--left-w', w + 'px');
+  };
+  resizer.addEventListener('mousedown', (e) => {
+    dragging = true; resizer.classList.add('dragging');
+    document.body.style.userSelect = 'none'; e.preventDefault();
+  });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false; resizer.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    const w = cols.style.getPropertyValue('--left-w').replace('px', '').trim();
+    if (w) localStorage.setItem(LEFT_W_KEY, w);
+  });
 }
 `;

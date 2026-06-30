@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, renderDoc, renderDashboard, renderTopic } from '../../src/web/views.js';
+import { escapeHtml, renderDoc, renderDashboard, renderTopic, tocTitle } from '../../src/web/views.js';
 import type { DashboardModel, TopicView } from '../../src/web/discovery.js';
 
 describe('escapeHtml', () => {
@@ -117,6 +117,52 @@ describe('renderTopic', () => {
   it('shows an unavailable notice when topic has no .researcher', () => {
     const html = renderTopic({ ...v, available: false, docs: [], papers: [], seen: [], sources: [], researchQuestions: [] });
     expect(html).toMatch(/unavailable|missing/i);
+  });
+});
+
+describe('tocTitle (#45)', () => {
+  it('keeps only the 《》 inner content, dropping the repetitive prefix', () => {
+    expect(tocTitle('论文阅读笔记：《Signals: Trajectory Sampling and Replay》'))
+      .toBe('Signals: Trajectory Sampling and Replay');
+  });
+  it('preserves a trailing annotation after 》', () => {
+    expect(tocTitle('论文阅读笔记：《Agent-as-a-Judge》（原始 + 综述）'))
+      .toBe('Agent-as-a-Judge（原始 + 综述）');
+  });
+  it('leaves a title without 《》 unchanged', () => {
+    expect(tocTitle('Breaking the Observability Tax')).toBe('Breaking the Observability Tax');
+  });
+});
+
+describe('renderTopic panel layout (#45)', () => {
+  const v: TopicView = {
+    slug: 'trace', path: 'trace', available: true, oneline: 'triage', language: 'zh',
+    sources: [{ kind: 'arxiv', summary: 'agent' }],
+    researchQuestions: [{ id: 'RQ1', text: 'how' }],
+    docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
+    notes: [{ path: 'notes/05_obs.md', num: '05', title: '论文阅读笔记：《Breaking the Observability Tax》' }],
+    papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
+    seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
+    watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },
+  };
+  it('shows the 《》 inner title in the TOC with the full title as a hover tooltip', () => {
+    const html = renderTopic(v);
+    expect(html).toContain('<span class="t">Breaking the Observability Tax</span>');
+    expect(html).toContain('title="论文阅读笔记：《Breaking the Observability Tax》"');
+  });
+  it('wires a draggable left-panel resizer driven by a CSS width variable, persisted', () => {
+    const html = renderTopic(v);
+    expect(html).toContain('id="col-resizer"');     // drag handle element
+    expect(html).toContain('--left-w');               // left column width is a CSS variable
+    expect(html).toContain('researcher:leftW');       // width persisted in localStorage
+  });
+  it('collapses the right panel by default with a toggle to expand, persisted', () => {
+    const html = renderTopic(v);
+    expect(html).toContain('id="right-toggle"');      // expand/collapse control
+    expect(html).toContain('id="right-panel"');       // the collapsible aside
+    expect(html).toContain('researcher:rightOpen');   // open state persisted in localStorage
+    expect(html).toContain('class="three-col"');      // default: not expanded
+    expect(html).not.toContain('three-col right-open'); // right panel starts collapsed
   });
 });
 
