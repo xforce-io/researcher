@@ -262,8 +262,10 @@ researcher serve                 # serves the current super-repo on :4500
 researcher serve ../research -p 8080
 ```
 
-Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering. Requires a
-[workspace super-repo](#workspace-mode-multi-pillar).
+Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering. `path` must
+point at a [workspace super-repo](#workspace-mode-multi-pillar) (a directory holding
+`researcher.workspace.yml`) — not the `researcher` tool's own source checkout, which
+has no manifest and errors out.
 
 ## Environment
 
