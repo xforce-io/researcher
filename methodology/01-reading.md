@@ -4,7 +4,16 @@ Every paper note follows a fixed skeleton. This is not a style preference — sy
 
 ## Reading template (mandatory)
 
-Every note in `notes/NN_<slug>.md` must contain all six sections in this order:
+Every note in `notes/NN_<slug>.md` must open with a one-line **Frame** lede, then contain all six sections in this order:
+
+### Frame (lede)
+
+One sentence that orients a reader who has never seen the paper: **the problem it tackles → the approach it takes**. Write it as a Markdown blockquote directly under the note's H1 title (before the arXiv/Authors/Axes header block and `## Claims`). One sentence, hard cap — this is the only prose summary the skeleton allows.
+
+It is a reader-facing lede, **not** a composable section: synthesis scans `## ` headings, so the Frame never enters `notes/00_research_landscape.md` and cannot dilute the claim-first signal. Its only job is to keep the topic page from opening cold on `## Claims`.
+
+- Include: `> 大表海里选数据,向量检索召回噪声多;用 agent 逐步推理元数据做高精度选表。`
+- Exclude: a problem / approach / method / eval / value multi-part brief — that duplicates Method / Eval / Claims and reintroduces the summary-paragraph signal loss this skeleton forbids.
 
 ### Claims
 
