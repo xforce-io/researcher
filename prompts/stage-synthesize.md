@@ -54,6 +54,18 @@ charter itself needs updating). Do not silently resolve it either way.
 {{report_current}}
 ```
 
+## 论文分区清单(zone manifest)
+
+下表是每篇笔记当前所在分区(由 rebalance 阶段维护):
+
+{{zone_manifest}}
+
+渲染规则:
+- `active` 论文:report 主线分析、landscape 重点位、完整 bullet。
+- `buffer` 论文:轻量提及,不占主线篇幅。
+- `history` 论文:landscape 归入"归档"子列表(单行),report 归入 `## 附录: Superseded works` 同区的"历史"段(单行);不在主线展开。
+- 这些笔记文件已被物理移动到 `notes/<zone>/`,你写入 landscape/report/README 的所有指向笔记的**路径型链接**必须使用移动后的 `notes/<zone>/NN_<slug>.md`。`[N]` 编号引用不变。
+
 ## New note to integrate
 
 Filename: `notes/{{new_note_filename}}`
@@ -157,6 +169,8 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
 
 ### What you MUST NOT change in the landscape
+
+> **Note on zone-based rendering**: demoting a `history`-zone paper from the main narrative to the archive sub-list (landscape) or appendix (report) is **expected zone rendering**, not a forbidden rewrite. The constraints below apply to structural elements — headings, ASCII diagrams, table headers — not to the narrative treatment of individual papers whose zone has changed.
 
 You may add new bullets, table rows, and reading-priority entries inside the existing structure. You MUST NOT:
 
