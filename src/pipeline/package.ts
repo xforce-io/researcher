@@ -26,10 +26,10 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
   //    swept into the researcher branch when we stage workshop docs.
   //    Allowed: workshop docs the agent actually maintains (landscape + the current paper's note,
   //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
-  //    Notes other than the current one are rejected on purpose: they're orphans from a
-  //    previous failed run, and silently sweeping them up here would mask that failure.
-  //    Callers may pass extraAllowedPrefixes to extend this list (e.g. feed path allows all
-  //    note zone dirs because rebalance legitimately rewrites frontmatter on prior notes).
+  //    Both paths pass the note zone dirs (notes/active|buffer|history/) via extraAllowedPrefixes:
+  //    rebalance runs before package on BOTH the paper and feed paths and legitimately rewrites
+  //    frontmatter on — and relocates — prior notes, so changes under notes/ are expected, not orphans.
+  //    Truly unrelated dirty files (anything outside the allow-list, e.g. src/foo.txt) still fail fast.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
     allowedPrefixes: [
