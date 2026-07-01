@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
+import { MilkieAdapter } from '../adapter/milkie.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
@@ -31,7 +31,7 @@ function resolveInboxDir(p: string | undefined): string | null {
 
 export interface RunOptions {
   cwd: string;
-  /** Injectable for tests. Production: ClaudeCodeAdapter. */
+  /** Injectable for tests. Production: MilkieAdapter. */
   adapter?: AgentRuntime;
 }
 
@@ -49,7 +49,7 @@ export interface RunResult {
 
 export async function runRun(opts: RunOptions): Promise<RunResult> {
   const researcherDir = resolveProjectResearcherDir(opts.cwd);
-  const adapter = opts.adapter ?? new ClaudeCodeAdapter();
+  const adapter = opts.adapter ?? new MilkieAdapter();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
 
   let outcome: RunOutcome = 'completed';

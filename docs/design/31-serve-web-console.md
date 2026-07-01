@@ -103,7 +103,7 @@ unavailable 并在卡片上提示(对齐 orchestrator 的同类判定)。
 
 - 子进程跑当前 CLI 二进制的 `run`(`execa(process.execPath, [cliEntry, 'run'], { cwd: topicDir })`)。
 - **不在 Web 进程内直接调 `runRun`**:子进程天然吃到 `.researcher/state/.lock`、隔离
-  重型 `ClaudeCodeAdapter`、子进程崩溃不拖垮 server。
+  重型 `MilkieAdapter`、子进程崩溃不拖垮 server。
 - stdout 行缓冲(环形,上限 ~2000 行)供 SSE 续传;进程退出后保留终态供前端拉取。
 - 任务仅存活于 server 进程内,不持久化历史。
 

@@ -21,6 +21,8 @@ describe('init', () => {
     expect(existsSync(join(dir, '.researcher/thesis.md'))).toBe(true);
     expect(existsSync(join(dir, '.researcher/state/seen.jsonl'))).toBe(true);
     expect(existsSync(join(dir, '.researcher/.gitignore'))).toBe(true);
+    expect(existsSync(join(dir, '.milkie/agents.json'))).toBe(true);
+    expect(existsSync(join(dir, 'agents/researcher.md'))).toBe(true);
     expect(readFileSync(join(dir, '.researcher/.gitignore'), 'utf8')).toContain('state/runs/');
   });
   it('refuses if .researcher already exists', async () => {

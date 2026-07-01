@@ -54,7 +54,7 @@ export async function rebalance(ctx: RunContext): Promise<void> {
       const { body } = parseNote(readFileSync(n.absPath, 'utf8'));
       const dwell = n.fm.pin ? n.fm.dwell : n.fm.dwell + 1;
       writeFileSync(n.absPath, serializeNote(
-        { zone: n.fm.zone, pin: n.fm.pin, score: newScore, dwell }, body,
+        { zone: n.zone, pin: n.fm.pin, score: newScore, dwell }, body,
       ));
     }
   }

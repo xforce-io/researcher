@@ -97,7 +97,10 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
         taskId,
         (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
         (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
-        () => { res.write(`event: end\ndata: {}\n\n`); res.end(); },
+        (task) => {
+          res.write(`event: end\ndata: ${JSON.stringify({ status: task.status, exitCode: task.exitCode })}\n\n`);
+          res.end();
+        },
       );
       req.on('close', unsub);
       return;

@@ -43,10 +43,10 @@ describe('TaskRegistry', () => {
     const reg = new TaskRegistry({ runner: fakeRunner(['one', 'two'], 0), idSeq });
     const task = reg.start('trace', '/ws/trace');
     await new Promise((r) => setTimeout(r, 10));
-    const got: string[] = []; let ended = false;
-    reg.subscribe(task.id, (l) => got.push(l), () => {}, () => { ended = true; });
+    const got: string[] = []; let ended: { status: string; exitCode: number | null } | null = null;
+    reg.subscribe(task.id, (l) => got.push(l), () => {}, (t) => { ended = { status: t.status, exitCode: t.exitCode }; });
     expect(got).toEqual(['one', 'two']);
-    expect(ended).toBe(true);
+    expect(ended).toEqual({ status: 'done', exitCode: 0 });
   });
 
   it('marks status error on nonzero exit', async () => {

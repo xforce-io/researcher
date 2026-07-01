@@ -39,6 +39,36 @@ describe('renderDoc', () => {
     expect(html).not.toContain('note_number:');     // raw YAML not leaked
     expect(html).not.toContain('paper:');
   });
+  it('hides zoning frontmatter and lifts leading note metadata into the masthead table', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# 论文阅读笔记：《Signals》',
+      '',
+      '> **Created:** 2026-04-26 **Last Updated:** 2026-04-26 **状态：** ✅ 已深读 **arXiv:** [2604.00356](https://arxiv.org/abs/2604.00356) **作者:** Shuguang Chen **优先级：** P0',
+      '',
+      '## Claims',
+      '',
+      '- a claim',
+    ].join('\n');
+    const html = renderDoc(md);
+    expect(html).toContain('<h1>论文阅读笔记：《Signals》</h1>');
+    expect(html).toContain('class="fm compact"');
+    expect(html).toContain('<dt>Created</dt><dd>2026-04-26</dd>');
+    expect(html).toContain('<dt>Last Updated</dt><dd>2026-04-26</dd>');
+    expect(html).toContain('<dt>arXiv</dt>');
+    expect(html).toContain('href="https://arxiv.org/abs/2604.00356"');
+    expect(html).not.toContain('<blockquote>');
+    expect(html).not.toContain('<dt>zone</dt>');
+    expect(html).not.toContain('<dt>pin</dt>');
+    expect(html).not.toContain('<dt>score</dt>');
+    expect(html).not.toContain('<dt>dwell</dt>');
+  });
   it('renders the Frame lede as a blockquote without mangling a bullet-meta header', () => {
     const md = '# 01 — Metadata Reasoner\n\n> Selecting tables from a big lake — vector search is noisy; an agent reasons over metadata to pick precisely.\n\n- **arXiv**: 2604.20144\n- **Axes**: data_kind = structured\n\n## Claims\n\n- a claim';
     const html = renderDoc(md);
@@ -94,7 +124,11 @@ describe('renderTopic', () => {
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
-    notes: [{ path: 'notes/01_signals.md', num: '01', title: 'Signals: trajectory triage' }],
+    notes: [
+      { path: 'notes/active/01_signals.md', num: '01', title: 'Signals: trajectory triage', zone: 'active', pin: true, score: 0.82, dwell: 2 },
+      { path: 'notes/buffer/02_buffer.md', num: '02', title: 'Buffer paper', zone: 'buffer', pin: false, score: 0.41, dwell: 1 },
+      { path: 'notes/history/03_history.md', num: '03', title: 'History paper', zone: 'history', pin: false, score: 0.12, dwell: 4 },
+    ],
     papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
     seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
     watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },
@@ -108,6 +142,12 @@ describe('renderTopic', () => {
     expect(html).toContain('reader.addEventListener'); // in-doc links load into the reader
     expect(html).toContain('class="note-tree"');      // numbered notes use the styled tree
     expect(html).toContain('Signals: trajectory triage'); // frontmatter-derived note title
+    expect(html).toContain('Active');                 // notes are grouped by zone
+    expect(html).toContain('Buffer');
+    expect(html).toContain('History');
+    expect(html).toContain('notes%2Factive%2F01_signals.md');
+    expect(html).toContain('class="zone-badge active"');
+    expect(html).toContain('class="pin-badge"');
     expect(html).toContain('class="about"');           // About uses the styled paragraph
     expect(html).toContain('class="meta-list"');        // Sources/Questions use the styled list
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
@@ -117,6 +157,10 @@ describe('renderTopic', () => {
   it('shows an unavailable notice when topic has no .researcher', () => {
     const html = renderTopic({ ...v, available: false, docs: [], papers: [], seen: [], sources: [], researchQuestions: [] });
     expect(html).toMatch(/unavailable|missing/i);
+  });
+  it('uses an explicit empty state when there are no PDFs', () => {
+    const html = renderTopic({ ...v, papers: [] });
+    expect(html).toContain('No PDFs');
   });
 });
 
@@ -140,7 +184,7 @@ describe('renderTopic panel layout (#45)', () => {
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
-    notes: [{ path: 'notes/05_obs.md', num: '05', title: '论文阅读笔记：《Breaking the Observability Tax》' }],
+    notes: [{ path: 'notes/active/05_obs.md', num: '05', title: '论文阅读笔记：《Breaking the Observability Tax》', zone: 'active', pin: false, score: 0.7, dwell: 1 }],
     papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
     seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
     watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },

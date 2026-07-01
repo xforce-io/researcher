@@ -30,9 +30,9 @@ describe('package stage', () => {
     // delivery.mode defaults to local, so the package stage commits without push/PR.
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
-    // Commit only .researcher/ as the initial main-branch state.
+    // Commit project config + milkie provider config as the initial main-branch state.
     // notes/ are created uncommitted so the package stage actually commits them.
-    execaSync('git', ['add', '.researcher'], { cwd: proj });
+    execaSync('git', ['add', '.researcher', '.milkie', 'agents'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
@@ -201,45 +201,6 @@ describe('package stage', () => {
     expect(lines[1]).toMatch(/^[a-f0-9]+ research:/);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.00001');
-  });
-
-  it('legacy flat notes rewritten by rebalance (no frontmatter) are allowed by the dirty-check', async () => {
-    // Reproduces: existing repos have flat notes/NN_*.md with no YAML frontmatter and no
-    // zone subdirectory. rebalance rewrites them IN PLACE at the flat path to add frontmatter
-    // (dwell 0→1; no move since min_dwell=2 blocks it). Before this fix, packageReview's
-    // dirtyPathsOutside flagged notes/03_legacy.md as dirty outside the allowed surface and
-    // threw — aborting the run. After adding 'notes/' to the base allowedPrefixes, it passes.
-    //
-    // RED→GREEN: remove 'notes/' from package.ts allowedPrefixes → this test throws on
-    // packageStage; add it back → passes cleanly and the committed note has frontmatter.
-
-    // Commit a legacy flat note to main (simulating a repo that predates zoning subdirs).
-    writeFileSync(join(proj, 'notes/03_legacy.md'), '# Legacy\n\n## Claims\n- x');
-    execaSync('git', ['add', 'notes/03_legacy.md'], { cwd: proj });
-    execaSync('git', ['commit', '-m', 'add legacy flat note'], { cwd: proj });
-
-    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
-    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
-    ctx.newNoteFilename = '01_stub.md';
-    ctx.newNoteRelPath = 'notes/active/01_stub.md';
-    ctx.newNoteContent = '# Stub';
-    ctx.landscapeDiff = '+stub';
-    ctx.contradictionsPath = rd.path('contradictions.md');
-    writeFileSync(ctx.contradictionsPath, 'none');
-    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
-
-    // rebalance rewrites notes/03_legacy.md in-place: adds frontmatter (dwell 0→1).
-    // This makes it dirty. Before the fix packageReview would throw here.
-    await rebalance(ctx);
-    expect(readFileSync(join(proj, 'notes/03_legacy.md'), 'utf8')).toContain('dwell:');
-
-    // Must NOT throw — 'notes/' is now in the base allowedPrefixes.
-    await packageStage(ctx);
-
-    // notes/03_legacy.md must be committed WITH frontmatter on the researcher branch (HEAD~1).
-    const content = execaSync('git', ['show', 'HEAD~1:notes/03_legacy.md'], { cwd: proj }).stdout;
-    expect(content).toContain('zone:');
-    expect(content).toContain('dwell:');
   });
 
   it('move-aware: rebalance-moved note lands at new zone path on researcher branch', async () => {

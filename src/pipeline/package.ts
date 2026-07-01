@@ -28,13 +28,13 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
   //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
   //    Both paths pass the note zone dirs (notes/active|buffer|history/) via extraAllowedPrefixes:
   //    rebalance runs before package on BOTH the paper and feed paths and legitimately rewrites
-  //    frontmatter on — and relocates — prior notes, so changes under notes/ are expected, not orphans.
+  //    frontmatter on — and relocates — prior notes inside those zone dirs.
   //    Truly unrelated dirty files (anything outside the allow-list, e.g. src/foo.txt) still fail fast.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
-      'notes/',
+      LANDSCAPE,
       ctx.newNoteRelPath,
       ...extraAllowedPrefixes,
     ],

@@ -6,9 +6,9 @@ import { execaSync } from 'execa';
 import { runOnboard } from '../../src/commands/onboard.js';
 import { resolvePackageRoot } from '../../src/paths.js';
 
-// Stub the adapter so the test does not call real `claude`.
-vi.mock('../../src/adapter/claude-code.js', () => ({
-  ClaudeCodeAdapter: class {
+// Stub the adapter so the test does not call real `milkie`.
+vi.mock('../../src/adapter/milkie.js', () => ({
+  MilkieAdapter: class {
     id = 'fake';
     async invoke() {
       return {
@@ -45,7 +45,7 @@ describe('runOnboard (integration)', () => {
     execaSync('git', ['config', 'user.name', 't'], { cwd: dir });
     methHome = mkdtempSync(join(tmpdir(), 'r-meth-'));
     process.env.RESEARCHER_HOME = methHome;
-    process.env.RESEARCHER_CLAUDE_BIN = 'true';
+    process.env.RESEARCHER_MILKIE_BIN = 'true';
     mkdirSync(join(methHome, 'methodology'));
     const pkg = resolvePackageRoot();
     writeFileSync(
@@ -56,7 +56,7 @@ describe('runOnboard (integration)', () => {
 
   afterEach(() => {
     delete process.env.RESEARCHER_HOME;
-    delete process.env.RESEARCHER_CLAUDE_BIN;
+    delete process.env.RESEARCHER_MILKIE_BIN;
   });
 
   it('produces a topic repo with project.yaml + thesis.md committed (TUI auto-driver)', async () => {

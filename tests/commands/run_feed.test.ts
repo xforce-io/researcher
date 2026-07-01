@@ -111,7 +111,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
       `sources:\n  - kind: x-inbox\n    inbox_dir: ${inbox}\n\npaper_axes:`,
     );
     writeFileSync(pyPath, py);
-    execaSync('git', ['add', '.researcher'], { cwd: proj });
+    execaSync('git', ['add', '.researcher', '.milkie', 'agents'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');

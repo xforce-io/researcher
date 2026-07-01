@@ -48,9 +48,13 @@ export function scaffoldTopicRepo(opts: ScaffoldOptions): void {
   }
   const pkg = resolvePackageRoot();
   mkdirSync(join(target, 'state'), { recursive: true });
+  mkdirSync(join(opts.repoRoot, '.milkie'), { recursive: true });
+  mkdirSync(join(opts.repoRoot, 'agents'), { recursive: true });
   copyFileSync(join(pkg, 'templates/project.yaml'), join(target, 'project.yaml'));
   copyFileSync(join(pkg, 'templates/thesis.md'), join(target, 'thesis.md'));
   copyFileSync(join(pkg, 'templates/researcher-gitignore'), join(target, '.gitignore'));
+  copyFileSync(join(pkg, 'templates/milkie-agents.json'), join(opts.repoRoot, '.milkie/agents.json'));
+  copyFileSync(join(pkg, 'templates/milkie-researcher.md'), join(opts.repoRoot, 'agents/researcher.md'));
   writeFileSync(join(target, 'state/seen.jsonl'), '');
 }
 
