@@ -38,6 +38,15 @@ function splitFrontmatter(md: string): { fm: Record<string, string> | null; body
 
 const FM_TITLE_KEYS = new Set(['paper', 'title']);
 const INTERNAL_FM_KEYS = new Set(['zone', 'pin', 'score', 'dwell']);
+const WIDE_META_KEYS = new Set([
+  'abstract',
+  'summary',
+  'notes',
+  '分类轴',
+  '角色定位',
+  '摘要',
+  '总结',
+]);
 const NOTE_ZONE_LABELS: Record<Zone, string> = {
   active: 'Active',
   buffer: 'Buffer',
@@ -59,6 +68,11 @@ function fmValue(key: string, raw: string): string {
   return escapeHtml(unquote(raw));
 }
 
+function metaRowClass(key: string, value: string): string {
+  const text = value.replace(/<[^>]*>/g, '').trim();
+  return WIDE_META_KEYS.has(key) || text.length > 220 ? ' class="wide"' : '';
+}
+
 // A per-paper note's structured frontmatter → title + an aligned key/value table
 // (the .fm CSS kit), instead of dumping the raw YAML into the body.
 function noteMasthead(fm: Record<string, string>): string {
@@ -67,7 +81,7 @@ function noteMasthead(fm: Record<string, string>): string {
     .filter(([k]) => !FM_TITLE_KEYS.has(k) && !INTERNAL_FM_KEYS.has(k))
     .map(([k, raw]) => [k, fmValue(k, raw)] as const)
     .filter(([, v]) => v)
-    .map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`)
+    .map(([k, v]) => `<div${metaRowClass(k, v)}><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`)
     .join('');
   if (!title && !rows) return '';
   return (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
@@ -91,7 +105,7 @@ function mastheadBlockquote(body: string): { html: string; rest: string } | null
   }
   if (rows.length < 2) return null;
   const dl = `<dl class="fm">` + rows.map((r) =>
-    `<div><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
   ).join('') + `</dl>`;
   return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
 }
@@ -115,7 +129,7 @@ function leadingMetaParagraph(body: string): { html: string; rest: string } | nu
   }
   if (rows.length < 2) return null;
   const dl = `<dl class="fm compact">` + rows.map((r) =>
-    `<div><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
   ).join('') + `</dl>`;
   return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
 }

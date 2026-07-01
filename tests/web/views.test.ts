@@ -69,6 +69,29 @@ describe('renderDoc', () => {
     expect(html).not.toContain('<dt>score</dt>');
     expect(html).not.toContain('<dt>dwell</dt>');
   });
+  it('spans narrative note metadata across the masthead grid', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# 论文阅读笔记：《Where LLM Agents Fail》',
+      '',
+      '> **Created:** 2026-05-04',
+      '> **状态：** ✅ 已深读',
+      '> **arXiv:** [2509.25370](https://arxiv.org/abs/2509.25370)',
+      '> **作者:** Kunlun Zhu, Zijia Liu',
+      '> **分类轴：** layer = cross_evaluation 为主、并伴随 L1 error 分诊和 L3 iterative 修复，是一段较长的分类说明。',
+      '> **角色定位：** 这是一篇 Agent-as-a-Judge 路线在错误归因任务上的具体实例，适合用作反例完整记录。',
+    ].join('\n');
+    const html = renderDoc(md);
+    expect(html).toContain('<div class="wide"><dt>分类轴</dt>');
+    expect(html).toContain('<div class="wide"><dt>角色定位</dt>');
+    expect(html).toContain('<div><dt>Created</dt><dd>2026-05-04</dd></div>');
+  });
   it('renders the Frame lede as a blockquote without mangling a bullet-meta header', () => {
     const md = '# 01 — Metadata Reasoner\n\n> Selecting tables from a big lake — vector search is noisy; an agent reasons over metadata to pick precisely.\n\n- **arXiv**: 2604.20144\n- **Axes**: data_kind = structured\n\n## Claims\n\n- a claim';
     const html = renderDoc(md);
