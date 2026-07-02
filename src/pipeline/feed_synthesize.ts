@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { digestId, digestSourceSlug } from '../sources/inbox.js';
-import { listNotes, nextNoteNumber } from '../state/note_index.js';
+import { listIntegratedNotes, nextNoteNumber } from '../state/note_index.js';
 import { parseNote, serializeNote, DEFAULT_FM } from '../state/zone.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
@@ -38,7 +38,7 @@ export async function feedSynthesize(ctx: RunContext): Promise<void> {
   const contradictionsPath = ctx.runDir.path('contradictions.md');
   ctx.contradictionsPath = contradictionsPath;
 
-  const zoneManifest = ctx.zoneManifest ?? listNotes(ctx.projectRoot)
+  const zoneManifest = ctx.zoneManifest ?? listIntegratedNotes(ctx.projectRoot)
     .sort((a, b) => a.num - b.num)
     .map((n) => `${String(n.num).padStart(2, '0')} ${n.zone}`)
     .join('\n');

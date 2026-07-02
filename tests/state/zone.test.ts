@@ -9,14 +9,14 @@ describe('note frontmatter', () => {
   });
 
   it('parses an existing frontmatter block', () => {
-    const src = '---\nzone: history\npin: true\nscore: 0.4\ndwell: 3\n---\n# T\n\nbody';
+    const src = '---\nzone: history\ntags:\n  - benchmark\npin: true\nscore: 0.4\ndwell: 3\n---\n# T\n\nbody';
     const { fm, body } = parseNote(src);
-    expect(fm).toEqual({ zone: 'history', pin: true, score: 0.4, dwell: 3 });
+    expect(fm).toEqual({ zone: 'history', tags: ['benchmark'], pin: true, score: 0.4, dwell: 3 });
     expect(body).toBe('# T\n\nbody');
   });
 
   it('round-trips serialize(parse(x))', () => {
-    const src = '---\nzone: buffer\npin: false\nscore: 0\ndwell: 1\n---\n# T\n\nbody\n';
+    const src = '---\nzone: pending\ntags: []\npin: false\nscore: 0\ndwell: 1\n---\n# T\n\nbody\n';
     const { fm, body } = parseNote(src);
     const out = serializeNote(fm, body);
     expect(parseNote(out).fm).toEqual(fm);

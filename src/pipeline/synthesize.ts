@@ -4,7 +4,7 @@ import { execa } from 'execa';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
-import { listNotes } from '../state/note_index.js';
+import { listIntegratedNotes } from '../state/note_index.js';
 
 const TIMEOUT_MS = 45 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -38,7 +38,7 @@ export async function synthesize(ctx: RunContext): Promise<void> {
   } else {
     referencesContext = '(no references/ directory — skip this section)';
   }
-  const zoneManifest = ctx.zoneManifest ?? listNotes(ctx.projectRoot)
+  const zoneManifest = ctx.zoneManifest ?? listIntegratedNotes(ctx.projectRoot)
     .sort((a, b) => a.num - b.num)
     .map((n) => `${String(n.num).padStart(2, '0')} ${n.zone}`)
     .join('\n');

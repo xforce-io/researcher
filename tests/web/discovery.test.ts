@@ -16,6 +16,7 @@ beforeAll(() => {
   mkdirSync(join(trace, 'notes/active'), { recursive: true });
   mkdirSync(join(trace, 'notes/buffer'), { recursive: true });
   mkdirSync(join(trace, 'notes/history'), { recursive: true });
+  mkdirSync(join(trace, 'notes/pending'), { recursive: true });
   mkdirSync(join(trace, 'papers'), { recursive: true });
   writeFileSync(join(trace, '.researcher/project.yaml'),
     'meta:\n  topic_oneline: triage traces\n  language: zh\n' +
@@ -30,6 +31,8 @@ beforeAll(() => {
     '---\nzone: buffer\npin: false\nscore: 0.4\ndwell: 1\n---\n# Buffer note');
   writeFileSync(join(trace, 'notes/history/01_history.md'),
     '---\nzone: history\npin: false\nscore: 0.1\ndwell: 4\n---\n# History note');
+  writeFileSync(join(trace, 'notes/pending/04_pending.md'),
+    '---\nzone: pending\ntags: []\npin: false\nscore: 0\ndwell: 0\n---\n# Pending note');
   writeFileSync(join(trace, 'report.md'), '# Report');
   writeFileSync(join(trace, 'papers/2401.00001.pdf'), '%PDF');
   writeFileSync(join(trace, '.researcher/state/seen.jsonl'),
@@ -60,7 +63,7 @@ describe('loadDashboard', () => {
     expect(trace.active).toBe(true);
     expect(trace.available).toBe(true);
     expect(trace.oneline).toBe('triage traces');
-    expect(trace.noteCount).toBe(3);     // zone notes; 00_landscape excluded
+    expect(trace.noteCount).toBe(3);     // integrated notes only; pending and 00_landscape excluded
     expect(trace.lastRun).toBe('2026-06-20T10:00:00Z');
     expect(trace.decisionCounts).toEqual({ 'deep-read': 1, skim: 1, reject: 0 });
     expect(decision.active).toBe(false);

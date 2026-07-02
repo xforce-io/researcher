@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { listNotes } from '../state/note_index.js';
+import { listIntegratedNotes } from '../state/note_index.js';
 import { parseNote, serializeNote } from '../state/zone.js';
 import { countCitations, scoreNote, assignZones } from './zoning.js';
 import * as gitops from '../git/ops.js';
@@ -18,7 +18,7 @@ function buildCorpus(projectRoot: string, noteAbsPaths: string[]): string {
 }
 
 export async function rebalance(ctx: RunContext): Promise<void> {
-  const notes = listNotes(ctx.projectRoot);
+  const notes = listIntegratedNotes(ctx.projectRoot);
   if (notes.length === 0) {
     ctx.zoneManifest = '(no notes yet)';
     return;
@@ -45,7 +45,7 @@ export async function rebalance(ctx: RunContext): Promise<void> {
       await gitops.move({ cwd: ctx.projectRoot, from: n.relPath, to: toRel });
       const { body } = parseNote(readFileSync(join(ctx.projectRoot, toRel), 'utf8'));
       writeFileSync(join(ctx.projectRoot, toRel), serializeNote(
-        { zone: a.to, pin: n.fm.pin, score: newScore, dwell: 0 }, body,
+        { zone: a.to, tags: n.fm.tags, pin: n.fm.pin, score: newScore, dwell: 0 }, body,
       ));
       summary.push(`- [${a.num}] ${n.filename}: ${a.from} → ${a.to} (score ${newScore.toFixed(3)})`);
       n.zone = a.to; // reflect for manifest
@@ -54,7 +54,7 @@ export async function rebalance(ctx: RunContext): Promise<void> {
       const { body } = parseNote(readFileSync(n.absPath, 'utf8'));
       const dwell = n.fm.pin ? n.fm.dwell : n.fm.dwell + 1;
       writeFileSync(n.absPath, serializeNote(
-        { zone: n.zone, pin: n.fm.pin, score: newScore, dwell }, body,
+        { zone: n.zone, tags: n.fm.tags, pin: n.fm.pin, score: newScore, dwell }, body,
       ));
     }
   }
