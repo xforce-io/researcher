@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from '../../src/web/server.js';
@@ -50,6 +50,35 @@ it('serves the dashboard at /', async () => {
   const res = await fetch(base + '/');
   expect(res.status).toBe(200);
   expect(await res.text()).toContain('/t/trace');
+});
+
+it('serves the library page', async () => {
+  const res = await fetch(base + '/library');
+  expect(res.status).toBe(200);
+  const html = await res.text();
+  expect(html).toContain('Library');
+  expect(html).toContain('Add paper');
+  expect(html).toContain('action="/library/add"');
+});
+
+it('adds a paper through the web library without duplicating arXiv ids', async () => {
+  const form = new URLSearchParams({ input: 'https://arxiv.org/abs/2401.12345v2', tags: 'survey' });
+  const first = await fetch(base + '/library/add', { method: 'POST', body: form, redirect: 'manual' });
+  expect(first.status).toBe(303);
+  expect(first.headers.get('location')).toBe('/library');
+
+  const dupe = new URLSearchParams({ input: '2401.12345', tags: 'benchmark' });
+  const second = await fetch(base + '/library/add', { method: 'POST', body: dupe, redirect: 'manual' });
+  expect(second.status).toBe(303);
+
+  const lines = readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n');
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain('paper_arxiv_2401_12345');
+
+  const page = await fetch(base + '/library');
+  const html = await page.text();
+  expect(html).toContain('paper_arxiv_2401_12345');
+  expect(html).toContain('benchmark');
 });
 
 it('serves a topic page', async () => {

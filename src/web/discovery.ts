@@ -7,6 +7,8 @@ import { readWatermark, type Watermark } from '../state/watermark.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
+import { PaperLibrary } from '../library/store.js';
+import type { Paper, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
 
 export interface TopicCard {
   slug: string;
@@ -44,8 +46,39 @@ export interface TopicView {
   docs: DocRef[];
   notes: NoteRef[];
   papers: { id: string; file: string }[];
+  relatedPapers?: LibraryPaperSummary[];
   seen: SeenEntry[];
   watermark: Watermark | null;
+}
+export interface LibraryTopicRef {
+  slug: string;
+  path: string;
+  active: boolean;
+  available: boolean;
+}
+export interface LibraryPaperSummary {
+  id: string;
+  displayTitle: string;
+  canonicalId: string;
+  sourceLabel: string;
+  tags: string[];
+  readStatus: PaperRead['status'] | 'unread';
+  linkedTopicCount: number;
+  integratedTopicCount: number;
+  updatedAt: string;
+  relation?: PaperRelation;
+}
+export interface LibraryView {
+  root: string;
+  topics: LibraryTopicRef[];
+  papers: LibraryPaperSummary[];
+}
+export interface LibraryPaperDetailView {
+  root: string;
+  paper: LibraryPaperSummary;
+  reads: PaperRead[];
+  links: PaperSurfaceLink[];
+  integrations: TopicIntegration[];
 }
 
 const slugOf = (p: string) => encodeURIComponent(p);
@@ -140,6 +173,68 @@ export function loadDashboard(root: string): DashboardModel {
   return { root, topics };
 }
 
+function libraryTopics(root: string): LibraryTopicRef[] {
+  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(root));
+  return manifest.topics.map((t) => {
+    const topicDir = join(root, t.path);
+    return { slug: slugOf(t.path), path: t.path, active: t.active, available: isAvailable(topicDir) };
+  });
+}
+
+function sourceLabel(paper: Paper): string {
+  if (paper.canonicalSource.kind === 'arxiv') return 'arXiv';
+  return 'URL';
+}
+
+function paperDisplayTitle(paper: Paper): string {
+  return paper.title ?? paper.canonicalSource.id;
+}
+
+function latestReadStatus(reads: PaperRead[]): LibraryPaperSummary['readStatus'] {
+  if (reads.length === 0) return 'unread';
+  return [...reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].status;
+}
+
+function summarizePaper(lib: PaperLibrary, paper: Paper, relation?: PaperRelation): LibraryPaperSummary {
+  const reads = lib.listReads(paper.id);
+  const links = lib.listLinks(paper.id).filter((l) => l.surfaceType === 'topic');
+  const integrations = lib.listIntegrations(paper.id);
+  return {
+    id: paper.id,
+    displayTitle: paperDisplayTitle(paper),
+    canonicalId: paper.canonicalSource.id,
+    sourceLabel: sourceLabel(paper),
+    tags: paper.tags,
+    readStatus: latestReadStatus(reads),
+    linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
+    integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
+    updatedAt: paper.updatedAt,
+    relation,
+  };
+}
+
+export function loadLibrary(root: string): LibraryView {
+  const lib = new PaperLibrary(root);
+  return {
+    root,
+    topics: libraryTopics(root),
+    papers: lib.listPapers().map((p) => summarizePaper(lib, p)),
+  };
+}
+
+export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDetailView | null {
+  const lib = new PaperLibrary(root);
+  const paper = lib.getPaper(paperId);
+  if (!paper) return null;
+  return {
+    root,
+    paper: summarizePaper(lib, paper),
+    reads: lib.listReads(paperId),
+    links: lib.listLinks(paperId),
+    integrations: lib.listIntegrations(paperId),
+  };
+}
+
 /**
  * Resolve a URL slug to its on-disk topic directory, but ONLY if the decoded
  * slug is a topic declared in the workspace manifest AND the resulting path
@@ -166,7 +261,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
   if (!available) {
     return {
       slug: slugOf(topic.path), path: topic.path, available: false, oneline: '', language: '',
-      sources: [], researchQuestions: [], docs: [], notes: [], papers: [], seen: [], watermark: null,
+      sources: [], researchQuestions: [], docs: [], notes: [], papers: [], relatedPapers: [], seen: [], watermark: null,
     };
   }
   const rDir = resolveProjectResearcherDir(topicDir);
@@ -178,12 +273,21 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     sources = py.sources.map(sourceSummary);
     rqs = py.research_questions;
   } catch { /* partial topic: leave config-derived fields empty */ }
+  const lib = new PaperLibrary(root);
+  const relatedPapers = lib.listLinks()
+    .filter((l) => l.surfaceType === 'topic' && l.surfaceId === topic.path)
+    .map((l) => {
+      const paper = lib.getPaper(l.paperId);
+      return paper ? summarizePaper(lib, paper, l.relation) : null;
+    })
+    .filter((p): p is LibraryPaperSummary => p !== null);
   return {
     slug: slugOf(topic.path), path: topic.path, available: true, oneline, language,
     sources, researchQuestions: rqs,
     docs: buildDocs(topicDir),
     notes: listNotes(topicDir),
     papers: listPdfs(topicDir),
+    relatedPapers,
     seen: readSeen(topicDir),
     watermark: readWatermark(join(rDir, 'state/watermark.json')),
   };

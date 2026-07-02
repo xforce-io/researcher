@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadDashboard, loadTopic } from '../../src/web/discovery.js';
+import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic } from '../../src/web/discovery.js';
+import { PaperLibrary } from '../../src/library/store.js';
 
 let root: string;
 beforeAll(() => {
@@ -40,6 +41,19 @@ beforeAll(() => {
     JSON.stringify({ id: 'arxiv:2', source: 'arxiv', first_seen_run: 'r1', decision: 'skim', reason: 'y' }) + '\n');
   writeFileSync(join(trace, '.researcher/state/watermark.json'),
     JSON.stringify({ last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' }));
+
+  const lib = new PaperLibrary(root, { now: () => '2026-07-02T00:00:00Z' });
+  lib.upsertPaper({
+    id: 'paper_arxiv_2401_12345',
+    canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
+    sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
+    identifiers: { arxiv: '2401.12345' },
+    title: 'Reusable Paper Cards',
+    tags: ['agent', 'planning'],
+  });
+  lib.upsertRead({ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md' });
+  lib.upsertLink({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', rationale: 'matches RQ1' });
+  lib.upsertIntegration({ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', notePath: 'trace/notes/active/03_active.md', zone: 'active', integratedAt: '2026-07-02T01:00:00Z', summary: 'used in landscape' });
 
   // dormant topic "decision" — directory exists but no .researcher/
   mkdirSync(join(root, 'decision'), { recursive: true });
@@ -99,6 +113,15 @@ describe('loadTopic', () => {
     expect(v.notes[2].pin).toBe(true);
     expect(v.notes[2].score).toBe(0.8);
     expect(v.papers).toEqual([{ id: '2401.00001', file: 'papers/2401.00001.pdf' }]);
+    expect(v.relatedPapers).toEqual([
+      expect.objectContaining({
+        id: 'paper_arxiv_2401_12345',
+        displayTitle: 'Reusable Paper Cards',
+        tags: ['agent', 'planning'],
+        relation: 'relevant',
+        integratedTopicCount: 1,
+      }),
+    ]);
     expect(v.seen).toHaveLength(2);
     expect(v.watermark?.last_run_id).toBe('r1');
     expect(v.sources[0].kind).toBe('arxiv');
@@ -118,5 +141,31 @@ describe('loadTopic', () => {
     expect(v.available).toBe(true);
     expect(v.slug).toBe('feeds%2Fai-safety');
     expect(v.path).toBe('feeds/ai-safety');
+  });
+});
+
+describe('loadLibrary', () => {
+  it('loads workspace papers with shared summary fields', () => {
+    const v = loadLibrary(root);
+    expect(v.papers).toEqual([
+      expect.objectContaining({
+        id: 'paper_arxiv_2401_12345',
+        displayTitle: 'Reusable Paper Cards',
+        sourceLabel: 'arXiv',
+        tags: ['agent', 'planning'],
+        readStatus: 'read',
+        linkedTopicCount: 1,
+        integratedTopicCount: 1,
+      }),
+    ]);
+    expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
+  });
+
+  it('loads a single paper detail with reads and relations', () => {
+    const v = loadLibraryPaper(root, 'paper_arxiv_2401_12345')!;
+    expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
+    expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
+    expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
+    expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
   });
 });
