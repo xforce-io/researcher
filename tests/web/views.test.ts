@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, renderDoc, renderDashboard, renderLibrary, renderLibraryPaper, renderTopic, tocTitle } from '../../src/web/views.js';
+import { escapeHtml, renderDoc, renderDashboard, renderLibrary, renderTopic, tocTitle } from '../../src/web/views.js';
 import type { DashboardModel, LibraryPaperDetailView, LibraryView, TopicView } from '../../src/web/discovery.js';
 
 describe('escapeHtml', () => {
@@ -218,21 +218,26 @@ describe('renderLibrary', () => {
       integratedTopicCount: 1,
       updatedAt: '2026-07-02T00:00:00Z',
     }],
+    selectedPaper: null,
   };
 
-  it('renders a prominent add paper form and shared paper cards', () => {
+  it('renders a prominent add paper modal trigger and shared paper cards', () => {
     const html = renderLibrary(library);
     expect(html).toContain('Library');
     expect(html).toContain('Add paper');
+    expect(html).toContain('id="add-paper-modal"');
+    expect(html).toContain('data-open-add-paper');
+    expect(html).toContain('data-close-add-paper');
     expect(html).toContain('action="/library/add"');
     expect(html).toContain('name="input"');
     expect(html).toContain('paper-card');
     expect(html).toContain('Reusable Paper Cards');
     expect(html).toContain('tag-chip');
-    expect(html).toContain('/library/p/paper_arxiv_2401_12345');
+    expect(html).toContain('/library?paper=paper_arxiv_2401_12345');
+    expect(html.match(/<button[^>]*data-open-add-paper/g)).toHaveLength(1);
   });
 
-  it('renders a single paper detail using the same paper card component', () => {
+  it('renders selected paper detail inside the unified library workspace', () => {
     const detail: LibraryPaperDetailView = {
       root: '/ws',
       paper: library.papers[0],
@@ -240,7 +245,10 @@ describe('renderLibrary', () => {
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
     };
-    const html = renderLibraryPaper(detail);
+    const html = renderLibrary({ ...library, selectedPaper: detail });
+    expect(html).toContain('Library');
+    expect(html).toContain('Add paper');
+    expect(html).toContain('Selected paper');
     expect(html).toContain('paper-card detail');
     expect(html).toContain('Reads');
     expect(html).toContain('Relations');

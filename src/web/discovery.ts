@@ -72,6 +72,7 @@ export interface LibraryView {
   root: string;
   topics: LibraryTopicRef[];
   papers: LibraryPaperSummary[];
+  selectedPaper: LibraryPaperDetailView | null;
 }
 export interface LibraryPaperDetailView {
   root: string;
@@ -213,12 +214,14 @@ function summarizePaper(lib: PaperLibrary, paper: Paper, relation?: PaperRelatio
   };
 }
 
-export function loadLibrary(root: string): LibraryView {
+export function loadLibrary(root: string, selectedPaperId?: string | null): LibraryView {
   const lib = new PaperLibrary(root);
+  const selectedPaper = selectedPaperId ? loadLibraryPaper(root, selectedPaperId) : null;
   return {
     root,
     topics: libraryTopics(root),
     papers: lib.listPapers().map((p) => summarizePaper(lib, p)),
+    selectedPaper,
   };
 }
 

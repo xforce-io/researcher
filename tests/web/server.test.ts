@@ -79,6 +79,18 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   const html = await page.text();
   expect(html).toContain('paper_arxiv_2401_12345');
   expect(html).toContain('benchmark');
+
+  const selected = await fetch(base + '/library?paper=paper_arxiv_2401_12345');
+  expect(selected.status).toBe(200);
+  const selectedHtml = await selected.text();
+  expect(selectedHtml).toContain('Selected paper');
+  expect(selectedHtml).toContain('paper-card detail');
+});
+
+it('redirects legacy paper detail URLs back to the unified library workspace', async () => {
+  const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
+  expect(res.status).toBe(303);
+  expect(res.headers.get('location')).toBe('/library?paper=paper_arxiv_2401_12345');
 });
 
 it('serves a topic page', async () => {

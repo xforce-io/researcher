@@ -26,8 +26,9 @@ Papers are workspace-level objects. Topics are one possible surface that can lin
 ## Information Architecture
 
 - `/` remains the workspace dashboard.
-- `/library` is the workspace paper library.
-- `/library/p/:paperId` is a single-paper detail page.
+- `/library` is the single paper-library workspace entry.
+- `/library?paper=:paperId` selects one paper inside the Library workspace and shows its preview/read/tag/relation details in the same shell.
+- `/library/p/:paperId` is only a compatibility deep link and redirects back to `/library?paper=:paperId`.
 - `/t/:topic` remains the topic workspace and shows related papers in a separate panel.
 
 ## Shared Paper Components
@@ -42,7 +43,7 @@ Web rendering should use shared paper view-models and renderer helpers for:
 - relation state when viewed from a topic;
 - compact relation preview.
 
-Library list, Library detail, and Topic related-paper panels should not each invent their own single-paper presentation.
+Library list, Library selected-paper detail, and Topic related-paper panels should not each invent their own single-paper presentation.
 
 ## Add Paper Flow
 
@@ -71,7 +72,8 @@ These papers are grouped visually by relation but remain separate from integrate
 - Web console has a top-level Library page.
 - `Add paper` is visually prominent and persists through `PaperLibrary`.
 - Duplicate arXiv add does not create duplicate paper rows.
-- Library page, paper detail page, and topic page reuse shared paper rendering helpers.
+- Library page, Library selected-paper panel, and topic page reuse shared paper rendering helpers.
+- Topic related-paper links return to the unified Library workspace instead of a separate paper workspace.
 - Topic page related papers are separate from `Active | Buffer | History`.
 - Existing dashboard/topic note counts remain based on integrated notes only.
 - Manual E2E verifies add, duplicate add, Library render, and Topic related-paper render.

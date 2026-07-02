@@ -174,7 +174,7 @@ function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'd
   const counts = `${p.readStatus} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   return `<article class="paper-card ${variant}">` +
     `<div class="paper-main">` +
-      `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<a class="paper-title-link" href="/library?paper=${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
     `</div>` +
     `<span class="source-badge">${escapeHtml(p.sourceLabel)}</span>` +
@@ -189,30 +189,36 @@ export function renderLibrary(v: LibraryView): string {
     .map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`)
     .join('');
   const papers = v.papers.map((p) => renderPaperCard(p)).join('');
+  const addPaperModal = `<div id="add-paper-modal" class="modal-backdrop" hidden>` +
+    `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
+      `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
+      `<button class="icon-button" type="button" data-close-add-paper aria-label="Close">x</button></div>` +
+      `<form class="add-paper-form" action="/library/add" method="post">` +
+        `<label>Paper source<input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
+        `<label>Tags<input name="tags" placeholder="survey, benchmark"></label>` +
+        `<label>Topic context<select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
+        `<button class="primary" type="submit">Add paper</button>` +
+      `</form>` +
+    `</div>` +
+  `</div>`;
   const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.root)}</span><a class="library-nav active" href="/library">Library</a></header>` +
-    `<main class="library-shell">` +
+    `<main class="library-shell${v.selectedPaper ? '' : ' no-selection'}">` +
       `<section class="library-main">` +
         `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic relations.</p></div>` +
-        `<a class="primary-link" href="#add-paper">Add paper</a></div>` +
+        `<button class="primary" type="button" data-open-add-paper>Add paper</button></div>` +
         `<div class="library-filters"><span class="active">All</span><span>Unread</span><span>Read</span><span>Linked</span><span>Integrated</span></div>` +
         `<div class="paper-list-grid">` +
           `<div class="paper-card paper-header"><span>Paper</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
           `${papers || '<p class="empty-state">No papers yet.</p>'}` +
         `</div>` +
       `</section>` +
-      `<aside class="library-side"><form id="add-paper" class="add-paper-form" action="/library/add" method="post">` +
-        `<h2>Add paper</h2>` +
-        `<label>Paper source<input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
-        `<label>Tags<input name="tags" placeholder="survey, benchmark"></label>` +
-        `<label>Topic context<select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
-        `<button class="primary" type="submit">Add paper</button>` +
-      `</form></aside>` +
-    `</main>`;
+      `${v.selectedPaper ? `<aside class="library-side">${renderPaperDetailPanel(v.selectedPaper)}</aside>` : ''}` +
+    `</main>${addPaperModal}<script>${LIBRARY_JS}</script>`;
   return page('Library · researcher', body);
 }
 
-export function renderLibraryPaper(v: LibraryPaperDetailView): string {
+function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
   const reads = v.reads.map((r) =>
     `<li><span class="source-badge">${escapeHtml(r.status)}</span> <span class="mono">${escapeHtml(r.artifactPath ?? r.id)}</span></li>`
   ).join('');
@@ -228,19 +234,50 @@ export function renderLibraryPaper(v: LibraryPaperDetailView): string {
     ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
+  return `<section class="selected-paper">` +
+    `<h2>Selected paper</h2>` +
+    `${renderPaperCard(v.paper, 'detail')}` +
+    `<div class="detail-grid inline">` +
+      `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
+      `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +
+      `<div class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></div>` +
+      `<div class="detail-panel"><h2>Mini map</h2>${miniMap}</div>` +
+    `</div>` +
+  `</section>`;
+}
+
+export function renderLibraryPaper(v: LibraryPaperDetailView): string {
   const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<a class="library-nav" href="/library">Library</a><span class="root">${escapeHtml(v.paper.id)}</span></header>` +
     `<main class="paper-detail-shell">` +
-      `<section>${renderPaperCard(v.paper, 'detail')}</section>` +
-      `<section class="detail-grid">` +
-        `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
-        `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +
-        `<div class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></div>` +
-        `<div class="detail-panel"><h2>Mini map</h2>${miniMap}</div>` +
-      `</section>` +
+      `${renderPaperDetailPanel(v)}` +
     `</main>`;
   return page(`${v.paper.displayTitle} · researcher`, body);
 }
+
+const LIBRARY_JS = `
+const addPaperModal = document.getElementById('add-paper-modal');
+const openAddPaper = document.querySelector('[data-open-add-paper]');
+const closeAddPaper = document.querySelector('[data-close-add-paper]');
+function showAddPaper() {
+  if (!addPaperModal) return;
+  addPaperModal.hidden = false;
+  addPaperModal.querySelector('input[name="input"]')?.focus();
+}
+function hideAddPaper() {
+  if (!addPaperModal) return;
+  addPaperModal.hidden = true;
+  openAddPaper?.focus();
+}
+openAddPaper?.addEventListener('click', showAddPaper);
+closeAddPaper?.addEventListener('click', hideAddPaper);
+addPaperModal?.addEventListener('click', (e) => {
+  if (e.target === addPaperModal) hideAddPaper();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && addPaperModal && !addPaperModal.hidden) hideAddPaper();
+});
+`;
 
 // ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
 function fmtDate(iso: string | null): string {
