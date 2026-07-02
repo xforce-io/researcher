@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, renderDoc, renderDashboard, renderTopic, tocTitle } from '../../src/web/views.js';
-import type { DashboardModel, TopicView } from '../../src/web/discovery.js';
+import { escapeHtml, renderDoc, renderDashboard, renderLibrary, renderLibraryPaper, renderTopic, tocTitle } from '../../src/web/views.js';
+import type { DashboardModel, LibraryPaperDetailView, LibraryView, TopicView } from '../../src/web/discovery.js';
 
 describe('escapeHtml', () => {
   it('escapes angle brackets and ampersands', () => {
@@ -153,6 +153,18 @@ describe('renderTopic', () => {
       { path: 'notes/history/03_history.md', num: '03', title: 'History paper', zone: 'history', pin: false, score: 0.12, dwell: 4 },
     ],
     papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
+    relatedPapers: [{
+      id: 'paper_arxiv_2401_12345',
+      displayTitle: 'Reusable Paper Cards',
+      canonicalId: 'arxiv:2401.12345',
+      sourceLabel: 'arXiv',
+      tags: ['agent', 'planning'],
+      readStatus: 'read',
+      linkedTopicCount: 1,
+      integratedTopicCount: 1,
+      updatedAt: '2026-07-02T00:00:00Z',
+      relation: 'relevant',
+    }],
     seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
     watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },
   };
@@ -175,6 +187,10 @@ describe('renderTopic', () => {
     expect(html).toContain('class="meta-list"');        // Sources/Questions use the styled list
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
     expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
+    expect(html).toContain('Related papers');
+    expect(html).toContain('paper-card compact');
+    expect(html).toContain('Reusable Paper Cards');
+    expect(html).toContain('tag-chip');
     expect(html).not.toContain('<table');              // no narrow 3-col table
   });
   it('shows an unavailable notice when topic has no .researcher', () => {
@@ -184,6 +200,52 @@ describe('renderTopic', () => {
   it('uses an explicit empty state when there are no PDFs', () => {
     const html = renderTopic({ ...v, papers: [] });
     expect(html).toContain('No PDFs');
+  });
+});
+
+describe('renderLibrary', () => {
+  const library: LibraryView = {
+    root: '/ws',
+    topics: [{ slug: 'trace', path: 'trace', active: true, available: true }],
+    papers: [{
+      id: 'paper_arxiv_2401_12345',
+      displayTitle: 'Reusable Paper Cards',
+      canonicalId: 'arxiv:2401.12345',
+      sourceLabel: 'arXiv',
+      tags: ['agent', 'planning'],
+      readStatus: 'read',
+      linkedTopicCount: 1,
+      integratedTopicCount: 1,
+      updatedAt: '2026-07-02T00:00:00Z',
+    }],
+  };
+
+  it('renders a prominent add paper form and shared paper cards', () => {
+    const html = renderLibrary(library);
+    expect(html).toContain('Library');
+    expect(html).toContain('Add paper');
+    expect(html).toContain('action="/library/add"');
+    expect(html).toContain('name="input"');
+    expect(html).toContain('paper-card');
+    expect(html).toContain('Reusable Paper Cards');
+    expect(html).toContain('tag-chip');
+    expect(html).toContain('/library/p/paper_arxiv_2401_12345');
+  });
+
+  it('renders a single paper detail using the same paper card component', () => {
+    const detail: LibraryPaperDetailView = {
+      root: '/ws',
+      paper: library.papers[0],
+      reads: [{ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: 'read.md', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
+    };
+    const html = renderLibraryPaper(detail);
+    expect(html).toContain('paper-card detail');
+    expect(html).toContain('Reads');
+    expect(html).toContain('Relations');
+    expect(html).toContain('Mini map');
+    expect(html).toContain('trace');
   });
 });
 

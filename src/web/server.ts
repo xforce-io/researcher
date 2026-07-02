@@ -2,11 +2,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadDashboard, loadTopic, resolveTopicDir } from './discovery.js';
-import { renderDashboard, renderTopic, renderDoc } from './views.js';
+import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, resolveTopicDir } from './discovery.js';
+import { renderDashboard, renderLibrary, renderLibraryPaper, renderTopic, renderDoc } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
+import { parseTags, runLibraryAdd } from '../commands/library.js';
 
 export interface ServeOptions { root: string; port: number; registry?: TaskRegistry; }
 
@@ -15,6 +16,11 @@ const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
 function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
   res.writeHead(status, { 'content-type': type });
   res.end(body);
+}
+
+function redirect(res: ServerResponse, location: string): void {
+  res.writeHead(303, { location });
+  res.end();
 }
 
 export async function startServer(opts: ServeOptions): Promise<{ port: number; close: () => Promise<void> }> {
@@ -42,6 +48,34 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
   // GET /
   if (req.method === 'GET' && path === '/') {
     return send(res, 200, 'text/html; charset=utf-8', renderDashboard(loadDashboard(root)));
+  }
+  // GET /library
+  if (req.method === 'GET' && path === '/library') {
+    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root)));
+  }
+  // POST /library/add
+  if (req.method === 'POST' && path === '/library/add') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const input = form.get('input')?.trim() ?? '';
+    if (!input) return send(res, 400, 'text/plain', 'missing paper source');
+    try {
+      runLibraryAdd({
+        cwd: root,
+        input,
+        tags: form.has('tags') ? parseTags(form.get('tags') ?? '') : undefined,
+        write: () => {},
+      });
+    } catch (err) {
+      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
+    return redirect(res, '/library');
+  }
+  const lm = path.match(/^\/library\/p\/([^/]+)$/);
+  if (req.method === 'GET' && lm) {
+    const view = loadLibraryPaper(root, decodeURIComponent(lm[1]));
+    if (!view) return send(res, 404, 'text/plain', 'unknown paper');
+    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(view));
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {
@@ -108,4 +142,20 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
   }
 
   send(res, 404, 'text/plain', 'not found');
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => {
+      data += chunk;
+      if (data.length > 1024 * 1024) {
+        req.destroy();
+        reject(new Error('request body too large'));
+      }
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
 }

@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { DashboardModel, TopicCard, TopicView } from './discovery.js';
+import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView } from './discovery.js';
 import type { Zone } from '../state/zone.js';
 
 export function escapeHtml(s: string): string {
@@ -158,6 +158,90 @@ function page(title: string, body: string): string {
     `<body>${body}</body></html>`;
 }
 
+function fmtShortDate(iso: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
+  return m ? m[1] : escapeHtml(iso);
+}
+
+function renderTagChips(tags: string[]): string {
+  return tags.length
+    ? `<span class="paper-tags">${tags.map((t) => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</span>`
+    : '<span class="muted">no tags</span>';
+}
+
+function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'detail' = 'row'): string {
+  const relation = p.relation ? `<span class="paper-relation">${escapeHtml(p.relation)}</span>` : '';
+  const counts = `${p.readStatus} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
+  return `<article class="paper-card ${variant}">` +
+    `<div class="paper-main">` +
+      `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
+    `</div>` +
+    `<span class="source-badge">${escapeHtml(p.sourceLabel)}</span>` +
+    `<div class="paper-tag-cell">${renderTagChips(p.tags)}</div>` +
+    `<div class="paper-state">${escapeHtml(counts)}${relation}</div>` +
+    `<div class="paper-updated">${fmtShortDate(p.updatedAt)}</div>` +
+  `</article>`;
+}
+
+export function renderLibrary(v: LibraryView): string {
+  const topicOptions = v.topics
+    .map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`)
+    .join('');
+  const papers = v.papers.map((p) => renderPaperCard(p)).join('');
+  const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
+    `<span class="root">${escapeHtml(v.root)}</span><a class="library-nav active" href="/library">Library</a></header>` +
+    `<main class="library-shell">` +
+      `<section class="library-main">` +
+        `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic relations.</p></div>` +
+        `<a class="primary-link" href="#add-paper">Add paper</a></div>` +
+        `<div class="library-filters"><span class="active">All</span><span>Unread</span><span>Read</span><span>Linked</span><span>Integrated</span></div>` +
+        `<div class="paper-list-grid">` +
+          `<div class="paper-card paper-header"><span>Paper</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
+          `${papers || '<p class="empty-state">No papers yet.</p>'}` +
+        `</div>` +
+      `</section>` +
+      `<aside class="library-side"><form id="add-paper" class="add-paper-form" action="/library/add" method="post">` +
+        `<h2>Add paper</h2>` +
+        `<label>Paper source<input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
+        `<label>Tags<input name="tags" placeholder="survey, benchmark"></label>` +
+        `<label>Topic context<select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
+        `<button class="primary" type="submit">Add paper</button>` +
+      `</form></aside>` +
+    `</main>`;
+  return page('Library · researcher', body);
+}
+
+export function renderLibraryPaper(v: LibraryPaperDetailView): string {
+  const reads = v.reads.map((r) =>
+    `<li><span class="source-badge">${escapeHtml(r.status)}</span> <span class="mono">${escapeHtml(r.artifactPath ?? r.id)}</span></li>`
+  ).join('');
+  const links = v.links.map((l) =>
+    `<li><b>${escapeHtml(l.surfaceId)}</b> <span class="paper-relation">${escapeHtml(l.relation)}</span></li>`
+  ).join('');
+  const integrations = v.integrations.map((i) =>
+    `<li><b>${escapeHtml(i.topicId)}</b> ${i.zone ? `<span class="source-badge">${escapeHtml(i.zone)}</span>` : ''} ` +
+    `<span class="mono">${escapeHtml(i.notePath ?? i.integratedAt)}</span></li>`
+  ).join('');
+  const firstLink = v.links.find((l) => l.surfaceType === 'topic');
+  const miniMap = firstLink
+    ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
+      `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
+    : '<p class="muted">No topic relation yet.</p>';
+  const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
+    `<a class="library-nav" href="/library">Library</a><span class="root">${escapeHtml(v.paper.id)}</span></header>` +
+    `<main class="paper-detail-shell">` +
+      `<section>${renderPaperCard(v.paper, 'detail')}</section>` +
+      `<section class="detail-grid">` +
+        `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
+        `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +
+        `<div class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></div>` +
+        `<div class="detail-panel"><h2>Mini map</h2>${miniMap}</div>` +
+      `</section>` +
+    `</main>`;
+  return page(`${v.paper.displayTitle} · researcher`, body);
+}
+
 // ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
 function fmtDate(iso: string | null): string {
   if (!iso) return 'never run';
@@ -205,7 +289,7 @@ export function renderDashboard(m: DashboardModel): string {
       `${oneline}${foot}</div>`;
   }).join('');
   const body = `<header class="topbar"><span class="brand">researcher</span>` +
-    `<span class="root">${escapeHtml(m.root)}</span></header>` +
+    `<span class="root">${escapeHtml(m.root)}</span><a class="library-nav" href="/library">Library</a></header>` +
     `<main class="grid">${cards || '<p class="empty-state">No topics in manifest.</p>'}</main>`;
   return page('researcher · workspace', body);
 }
@@ -257,6 +341,8 @@ export function renderTopic(
   const wm = v.watermark
     ? `last run ${fmtDate(v.watermark.last_run_completed_at)} · <span class="mono">${escapeHtml(v.watermark.last_run_id)}</span>`
     : 'never run';
+  const related = v.relatedPapers ?? [];
+  const relatedRows = related.map((p) => renderPaperCard(p, 'compact')).join('');
 
   const runAttrs = activeRun
     ? ` data-active-task="${escapeHtml(activeRun.taskId)}" data-started-at="${activeRun.startedAt}"`
@@ -279,7 +365,7 @@ export function renderTopic(
     `<span class="root">${escapeHtml(v.path)}</span>` +
     `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
     `${runWrap}</header>` +
-    `<main class="three-col" id="cols">` +
+    `<main class="three-col${related.length ? ' right-open' : ''}" id="cols" data-default-right-open="${related.length ? '1' : '0'}">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3>${noteGroups}` : '') +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li class="muted">No PDFs</li>'}</ul></aside>` +
@@ -288,6 +374,7 @@ export function renderTopic(
       `<aside class="right" id="right-panel"><h3>About</h3>` +
         `<p class="about">${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'}` +
         `${v.language ? ` <span class="lang">${escapeHtml(v.language)}</span>` : ''}</p>` +
+        (related.length ? `<h3>Related papers <span class="h3-count">${related.length}</span></h3><div class="related-papers">${relatedRows}</div>` : '') +
         `<h3>Sources</h3><ul class="meta-list">${sourceList || '<li>—</li>'}</ul>` +
         `<h3>Questions</h3><ul class="meta-list">${rqList || '<li>—</li>'}</ul>` +
         `<h3>State</h3><p class="state">${wm}</p>` +
@@ -448,7 +535,8 @@ function applyRightOpen(open) {
   if (cols) cols.classList.toggle('right-open', open);
   if (rightToggle) rightToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
-applyRightOpen(localStorage.getItem(RIGHT_OPEN_KEY) === '1');
+const savedRightOpen = localStorage.getItem(RIGHT_OPEN_KEY);
+applyRightOpen(savedRightOpen === null ? cols?.dataset.defaultRightOpen === '1' : savedRightOpen === '1');
 if (rightToggle) rightToggle.addEventListener('click', () => {
   const open = !(cols && cols.classList.contains('right-open'));
   applyRightOpen(open);
