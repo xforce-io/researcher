@@ -154,7 +154,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   padding:5px 10px;
 }
 .library-nav.active { border-color:var(--accent); }
-.primary-link, .primary {
+.primary {
   display:inline-flex; align-items:center; justify-content:center;
   min-height:34px;
   padding:0 13px;
@@ -165,14 +165,17 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   font:650 13px var(--sans);
   cursor:pointer;
 }
-.primary-link:hover { background:var(--accent-ink); text-decoration:none; }
+.primary:hover { background:var(--accent-ink); text-decoration:none; }
 
 /* ── workspace library ─────────────────────────────── */
 .library-shell {
   display:grid;
-  grid-template-columns:minmax(0, 1fr) 340px;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 340px);
   gap:18px;
   padding:22px;
+}
+.library-shell.no-selection {
+  grid-template-columns:1fr;
 }
 .library-main, .library-side, .paper-detail-shell { min-width:0; }
 .library-head {
@@ -288,21 +291,66 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   color:var(--ink-soft);
   font-size:13px;
 }
-.add-paper-form, .detail-panel {
+.detail-panel {
   background:var(--surface);
   border:1px solid var(--line);
   border-radius:9px;
   padding:15px;
 }
-.add-paper-form h2, .detail-panel h2 {
+.detail-panel h2 {
   margin:0 0 10px;
   font-size:15px;
   line-height:1.25;
 }
+.modal-backdrop {
+  position:fixed;
+  inset:0;
+  display:grid;
+  place-items:start center;
+  padding:72px 18px 18px;
+  background:rgba(35, 33, 27, .28);
+  z-index:80;
+}
+.modal-backdrop[hidden] { display:none; }
+.modal {
+  width:min(620px, 100%);
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  box-shadow:0 24px 60px -24px rgba(35,33,27,.55);
+  padding:18px;
+}
+.modal-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.modal-head h2 {
+  margin:0;
+  font-size:20px;
+  line-height:1.2;
+}
+.icon-button {
+  width:32px;
+  height:32px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:var(--paper);
+  color:var(--ink-soft);
+  font:700 14px var(--mono);
+  cursor:pointer;
+}
+.icon-button:hover { border-color:var(--accent); color:var(--accent-ink); }
+.add-paper-form {
+  display:grid;
+  gap:11px;
+}
 .add-paper-form label {
   display:grid;
   gap:5px;
-  margin:0 0 10px;
+  margin:0;
   color:var(--ink-soft);
   font:650 12px var(--sans);
 }
@@ -316,6 +364,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   padding:0 9px;
   font:14px var(--sans);
 }
+.add-paper-form .primary { justify-self:start; }
 .related-papers { display:grid; gap:2px; }
 .paper-detail-shell { padding:22px; }
 .detail-grid {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic } from '../../src/web/discovery.js';
+import { loadDashboard, loadLibrary, loadTopic } from '../../src/web/discovery.js';
 import { PaperLibrary } from '../../src/library/store.js';
 
 let root: string;
@@ -158,11 +158,13 @@ describe('loadLibrary', () => {
         integratedTopicCount: 1,
       }),
     ]);
+    expect(v.selectedPaper).toBeNull();
     expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
   });
 
-  it('loads a single paper detail with reads and relations', () => {
-    const v = loadLibraryPaper(root, 'paper_arxiv_2401_12345')!;
+  it('loads a selected paper detail with reads and relations', () => {
+    const library = loadLibrary(root, 'paper_arxiv_2401_12345');
+    const v = library.selectedPaper!;
     expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);

@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, resolveTopicDir } from './discovery.js';
-import { renderDashboard, renderLibrary, renderLibraryPaper, renderTopic, renderDoc } from './views.js';
+import { loadDashboard, loadLibrary, loadTopic, resolveTopicDir } from './discovery.js';
+import { renderDashboard, renderLibrary, renderTopic, renderDoc } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
@@ -51,7 +51,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
   }
   // GET /library
   if (req.method === 'GET' && path === '/library') {
-    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root)));
+    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, url.searchParams.get('paper'))));
   }
   // POST /library/add
   if (req.method === 'POST' && path === '/library/add') {
@@ -73,9 +73,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
   }
   const lm = path.match(/^\/library\/p\/([^/]+)$/);
   if (req.method === 'GET' && lm) {
-    const view = loadLibraryPaper(root, decodeURIComponent(lm[1]));
-    if (!view) return send(res, 404, 'text/plain', 'unknown paper');
-    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(view));
+    return redirect(res, `/library?paper=${encodeURIComponent(decodeURIComponent(lm[1]))}`);
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {
