@@ -22,6 +22,45 @@ methodology.command('install').action(async () => (await import('./commands/meth
 methodology.command('show').action(async () => { await (await import('./commands/methodology.js')).runMethodologyShow(); });
 methodology.command('edit <name>').action(async (name: string) => (await import('./commands/methodology.js')).runMethodologyEdit(name));
 
+const library = program.command('library').description('Manage the workspace paper library');
+library
+  .command('add <input>')
+  .description('Add or update a paper in the workspace library')
+  .option('--tags <tags>', 'comma-separated paper-level tags')
+  .action(async (input: string, opts: { tags?: string }) => {
+    const { parseTags, runLibraryAdd } = await import('./commands/library.js');
+    runLibraryAdd({ input, cwd: process.cwd(), tags: opts.tags === undefined ? undefined : parseTags(opts.tags) });
+  });
+library
+  .command('list')
+  .description('List workspace library papers')
+  .action(async () => {
+    const { runLibraryList } = await import('./commands/library.js');
+    runLibraryList({ cwd: process.cwd() });
+  });
+library
+  .command('link <paper-id>')
+  .description('Link a library paper to a topic surface')
+  .requiredOption('--topic <topic>', 'topic id/path')
+  .option('--relation <relation>', 'candidate, relevant, integrated, rejected, or archived', 'candidate')
+  .option('--rationale <text>', 'short reason for the relation')
+  .action(async (paperId: string, opts: { topic: string; relation: string; rationale?: string }) => {
+    const { parseRelation, runLibraryLink } = await import('./commands/library.js');
+    runLibraryLink({ paperId, cwd: process.cwd(), topic: opts.topic, relation: parseRelation(opts.relation), rationale: opts.rationale });
+  });
+library
+  .command('integrate <paper-id>')
+  .description('Record that a library paper has been integrated into a topic')
+  .requiredOption('--topic <topic>', 'topic id/path')
+  .option('--note <path>', 'integrated note path')
+  .option('--zone <zone>', 'active, buffer, or history')
+  .option('--summary <text>', 'short integration summary')
+  .action(async (paperId: string, opts: { topic: string; note?: string; zone?: string; summary?: string }) => {
+    const { runLibraryIntegrate } = await import('./commands/library.js');
+    const zone = parseZone(opts.zone);
+    runLibraryIntegrate({ paperId, cwd: process.cwd(), topic: opts.topic, notePath: opts.note, zone, summary: opts.summary });
+  });
+
 program
   .command('add <input>')
   .description('Manually add a paper (arxiv id or http(s) URL) to the current topic')
@@ -89,3 +128,9 @@ program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exitCode = 1;
 });
+
+function parseZone(raw: string | undefined): 'active' | 'buffer' | 'history' | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === 'active' || raw === 'buffer' || raw === 'history') return raw;
+  throw new Error(`invalid zone: ${raw}. expected one of active, buffer, history`);
+}
