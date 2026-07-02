@@ -77,6 +77,7 @@ export interface LibraryView {
 export interface LibraryPaperDetailView {
   root: string;
   paper: LibraryPaperSummary;
+  topics: LibraryTopicRef[];
   reads: PaperRead[];
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
@@ -188,7 +189,11 @@ function sourceLabel(paper: Paper): string {
 }
 
 function paperDisplayTitle(paper: Paper): string {
-  return paper.title ?? paper.canonicalSource.id;
+  if (paper.title) return paper.title;
+  if (paper.canonicalSource.kind === 'arxiv') {
+    return `arXiv ${paper.identifiers.arxiv ?? paper.canonicalSource.id.replace(/^arxiv:/, '')}`;
+  }
+  return paper.identifiers.url ?? paper.canonicalSource.url ?? paper.canonicalSource.id.replace(/^url:/, '');
 }
 
 function latestReadStatus(reads: PaperRead[]): LibraryPaperSummary['readStatus'] {
@@ -232,6 +237,7 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   return {
     root,
     paper: summarizePaper(lib, paper),
+    topics: libraryTopics(root),
     reads: lib.listReads(paperId),
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),

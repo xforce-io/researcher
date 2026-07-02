@@ -162,10 +162,24 @@ describe('loadLibrary', () => {
     expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
   });
 
+  it('uses a readable arXiv fallback title when metadata title is missing', () => {
+    const lib = new PaperLibrary(root, { now: () => '2026-07-02T00:00:00Z' });
+    lib.upsertPaper({
+      id: 'paper_arxiv_2606_29957',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2606.29957', url: 'https://arxiv.org/abs/2606.29957' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2606.29957', url: 'https://arxiv.org/abs/2606.29957' }],
+      identifiers: { arxiv: '2606.29957' },
+      tags: [],
+    });
+    const paper = loadLibrary(root).papers.find((p) => p.id === 'paper_arxiv_2606_29957')!;
+    expect(paper.displayTitle).toBe('arXiv 2606.29957');
+  });
+
   it('loads a selected paper detail with reads and relations', () => {
     const library = loadLibrary(root, 'paper_arxiv_2401_12345');
     const v = library.selectedPaper!;
     expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
+    expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);

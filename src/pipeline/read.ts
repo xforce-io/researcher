@@ -13,7 +13,7 @@ import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 
-interface SourceMaterial {
+export interface SourceMaterial {
   meta: ArxivMetadata;          // shape reused; non-arxiv fields may be empty
   paperText: string;
   slugSeed: string;             // text fed into slugify() for the note filename
@@ -27,11 +27,7 @@ export interface ReadOptions {
 export async function read(ctx: RunContext, opts: ReadOptions = {}): Promise<void> {
   if (!ctx.addSourceId) throw new Error('read stage requires addSourceId in context');
   const destinationZone = opts.destinationZone ?? 'active';
-  const material = ctx.addSourceId.startsWith('arxiv:')
-    ? await readArxivSource(ctx.addSourceId)
-    : ctx.addSourceId.startsWith('url:')
-    ? readUrlSource(ctx.addSourceId)
-    : (() => { throw new Error(`unknown source prefix in addSourceId: ${ctx.addSourceId}`); })();
+  const material = await loadSourceMaterial(ctx.addSourceId);
 
   const destinationDir = join(ctx.projectRoot, 'notes', destinationZone);
   mkdirSync(destinationDir, { recursive: true });
@@ -76,6 +72,14 @@ export async function read(ctx: RunContext, opts: ReadOptions = {}): Promise<voi
   ctx.newNoteFilename = nextFilename;
   ctx.newNoteRelPath = relPath;
   ctx.newNoteContent = readFileSync(fullPath, 'utf8');
+}
+
+export async function loadSourceMaterial(canonicalId: string): Promise<SourceMaterial> {
+  return canonicalId.startsWith('arxiv:')
+    ? await readArxivSource(canonicalId)
+    : canonicalId.startsWith('url:')
+    ? readUrlSource(canonicalId)
+    : (() => { throw new Error(`unknown source prefix in addSourceId: ${canonicalId}`); })();
 }
 
 async function readArxivSource(canonicalId: string): Promise<SourceMaterial> {

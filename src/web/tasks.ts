@@ -8,6 +8,11 @@ export type Runner = (
   onEvent: (ev: RunEvent) => void,
 ) => Promise<number>;
 
+export type TaskJob = (
+  onLine: (line: string) => void,
+  onEvent: (ev: RunEvent) => void,
+) => Promise<number>;
+
 export interface RunTask {
   id: string;
   slug: string;
@@ -82,6 +87,10 @@ export class TaskRegistry {
   }
 
   start(slug: string, cwd: string): RunTask {
+    return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent));
+  }
+
+  startJob(slug: string, job: TaskJob): RunTask {
     if (this.isBusy(slug)) throw new Error('busy');
     const task: RunTask = {
       id: this.idSeq(), slug, lines: [], status: 'running', exitCode: null,
@@ -101,7 +110,7 @@ export class TaskRegistry {
       else if (ev.type === 'stage') task.stage = ev.name;
       for (const l of this.listeners.get(task.id) ?? []) l.onEvent(ev);
     };
-    this.runner(cwd, onLine, onEvent).then(
+    job(onLine, onEvent).then(
       (code) => this.finish(task, code),
       () => this.finish(task, 1),
     );

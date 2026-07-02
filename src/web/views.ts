@@ -219,9 +219,18 @@ export function renderLibrary(v: LibraryView): string {
 }
 
 function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
-  const reads = v.reads.map((r) =>
-    `<li><span class="source-badge">${escapeHtml(r.status)}</span> <span class="mono">${escapeHtml(r.artifactPath ?? r.id)}</span></li>`
-  ).join('');
+  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
+  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
+  const topicOptions = v.topics
+    .filter((t) => t.available)
+    .map((t) => {
+      const selected = t.path === preferredTopic ? ' selected' : '';
+      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
+      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
+    })
+    .join('');
+  const contextOptions = `<option value="">none</option>${topicOptions}`;
+  const reads = renderReads(v.reads);
   const links = v.links.map((l) =>
     `<li><b>${escapeHtml(l.surfaceId)}</b> <span class="paper-relation">${escapeHtml(l.relation)}</span></li>`
   ).join('');
@@ -235,8 +244,9 @@ function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
   return `<section class="selected-paper">` +
-    `<h2>Selected paper</h2>` +
+    `<div class="selected-paper-head"><h2>Selected paper</h2>${renderStatusBadge(v.paper.readStatus)}</div>` +
     `${renderPaperCard(v.paper, 'detail')}` +
+    `${renderDeepReadAction(v.paper.id, v.paper.readStatus, contextOptions)}` +
     `<div class="detail-grid inline">` +
       `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
       `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +
@@ -244,6 +254,38 @@ function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
       `<div class="detail-panel"><h2>Mini map</h2>${miniMap}</div>` +
     `</div>` +
   `</section>`;
+}
+
+function renderDeepReadAction(paperId: string, status: LibraryPaperSummary['readStatus'], contextOptions: string): string {
+  if (status === 'reading') {
+    return `<div class="read-status-panel" role="status" aria-live="polite">` +
+      `<div class="read-status-copy"><span class="pulse-dot"></span><div><b>Reading and parsing</b>` +
+      `<p>Extracting paper text and drafting a Library read artifact.</p></div></div>` +
+      `<button class="primary" type="button" disabled>Deep read</button>` +
+    `</div>`;
+  }
+  return `<form class="deep-read-form" action="/library/read" method="post">` +
+    `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
+    `<label>Context<select name="topic">${contextOptions}</select></label>` +
+    `<button class="primary" type="submit">Deep read</button>` +
+  `</form>`;
+}
+
+function renderReads(reads: LibraryPaperDetailView['reads']): string {
+  return reads.map((r) => {
+    const path = r.artifactPath ?? r.id;
+    const label = r.artifactPath ? basename(path) : r.id;
+    return `<li class="read-item">${renderStatusBadge(r.status)}` +
+      `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(label)}</span></li>`;
+  }).join('');
+}
+
+function renderStatusBadge(status: LibraryPaperSummary['readStatus']): string {
+  return `<span class="status-badge ${escapeHtml(status)}">${escapeHtml(status)}</span>`;
+}
+
+function basename(path: string): string {
+  return path.split('/').at(-1) ?? path;
 }
 
 export function renderLibraryPaper(v: LibraryPaperDetailView): string {
