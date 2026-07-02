@@ -219,6 +219,17 @@ export function renderLibrary(v: LibraryView): string {
 }
 
 function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
+  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
+  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : v.topics.find((t) => t.active && t.available)?.path;
+  const topicOptions = v.topics
+    .filter((t) => t.available)
+    .map((t) => {
+      const selected = t.path === preferredTopic ? ' selected' : '';
+      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
+      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
+    })
+    .join('');
+  const readDisabled = topicOptions ? '' : ' disabled';
   const reads = v.reads.map((r) =>
     `<li><span class="source-badge">${escapeHtml(r.status)}</span> <span class="mono">${escapeHtml(r.artifactPath ?? r.id)}</span></li>`
   ).join('');
@@ -235,8 +246,13 @@ function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
   return `<section class="selected-paper">` +
-    `<h2>Selected paper</h2>` +
+    `<div class="selected-paper-head"><h2>Selected paper</h2><span class="source-badge">${escapeHtml(v.paper.readStatus)}</span></div>` +
     `${renderPaperCard(v.paper, 'detail')}` +
+    `<form class="deep-read-form" action="/library/read" method="post">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<label>Topic<select name="topic" required${readDisabled}>${topicOptions}</select></label>` +
+      `<button class="primary" type="submit"${readDisabled}>Deep read</button>` +
+    `</form>` +
     `<div class="detail-grid inline">` +
       `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
       `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +

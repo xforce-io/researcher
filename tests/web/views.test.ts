@@ -241,6 +241,7 @@ describe('renderLibrary', () => {
     const detail: LibraryPaperDetailView = {
       root: '/ws',
       paper: library.papers[0],
+      topics: library.topics,
       reads: [{ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: 'read.md', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
@@ -250,6 +251,9 @@ describe('renderLibrary', () => {
     expect(html).toContain('Add paper');
     expect(html).toContain('Selected paper');
     expect(html).toContain('paper-card detail');
+    expect(html).toContain('action="/library/read"');
+    expect(html).toContain('name="paperId"');
+    expect(html).toContain('Deep read');
     expect(html).toContain('Reads');
     expect(html).toContain('Relations');
     expect(html).toContain('Mini map');

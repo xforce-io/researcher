@@ -77,6 +77,7 @@ export interface LibraryView {
 export interface LibraryPaperDetailView {
   root: string;
   paper: LibraryPaperSummary;
+  topics: LibraryTopicRef[];
   reads: PaperRead[];
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
@@ -232,6 +233,7 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   return {
     root,
     paper: summarizePaper(lib, paper),
+    topics: libraryTopics(root),
     reads: lib.listReads(paperId),
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),

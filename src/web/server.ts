@@ -6,10 +6,18 @@ import { loadDashboard, loadLibrary, loadTopic, resolveTopicDir } from './discov
 import { renderDashboard, renderLibrary, renderTopic, renderDoc } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
+import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
-import { parseTags, runLibraryAdd } from '../commands/library.js';
+import { parseTags, runLibraryAdd, runLibraryLink } from '../commands/library.js';
+import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
+import { PaperLibrary } from '../library/store.js';
 
-export interface ServeOptions { root: string; port: number; registry?: TaskRegistry; }
+export interface ServeOptions {
+  root: string;
+  port: number;
+  registry?: TaskRegistry;
+  libraryReadRunner?: LibraryReadRunner;
+}
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
 
@@ -28,9 +36,10 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
     throw new Error(`no researcher.workspace.yml in ${opts.root} — serve requires a workspace super-repo`);
   }
   const registry = opts.registry ?? new TaskRegistry();
+  const libraryReadRunner = opts.libraryReadRunner ?? defaultLibraryReadRunner;
 
   const server = createServer((req, res) => {
-    handle(req, res, opts.root, registry).catch((err) => {
+    handle(req, res, opts.root, registry, libraryReadRunner).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
     });
   });
@@ -41,7 +50,13 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   return { port, close: () => new Promise((r) => server.close(() => r())) };
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, root: string, registry: TaskRegistry): Promise<void> {
+async function handle(
+  req: IncomingMessage,
+  res: ServerResponse,
+  root: string,
+  registry: TaskRegistry,
+  libraryReadRunner: LibraryReadRunner,
+): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const path = url.pathname;
 
@@ -59,6 +74,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
     const form = new URLSearchParams(body);
     const input = form.get('input')?.trim() ?? '';
     if (!input) return send(res, 400, 'text/plain', 'missing paper source');
+    const topic = form.get('topic')?.trim() ?? '';
+    if (topic && !resolveTopicDir(root, topic)) return send(res, 400, 'text/plain', 'unknown topic');
     try {
       runLibraryAdd({
         cwd: root,
@@ -66,10 +83,44 @@ async function handle(req: IncomingMessage, res: ServerResponse, root: string, r
         tags: form.has('tags') ? parseTags(form.get('tags') ?? '') : undefined,
         write: () => {},
       });
+      if (topic) {
+        const paperId = paperIdForSource(normalizePaperInput(input));
+        runLibraryLink({ cwd: root, paperId, topic, relation: 'candidate', write: () => {} });
+      }
     } catch (err) {
       return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
     }
     return redirect(res, '/library');
+  }
+  // POST /library/read
+  if (req.method === 'POST' && path === '/library/read') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const paperId = form.get('paperId')?.trim() ?? '';
+    const topic = form.get('topic')?.trim() ?? '';
+    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
+    if (!topic) return send(res, 400, 'text/plain', 'missing topic');
+    const topicDir = resolveTopicDir(root, topic);
+    if (!topicDir) return send(res, 404, 'text/plain', 'unknown topic');
+    const lib = new PaperLibrary(root);
+    const paper = lib.getPaper(paperId);
+    if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
+    const taskKey = libraryReadTaskKey(paperId, topic);
+    if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
+    const readId = libraryReadId(paperId, topic);
+    lib.upsertRead({ id: readId, paperId, status: 'reading' });
+    registry.startJob(taskKey, async (onLine) => {
+      try {
+        const result = await libraryReadRunner({ topicDir, topicPath: topic, paper, onLine });
+        lib.upsertRead({ id: readId, paperId, status: 'read', artifactPath: result.artifactPath });
+        return 0;
+      } catch (err) {
+        onLine(err instanceof Error ? err.message : String(err));
+        lib.upsertRead({ id: readId, paperId, status: 'failed' });
+        return 1;
+      }
+    });
+    return redirect(res, `/library?paper=${encodeURIComponent(paperId)}`);
   }
   const lm = path.match(/^\/library\/p\/([^/]+)$/);
   if (req.method === 'GET' && lm) {
@@ -156,4 +207,12 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
+}
+
+function libraryReadTaskKey(paperId: string, topic: string): string {
+  return `library-read:${paperId}:${topic}`;
+}
+
+function libraryReadId(paperId: string, topic: string): string {
+  return `read_${paperId}_${topic.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
 }

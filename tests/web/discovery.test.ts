@@ -166,6 +166,7 @@ describe('loadLibrary', () => {
     const library = loadLibrary(root, 'paper_arxiv_2401_12345');
     const v = library.selectedPaper!;
     expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
+    expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
