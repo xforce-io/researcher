@@ -49,9 +49,21 @@ END UNTRUSTED PAPER TEXT
 
 ## OUTPUT INSTRUCTIONS
 
-Write a single new file at `{{next_note_filename}}`（已含 `notes/active/` 前缀）using the reading template (a one-line Frame lede + Claims / Assumptions / Method / Eval / Weaknesses / Relations).
+Write a single new file at `{{next_note_filename}}`（已含 `notes/<zone>/` 前缀）using the reading template (a one-line Frame lede + Claims / Assumptions / Method / Eval / Weaknesses / Relations).
 
-笔记**第一行起**必须是 YAML frontmatter：`---\nzone: active\npin: false\nscore: 0\ndwell: 0\n---`，紧接 H1 标题与 Frame 引用块。frontmatter 之外的正文结构不变。
+笔记**第一行起**必须是 YAML frontmatter。`zone` 必须与文件路径中的目录一致；如果路径是 `notes/pending/...`，写 `zone: pending`。frontmatter 必须包含：
+
+```yaml
+---
+zone: active
+tags: []
+pin: false
+score: 0
+dwell: 0
+---
+```
+
+上例中的 `zone: active` 只是默认示例；按实际目标路径替换为 `active` 或 `pending`。紧接 H1 标题与 Frame 引用块。frontmatter 之外的正文结构不变。
 
 - Use `Write` tool, not `Edit` (the file does not exist yet).
 - Do NOT modify any other files in this stage.

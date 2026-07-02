@@ -5,7 +5,7 @@ import { loadProjectYaml } from '../config/project-yaml.js';
 import { Seen, type SeenEntry } from '../state/seen.js';
 import { readWatermark, type Watermark } from '../state/watermark.js';
 import { resolveProjectResearcherDir } from '../paths.js';
-import { listNotes as listIndexedNotes } from '../state/note_index.js';
+import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 
 export interface TopicCard {
@@ -96,7 +96,7 @@ function noteTitle(absFile: string, fallback: string): string {
 }
 
 function listNotes(topicDir: string): NoteRef[] {
-  return listIndexedNotes(topicDir)
+  return listIntegratedNotes(topicDir)
     .map((n) => ({
       path: n.relPath,
       num: String(n.num).padStart(2, '0'),
@@ -110,7 +110,7 @@ function listNotes(topicDir: string): NoteRef[] {
 }
 
 function noteCount(topicDir: string): number {
-  return listIndexedNotes(topicDir).length;
+  return listIntegratedNotes(topicDir).length;
 }
 
 function sourceSummary(s: { kind: string; queries?: string[]; inbox_dir?: string }): SourceSummary {

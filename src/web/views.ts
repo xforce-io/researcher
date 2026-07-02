@@ -37,7 +37,7 @@ function splitFrontmatter(md: string): { fm: Record<string, string> | null; body
 }
 
 const FM_TITLE_KEYS = new Set(['paper', 'title']);
-const INTERNAL_FM_KEYS = new Set(['zone', 'pin', 'score', 'dwell']);
+const INTERNAL_FM_KEYS = new Set(['zone', 'tags', 'pin', 'score', 'dwell']);
 const WIDE_META_KEYS = new Set([
   'abstract',
   'summary',
@@ -47,7 +47,8 @@ const WIDE_META_KEYS = new Set([
   '摘要',
   '总结',
 ]);
-const NOTE_ZONE_LABELS: Record<Zone, string> = {
+type IntegratedZone = Exclude<Zone, 'pending'>;
+const NOTE_ZONE_LABELS: Record<IntegratedZone, string> = {
   active: 'Active',
   buffer: 'Buffer',
   history: 'History',
@@ -222,7 +223,7 @@ export function renderTopic(
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
-  const noteGroups = (Object.keys(NOTE_ZONE_LABELS) as Zone[]).map((zone) => {
+  const noteGroups = (Object.keys(NOTE_ZONE_LABELS) as IntegratedZone[]).map((zone) => {
     const notes = v.notes.filter((n) => n.zone === zone);
     if (!notes.length) return '';
     const items = notes.map((n) => {

@@ -7,7 +7,7 @@ import { urlPathSlug } from '../sources/url.js';
 import { readTextCache, writeTextCache } from '../sources/cache.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { nextNoteNumber, listNotes } from '../state/note_index.js';
-import { parseNote, serializeNote, DEFAULT_FM } from '../state/zone.js';
+import { parseNote, serializeNote, DEFAULT_FM, type Zone } from '../state/zone.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
 
@@ -20,20 +20,25 @@ interface SourceMaterial {
   fetchInstruction: string;     // empty for arxiv; non-empty for url
 }
 
-export async function read(ctx: RunContext): Promise<void> {
+export interface ReadOptions {
+  destinationZone?: Extract<Zone, 'active' | 'pending'>;
+}
+
+export async function read(ctx: RunContext, opts: ReadOptions = {}): Promise<void> {
   if (!ctx.addSourceId) throw new Error('read stage requires addSourceId in context');
+  const destinationZone = opts.destinationZone ?? 'active';
   const material = ctx.addSourceId.startsWith('arxiv:')
     ? await readArxivSource(ctx.addSourceId)
     : ctx.addSourceId.startsWith('url:')
     ? readUrlSource(ctx.addSourceId)
     : (() => { throw new Error(`unknown source prefix in addSourceId: ${ctx.addSourceId}`); })();
 
-  const activeDir = join(ctx.projectRoot, 'notes', 'active');
-  mkdirSync(activeDir, { recursive: true });
+  const destinationDir = join(ctx.projectRoot, 'notes', destinationZone);
+  mkdirSync(destinationDir, { recursive: true });
   const nextNum = nextNoteNumber(ctx.projectRoot).toString().padStart(2, '0');
   const slug = slugify(material.slugSeed);
   const nextFilename = `${nextNum}_${slug}.md`;
-  const relPath = `notes/active/${nextFilename}`;
+  const relPath = `notes/${destinationZone}/${nextFilename}`;
   // 把已有 notes 列表喂给 prompt，保留原 notes_dir_listing 语义
   const existing = listNotes(ctx.projectRoot).map((n) => n.relPath).sort();
 
@@ -62,10 +67,12 @@ export async function read(ctx: RunContext): Promise<void> {
   assertAgentOk(ctx.runDir, 'read', result);
 
   const fullPath = join(ctx.projectRoot, relPath);
-  // 兜底:若 agent 没写 frontmatter,补一个默认 active 头,保证下游 listNotes 一致。
+  // 兜底:若 agent 没写 frontmatter,补目标 zone 头,保证下游 listNotes 一致。
   const written = readFileSync(fullPath, 'utf8');
   const { body } = parseNote(written);
-  if (!written.startsWith('---\n')) writeFileSync(fullPath, serializeNote({ ...DEFAULT_FM }, body));
+  if (!written.startsWith('---\n')) {
+    writeFileSync(fullPath, serializeNote({ ...DEFAULT_FM, zone: destinationZone, tags: [] }, body));
+  }
   ctx.newNoteFilename = nextFilename;
   ctx.newNoteRelPath = relPath;
   ctx.newNoteContent = readFileSync(fullPath, 'utf8');

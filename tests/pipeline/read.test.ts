@@ -138,4 +138,23 @@ describe('read stage', () => {
     expect(txt.startsWith('---\nzone: active\n')).toBe(true);
   });
 
+  it('can write a pending note with pending frontmatter', async () => {
+    class PendingStub implements AgentRuntime {
+      id = 'pending';
+      async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+        const noteContent = '# Pending note\n\n## Claims\n- something';
+        mkdirSync(join(opts.cwd, 'notes', 'pending'), { recursive: true });
+        writeFileSync(join(opts.cwd, 'notes', 'pending', '01_stub_paper.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/pending/01_stub_paper.md\n', modifiedFiles: ['notes/pending/01_stub_paper.md'], exitCode: 0 };
+      }
+    }
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new PendingStub(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    await read(ctx, { destinationZone: 'pending' });
+    expect(ctx.newNoteFilename).toBe('01_stub_paper.md');
+    expect(ctx.newNoteRelPath).toBe('notes/pending/01_stub_paper.md');
+    const txt = readFileSync(join(proj, ctx.newNoteRelPath!), 'utf8');
+    expect(txt.startsWith('---\nzone: pending\ntags: []\n')).toBe(true);
+  });
+
 });

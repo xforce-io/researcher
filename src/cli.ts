@@ -31,6 +31,14 @@ program
   });
 
 program
+  .command('read <input>')
+  .description('Deep-read a paper into notes/pending without synthesis')
+  .action(async (input: string) => {
+    const { runRead } = await import('./commands/read.js');
+    await runRead({ input, cwd: process.cwd() });
+  });
+
+program
   .command('onboard')
   .description('Interactive TUI to scaffold and fill in a new topic')
   .action(async () => {

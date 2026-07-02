@@ -6,7 +6,7 @@ import { writeWatermark, type Watermark } from '../state/watermark.js';
 import * as gitops from '../git/ops.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
-import { listNotes, ZONE_DIRS } from '../state/note_index.js';
+import { listIntegratedNotes, ZONE_DIRS } from '../state/note_index.js';
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
@@ -90,7 +90,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    working tree on the previous branch. After we switch to main, those files will revert
   //    to main's content — so we capture the cumulative content here and restore on the new branch.
   //    Snapshot ALL live notes (not just the current one) so rebalance moves survive the branch dance.
-  const noteRelPaths = listNotes(ctx.projectRoot).map((n) => n.relPath);
+  const noteRelPaths = listIntegratedNotes(ctx.projectRoot).map((n) => n.relPath);
   const candidatePaths = [
     ...noteRelPaths,
     LANDSCAPE,
@@ -128,10 +128,10 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   if (stashed) await gitops.stashDrop({ cwd: ctx.projectRoot });
 
   // 4a. remove note files that exist on main's tree but were relocated this run.
-  //     listNotes reads the current working tree (now on main's state), so it sees the old paths.
+  //     listIntegratedNotes reads the current working tree (now on main's state), so it sees the old paths.
   //     Any path not in currentNoteRels was moved away by rebalance; delete it so the note
   //     doesn't appear at two locations after we restore snapshots.
-  for (const stale of listNotes(ctx.projectRoot).map((n) => n.relPath)) {
+  for (const stale of listIntegratedNotes(ctx.projectRoot).map((n) => n.relPath)) {
     if (!currentNoteRels.has(stale)) {
       const abs = join(ctx.projectRoot, stale);
       if (existsSync(abs)) rmSync(abs);
