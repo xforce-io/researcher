@@ -13,10 +13,14 @@ describe('writeOnboardArtifacts', () => {
     execaSync('git', ['config', 'user.email', 't@t'], { cwd: dir });
     execaSync('git', ['config', 'user.name', 't'], { cwd: dir });
     mkdirSync(join(dir, '.researcher/state'), { recursive: true });
+    mkdirSync(join(dir, '.milkie'), { recursive: true });
+    mkdirSync(join(dir, 'agents'), { recursive: true });
     writeFileSync(join(dir, '.researcher/project.yaml'), 'placeholder\n');
     writeFileSync(join(dir, '.researcher/thesis.md'), 'placeholder\n');
     writeFileSync(join(dir, '.researcher/.gitignore'), 'state/runs/\n');
     writeFileSync(join(dir, '.researcher/state/seen.jsonl'), '');
+    writeFileSync(join(dir, '.milkie/agents.json'), '{"agents":[]}\n');
+    writeFileSync(join(dir, 'agents/researcher.md'), '---\nagentId: researcher\n---\n');
     execaSync('git', ['add', '.'], { cwd: dir });
     execaSync('git', ['commit', '-m', 'initial'], { cwd: dir });
   });

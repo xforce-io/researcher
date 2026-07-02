@@ -1,0 +1,5 @@
+{
+  "agents": [
+    { "id": "researcher", "file": "../agents/researcher.md" }
+  ]
+}

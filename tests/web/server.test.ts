@@ -77,6 +77,8 @@ it('starts a run and streams via SSE', async () => {
   expect(text).toContain('event: stage');
   expect(text).toContain('event: plan');
   expect(text).toContain('event: end');
+  expect(text).toContain('"status":"done"');
+  expect(text).toContain('"exitCode":0');
 });
 
 it('serves css', async () => {

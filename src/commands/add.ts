@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { canonicalizeArxivId } from '../sources/arxiv.js';
 import { canonicalizeUrl } from '../sources/url.js';
-import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
+import { MilkieAdapter } from '../adapter/milkie.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
 import { runStages } from '../pipeline/runner.js';
@@ -23,7 +23,7 @@ export async function runAdd(opts: AddOptions): Promise<void> {
     process.stdout.write(`already seen: ${id} (decision=${seen.get(id)?.decision})\n`);
     return;
   }
-  const adapter = new ClaudeCodeAdapter();
+  const adapter = new MilkieAdapter();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
   await withLock(join(researcherDir, 'state/.lock'), async () => {
     let ctx: RunContext;

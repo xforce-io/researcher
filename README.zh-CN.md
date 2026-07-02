@@ -10,7 +10,7 @@
 统一推进、并可用 `researcher serve` 浏览的超级仓，详见[工作区模式](#工作区模式多支柱)。
 
 CLI 自身不调用任何 LLM。它把方法论和项目上下文拼成 prompt，交给一个无头的
-agent 运行时（当前是 Claude Code，预留了 Codex 槽位）。所有持久化状态 ——
+milkie agent 运行时。所有持久化状态 ——
 论题、笔记、landscape、report、已读集合 —— 都以纯文本文件、Git 版本化的方式
 存在主题仓库里。
 
@@ -62,7 +62,7 @@ researcher methodology install   # 一次性，把方法论装到 ~/.researcher/
 ```
 
 依赖：
-- `PATH` 上有 `claude` CLI（agent 运行时）。可用 `RESEARCHER_CLAUDE_BIN` 覆盖。
+- `PATH` 上有 `milkie` CLI（agent 运行时）。可用 `RESEARCHER_MILKIE_BIN` 覆盖。
 - 已认证的 `gh` CLI —— 仅当主题设置 `delivery.mode: remote` 时需要（用于
   `git push` + `gh pr create`）。主题默认本地（只 commit），纯本地仓库无需
   remote 也无需 `gh`。
@@ -220,7 +220,8 @@ researcher serve ../research -p 8080
 
 ## 环境变量
 
-- `RESEARCHER_CLAUDE_BIN` —— 当 `claude` 不在 `PATH` 上时指定路径。
+- `RESEARCHER_MILKIE_BIN` —— 当 `milkie` 不在 `PATH` 上时指定路径。
+- `RESEARCHER_MILKIE_AGENT` —— 要运行的 milkie agent id，默认 `researcher`。
 
 投递方式（push + PR 还是只本地 commit）是 per-topic 的，通过 `.researcher/project.yaml`
 的 `delivery.mode`（默认 `local`，或 `remote`）设置 —— 不再用环境变量。

@@ -4,9 +4,9 @@ import { z } from 'zod';
 
 export const GlobalConfigSchema = z
   .object({
-    runtime: z.enum(['claude-code']).default('claude-code'),
+    runtime: z.enum(['milkie']).default('milkie'),
   })
-  .default({ runtime: 'claude-code' });
+  .default({ runtime: 'milkie' });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 
 export function loadGlobalConfig(path: string): GlobalConfig {

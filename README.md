@@ -12,8 +12,7 @@ A single topic is the atom. Several can be composed into a multi-pillar
 `researcher serve` — see [Workspace mode](#workspace-mode-multi-pillar).
 
 The CLI itself does not call any LLM. It assembles methodology + project
-context into prompts and shells out to a headless agent runtime (Claude Code
-today; Codex slot reserved). All persistent state — thesis, notes, landscape,
+context into prompts and shells out to a headless milkie agent runtime. All persistent state — thesis, notes, landscape,
 report, seen-set — lives in the topic repo as plain files under git.
 
 ## Why
@@ -69,7 +68,7 @@ researcher methodology install   # one-time, populates ~/.researcher/methodology
 ```
 
 Requires:
-- `claude` CLI on `PATH` (the agent runtime). Override with `RESEARCHER_CLAUDE_BIN`.
+- `milkie` CLI on `PATH` (the agent runtime). Override with `RESEARCHER_MILKIE_BIN`.
 - `gh` CLI authenticated — only needed when a topic sets `delivery.mode: remote`
   (for `git push` + `gh pr create`). Topics default to local (commit only), so a
   local-only repo needs neither a remote nor `gh`.
@@ -269,7 +268,8 @@ has no manifest and errors out.
 
 ## Environment
 
-- `RESEARCHER_CLAUDE_BIN` — path to `claude` if not on `PATH`.
+- `RESEARCHER_MILKIE_BIN` — path to `milkie` if not on `PATH`.
+- `RESEARCHER_MILKIE_AGENT` — milkie agent id to run. Defaults to `researcher`.
 
 Delivery (push + PR vs. local commit only) is per-topic, set via `delivery.mode`
 in `.researcher/project.yaml` (`local` default, or `remote`) — not an env var.

@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import type { DashboardModel, TopicCard, TopicView } from './discovery.js';
+import type { Zone } from '../state/zone.js';
 
 export function escapeHtml(s: string): string {
   return s
@@ -36,6 +37,21 @@ function splitFrontmatter(md: string): { fm: Record<string, string> | null; body
 }
 
 const FM_TITLE_KEYS = new Set(['paper', 'title']);
+const INTERNAL_FM_KEYS = new Set(['zone', 'pin', 'score', 'dwell']);
+const WIDE_META_KEYS = new Set([
+  'abstract',
+  'summary',
+  'notes',
+  '分类轴',
+  '角色定位',
+  '摘要',
+  '总结',
+]);
+const NOTE_ZONE_LABELS: Record<Zone, string> = {
+  active: 'Active',
+  buffer: 'Buffer',
+  history: 'History',
+};
 
 // Format one frontmatter value: authors array → comma list, arxiv → link, else plain.
 function fmValue(key: string, raw: string): string {
@@ -52,15 +68,20 @@ function fmValue(key: string, raw: string): string {
   return escapeHtml(unquote(raw));
 }
 
+function metaRowClass(key: string, value: string): string {
+  const text = value.replace(/<[^>]*>/g, '').trim();
+  return WIDE_META_KEYS.has(key) || text.length > 220 ? ' class="wide"' : '';
+}
+
 // A per-paper note's structured frontmatter → title + an aligned key/value table
 // (the .fm CSS kit), instead of dumping the raw YAML into the body.
 function noteMasthead(fm: Record<string, string>): string {
   const title = unquote(fm.paper ?? fm.title ?? '');
   const rows = Object.entries(fm)
-    .filter(([k]) => !FM_TITLE_KEYS.has(k))
+    .filter(([k]) => !FM_TITLE_KEYS.has(k) && !INTERNAL_FM_KEYS.has(k))
     .map(([k, raw]) => [k, fmValue(k, raw)] as const)
     .filter(([, v]) => v)
-    .map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`)
+    .map(([k, v]) => `<div${metaRowClass(k, v)}><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`)
     .join('');
   if (!title && !rows) return '';
   return (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
@@ -84,14 +105,46 @@ function mastheadBlockquote(body: string): { html: string; rest: string } | null
   }
   if (rows.length < 2) return null;
   const dl = `<dl class="fm">` + rows.map((r) =>
-    `<div><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+  ).join('') + `</dl>`;
+  return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
+}
+
+function leadingMetaParagraph(body: string): { html: string; rest: string } | null {
+  const m = /^(#[ \t][^\n]*\n)\s*\n?((?:[ \t]*>[^\n]*(?:\n|$))+)/.exec(body);
+  if (!m) return null;
+  const quote = m[2]
+    .split('\n')
+    .map((line) => line.trim().replace(/^>\s?/, '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const rows: { k: string; v: string }[] = [];
+  const re = /\*\*\s*(.+?)\s*[:：]?\s*\*\*[:：]?\s*([\s\S]*?)(?=\s+\*\*\s*.+?\s*[:：]?\s*\*\*[:：]?|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(quote)) !== null) {
+    const key = match[1].trim();
+    const value = match[2].trim();
+    if (!key || !value) continue;
+    rows.push({ k: key, v: value });
+  }
+  if (rows.length < 2) return null;
+  const dl = `<dl class="fm compact">` + rows.map((r) =>
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
   ).join('') + `</dl>`;
   return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
 }
 
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
-  if (fm) return noteMasthead(fm) + (marked.parse(body, { async: false }) as string);
+  if (fm) {
+    const mast = leadingMetaParagraph(body);
+    const head = noteMasthead(fm);
+    if (mast) {
+      const mastHtml = head ? mast.html.replace(/^<h1[^>]*>[\s\S]*?<\/h1>\n?/, '') : mast.html;
+      return head + mastHtml + (marked.parse(mast.rest, { async: false }) as string);
+    }
+    return head + (marked.parse(body, { async: false }) as string);
+  }
   const mast = mastheadBlockquote(body);
   if (mast) return mast.html + (marked.parse(mast.rest, { async: false }) as string);
   return marked.parse(body, { async: false }) as string;
@@ -169,10 +222,22 @@ export function renderTopic(
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
-  const noteTree = v.notes.map((n) =>
-    `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(n.path)}" class="doc-link" data-path="${encodeURIComponent(n.path)}" title="${escapeHtml(n.title)}">` +
-    `<span class="num">${escapeHtml(n.num)}</span><span class="t">${escapeHtml(tocTitle(n.title))}</span></a></li>`
-  ).join('');
+  const noteGroups = (Object.keys(NOTE_ZONE_LABELS) as Zone[]).map((zone) => {
+    const notes = v.notes.filter((n) => n.zone === zone);
+    if (!notes.length) return '';
+    const items = notes.map((n) => {
+      const meta = `${n.zone}${n.pin ? ' · pinned' : ''} · score ${n.score.toFixed(2)} · dwell ${n.dwell}`;
+      return `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(n.path)}" class="doc-link" data-path="${encodeURIComponent(n.path)}" title="${escapeHtml(n.title)}">` +
+        `<span class="num">${escapeHtml(n.num)}</span><span class="t">${escapeHtml(tocTitle(n.title))}</span>` +
+        `<span class="note-meta" title="${escapeHtml(meta)}">` +
+          `<span class="zone-badge ${zone}">${escapeHtml(zone)}</span>` +
+          `${n.pin ? '<span class="pin-badge" title="Pinned">pin</span>' : ''}` +
+        `</span></a></li>`;
+    }).join('');
+    return `<div class="note-zone"><div class="note-zone-head">` +
+      `<span>${NOTE_ZONE_LABELS[zone]}</span><span class="h3-count">${notes.length}</span>` +
+      `</div><ol class="note-tree">${items}</ol></div>`;
+  }).join('');
   const paperList = v.papers.map((p) =>
     `<li><a href="/t/${v.slug}/paper?id=${encodeURIComponent(p.id)}" target="_blank">${escapeHtml(p.id)}</a></li>`
   ).join('');
@@ -215,8 +280,8 @@ export function renderTopic(
     `${runWrap}</header>` +
     `<main class="three-col" id="cols">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
-        (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3><ol class="note-tree">${noteTree}</ol>` : '') +
-        `<h3>Papers</h3><ul class="paper-list">${paperList || '<li>—</li>'}</ul></aside>` +
+        (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3>${noteGroups}` : '') +
+        `<h3>Papers</h3><ul class="paper-list">${paperList || '<li class="muted">No PDFs</li>'}</ul></aside>` +
       `<div class="col-resizer" id="col-resizer" role="separator" aria-orientation="vertical" title="Drag to resize"></div>` +
       `<section class="reader" id="reader"><p class="hint">Select a document.</p></section>` +
       `<aside class="right" id="right-panel"><h3>About</h3>` +
@@ -318,7 +383,18 @@ function subscribe(taskId, t0) {
   es.addEventListener('plan', (ev) => { plan = JSON.parse(ev.data).stages; renderStages(); setBtnLabel(); });
   es.addEventListener('stage', (ev) => { current = JSON.parse(ev.data).name; renderStages(); setBtnLabel(); });
   es.addEventListener('line', (ev) => append(JSON.parse(ev.data) + '\\n'));
-  es.addEventListener('end', () => { es.close(); append('\\n\\u2713 run finished.\\n'); finish('done', 'ok'); });
+  es.addEventListener('end', (ev) => {
+    es.close();
+    let data = {};
+    try { data = JSON.parse(ev.data || '{}'); } catch {}
+    if (data.status === 'done' || data.exitCode === 0) {
+      append('\\n\\u2713 run finished.\\n');
+      finish('done', 'ok');
+    } else {
+      append('\\n\\u2717 run failed' + (data.exitCode == null ? '' : ' (exit ' + data.exitCode + ')') + '.\\n');
+      finish('error', 'err');
+    }
+  });
   es.onerror = () => { if (es.readyState === EventSource.CLOSED) { append('\\n\\u2717 connection closed.\\n'); finish('disconnected', 'err'); } };
 }
 

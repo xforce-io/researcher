@@ -5,6 +5,8 @@ import { loadProjectYaml } from '../config/project-yaml.js';
 import { Seen, type SeenEntry } from '../state/seen.js';
 import { readWatermark, type Watermark } from '../state/watermark.js';
 import { resolveProjectResearcherDir } from '../paths.js';
+import { listNotes as listIndexedNotes } from '../state/note_index.js';
+import type { Zone } from '../state/zone.js';
 
 export interface TopicCard {
   slug: string;
@@ -21,7 +23,15 @@ export interface DashboardModel {
   topics: TopicCard[];
 }
 export interface DocRef { path: string; label: string; }
-export interface NoteRef { path: string; num: string; title: string; }
+export interface NoteRef {
+  path: string;
+  num: string;
+  title: string;
+  zone: Zone;
+  pin: boolean;
+  score: number;
+  dwell: number;
+}
 export interface SourceSummary { kind: string; summary: string; }
 export interface TopicView {
   slug: string;
@@ -59,17 +69,6 @@ function listPdfs(topicDir: string): { id: string; file: string }[] {
     .map((f) => ({ id: f.replace(/\.pdf$/, ''), file: `papers/${f}` }));
 }
 
-function listNoteNotes(topicDir: string): DocRef[] {
-  const dir = join(topicDir, 'notes');
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^\d\d_.*\.md$/.test(f))
-    // `00_research_landscape.md` matches the regex above, but is surfaced separately as "Landscape"
-    .filter((f) => f !== '00_research_landscape.md')
-    .sort()
-    .map((f) => ({ path: `notes/${f}`, label: f }));
-}
-
 function buildDocs(topicDir: string): DocRef[] {
   const docs: DocRef[] = [];
   const add = (rel: string, label: string) => {
@@ -97,12 +96,21 @@ function noteTitle(absFile: string, fallback: string): string {
 }
 
 function listNotes(topicDir: string): NoteRef[] {
-  return listNoteNotes(topicDir).map(({ path }) => {
-    const file = path.replace(/^notes\//, '');
-    const num = /^(\d\d)_/.exec(file)?.[1] ?? '';
-    const fallback = file.replace(/^\d+_/, '').replace(/\.md$/, '').replace(/_/g, ' ');
-    return { path, num, title: noteTitle(join(topicDir, path), fallback) };
-  });
+  return listIndexedNotes(topicDir)
+    .map((n) => ({
+      path: n.relPath,
+      num: String(n.num).padStart(2, '0'),
+      title: noteTitle(n.absPath, n.filename.replace(/^\d+_/, '').replace(/\.md$/, '').replace(/_/g, ' ')),
+      zone: n.zone,
+      pin: n.fm.pin,
+      score: n.fm.score,
+      dwell: n.fm.dwell,
+    }))
+    .sort((a, b) => Number(a.num) - Number(b.num));
+}
+
+function noteCount(topicDir: string): number {
+  return listIndexedNotes(topicDir).length;
 }
 
 function sourceSummary(s: { kind: string; queries?: string[]; inbox_dir?: string }): SourceSummary {
@@ -126,7 +134,7 @@ export function loadDashboard(root: string): DashboardModel {
     }
     return {
       slug: slugOf(t.path), path: t.path, active: t.active, available,
-      oneline, noteCount: listNoteNotes(topicDir).length, lastRun, decisionCounts: counts,
+      oneline, noteCount: noteCount(topicDir), lastRun, decisionCounts: counts,
     };
   });
   return { root, topics };

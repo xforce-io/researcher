@@ -22,16 +22,17 @@ export function listNotes(projectRoot: string): NoteEntry[] {
   const collect = (dirRel: string) => {
     const abs = join(projectRoot, dirRel);
     if (!existsSync(abs)) return;
+    const dirZone = dirRel.replace(/^notes\//, '') as Zone;
     for (const f of readdirSync(abs)) {
       const m = NOTE_RE.exec(f);
       if (!m || f.startsWith('00_')) continue;
       const relPath = `${dirRel}/${f}`;
       const absPath = join(projectRoot, relPath);
       const { fm } = parseNote(readFileSync(absPath, 'utf8'));
-      out.push({ num: parseInt(m[1], 10), filename: f, zone: fm.zone, relPath, absPath, fm });
+      out.push({ num: parseInt(m[1], 10), filename: f, zone: dirZone, relPath, absPath, fm });
     }
   };
-  if (existsSync(notesDir)) collect('notes'); // legacy flat
+  if (!existsSync(notesDir)) return out;
   for (const z of ZONES) collect(`notes/${z}`);
   return out;
 }

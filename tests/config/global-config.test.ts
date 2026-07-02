@@ -8,12 +8,12 @@ describe('loadGlobalConfig', () => {
   it('returns defaults when file is missing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'r-glob-'));
     const cfg = loadGlobalConfig(join(dir, 'config.yaml'));
-    expect(cfg.runtime).toBe('claude-code');
+    expect(cfg.runtime).toBe('milkie');
   });
   it('reads runtime override', () => {
     const dir = mkdtempSync(join(tmpdir(), 'r-glob-'));
     const p = join(dir, 'config.yaml');
-    writeFileSync(p, 'runtime: claude-code\n');
-    expect(loadGlobalConfig(p).runtime).toBe('claude-code');
+    writeFileSync(p, 'runtime: milkie\n');
+    expect(loadGlobalConfig(p).runtime).toBe('milkie');
   });
 });

@@ -8,7 +8,7 @@ import {
   resolveResearcherHome,
 } from '../paths.js';
 import { scaffoldTopicRepo, validateRepoRoot } from './init.js';
-import { ClaudeCodeAdapter } from '../adapter/claude-code.js';
+import { MilkieAdapter } from '../adapter/milkie.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isAllTemplates } from '../onboard/all-templates-check.js';
@@ -54,7 +54,7 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const templateProjectYaml = readFileSync(join(pkg, 'templates/project.yaml'), 'utf8');
   const templateThesisMd = readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
-  const runtime = new ClaudeCodeAdapter();
+  const runtime = new MilkieAdapter();
   const state = new OnboardingState(onboarding.questions);
 
   // ===== Test path: bypass interactive flow =====
@@ -204,12 +204,12 @@ async function rewriteOrLog(
 }
 
 function preFlight(): void {
-  // 1. claude binary
-  const bin = process.env.RESEARCHER_CLAUDE_BIN ?? 'claude';
+  // 1. milkie binary
+  const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
   try {
-    execaSync(bin, ['--version'], { stdio: 'ignore' });
+    execaSync(bin, ['--help'], { stdio: 'ignore' });
   } catch {
-    throw new Error(`claude CLI not found; install it or set RESEARCHER_CLAUDE_BIN`);
+    throw new Error(`milkie CLI not found; install it or set RESEARCHER_MILKIE_BIN`);
   }
   // 2. onboarding methodology installed
   const methPath = join(resolveResearcherHome(), 'methodology', 'onboarding.md');

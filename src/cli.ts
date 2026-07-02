@@ -39,6 +39,15 @@ program
   });
 
 program
+  .command('migrate-notes [path]')
+  .description('One-time migration: notes/NN_*.md -> notes/active/NN_*.md')
+  .action(async (path: string | undefined) => {
+    const root = path ? (await import('node:path')).resolve(path) : process.cwd();
+    const { runMigrateNotes } = await import('./commands/migrate.js');
+    await runMigrateNotes({ root });
+  });
+
+program
   .command('run')
   .description('Autonomous tick (topic repo), or workspace orchestration (super-repo with researcher.workspace.yml)')
   .action(async () => {

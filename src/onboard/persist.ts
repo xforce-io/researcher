@@ -29,6 +29,8 @@ export async function writeOnboardArtifacts(opts: WriteArtifactsOptions): Promis
       '.researcher/project.yaml',
       '.researcher/thesis.md',
       '.researcher/.gitignore',
+      '.milkie/agents.json',
+      'agents/researcher.md',
       '.researcher/state/seen.jsonl',
       'notes/00_research_landscape.md',
     ],
