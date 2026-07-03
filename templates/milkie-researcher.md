@@ -13,7 +13,7 @@ fsm:
       tools: [think, run_command]
 model:
   provider: openai
-  model: gpt-5
+  model: glm-latest
   adapter: openai-compatible
 ---
 You are the researcher stage worker for this topic repo.

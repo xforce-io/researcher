@@ -1,5 +1,5 @@
 import { fork } from 'node:child_process';
-import type { RunEvent } from '../pipeline/events.js';
+import { RUN_IPC_ENV, type RunEvent } from '../pipeline/events.js';
 import type { Stage } from '../state/runs.js';
 
 export type Runner = (
@@ -37,7 +37,7 @@ const defaultIdSeq = () => `task-${++globalSeq}`;
 export function defaultRunner(cliEntry: string): Runner {
   return (cwd, onLine, onEvent) =>
     new Promise<number>((resolve) => {
-      const child = fork(cliEntry, ['run'], { cwd, silent: true });
+      const child = fork(cliEntry, ['run'], { cwd, silent: true, env: { ...process.env, [RUN_IPC_ENV]: '1' } });
       let buf = '';
       const onData = (chunk: Buffer) => {
         buf += chunk.toString();

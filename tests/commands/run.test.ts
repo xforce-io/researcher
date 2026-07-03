@@ -6,6 +6,7 @@ import { execaSync } from 'execa';
 import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import type { Triaged } from '../../src/config/triaged.js';
+import { RUN_IPC_ENV } from '../../src/pipeline/events.js';
 
 // The read stage calls fetchArxivMetadata against the real network.
 // In run tests the deep-read pick is a synthetic id; stub the metadata fetch
@@ -105,12 +106,17 @@ function packageStep(): (opts: InvokeOptions) => InvokeResult {
 describe('researcher run (autonomous)', () => {
   let proj: string;
   let _origSend: typeof process.send;
+  let _origRunIpc: string | undefined;
   beforeEach(() => {
     _origSend = process.send;
+    _origRunIpc = process.env[RUN_IPC_ENV];
     (process as { send?: unknown }).send = undefined;
+    delete process.env[RUN_IPC_ENV];
   });
   afterEach(() => {
     (process as { send?: unknown }).send = _origSend;
+    if (_origRunIpc === undefined) delete process.env[RUN_IPC_ENV];
+    else process.env[RUN_IPC_ENV] = _origRunIpc;
   });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-run-'));
@@ -140,6 +146,7 @@ describe('researcher run (autonomous)', () => {
     ]);
     const sent: Array<{ type: string; stages?: string[]; name?: string }> = [];
     const orig = process.send;
+    process.env[RUN_IPC_ENV] = '1';
     (process as { send?: unknown }).send = (m: unknown) => { sent.push(m as never); return true; };
     const { runRun } = await import('../../src/commands/run.js');
     try {

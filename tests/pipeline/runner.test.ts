@@ -4,15 +4,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runStages, assertAgentOk } from '../../src/pipeline/runner.js';
 import { RunDir, newRunId } from '../../src/state/runs.js';
+import { RUN_IPC_ENV } from '../../src/pipeline/events.js';
 
 describe('runStages', () => {
   let _origSend: typeof process.send;
+  let _origRunIpc: string | undefined;
   beforeEach(() => {
     _origSend = process.send;
+    _origRunIpc = process.env[RUN_IPC_ENV];
     (process as { send?: unknown }).send = undefined;
+    delete process.env[RUN_IPC_ENV];
   });
   afterEach(() => {
     (process as { send?: unknown }).send = _origSend;
+    if (_origRunIpc === undefined) delete process.env[RUN_IPC_ENV];
+    else process.env[RUN_IPC_ENV] = _origRunIpc;
   });
 
   it('runs each stage and writes start/done markers', async () => {
@@ -42,6 +48,7 @@ describe('runStages', () => {
     const rd = new RunDir(base, newRunId());
     const sent: unknown[] = [];
     const orig = process.send;
+    process.env[RUN_IPC_ENV] = '1';
     (process as { send?: unknown }).send = (m: unknown) => { sent.push(m); return true; };
     try {
       await runStages(rd, [
