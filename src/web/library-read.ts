@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { OpenAITextAdapter } from '../adapter/openai-text.js';
 import { LIBRARY_DIR } from '../library/store.js';
 import { loadSourceMaterial } from '../pipeline/read.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
@@ -11,6 +11,7 @@ import type { Paper } from '../library/model.js';
 import type { RunEvent } from '../pipeline/events.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
+const LIBRARY_READ_MAX_TOKENS = 8192;
 
 export interface LibraryReadRunnerOptions {
   workspaceRoot: string;
@@ -34,7 +35,7 @@ export interface LibraryReadResult {
 export type LibraryReadRunner = (opts: LibraryReadRunnerOptions) => Promise<LibraryReadResult>;
 
 export async function defaultLibraryReadRunner(opts: LibraryReadRunnerOptions): Promise<LibraryReadResult> {
-  return runLibraryRead({ ...opts, adapter: new MilkieAdapter() });
+  return runLibraryRead({ ...opts, adapter: new OpenAITextAdapter() });
 }
 
 export async function runLibraryRead(
@@ -72,16 +73,69 @@ export async function runLibraryRead(
       tags_json: JSON.stringify(opts.paper.tags ?? []),
     }),
     timeoutMs: TIMEOUT_MS,
+    maxTokens: LIBRARY_READ_MAX_TOKENS,
   });
 
   if (result.exitCode !== 0) {
     throw new Error(`library read agent exited ${result.exitCode}${result.stderr ? `: ${result.stderr}` : ''}`);
   }
-  opts.onEvent?.({ type: 'stage', name: 'record-read' });
-  if (!existsSync(join(opts.workspaceRoot, artifactPath))) {
-    throw new Error(`library read did not write expected artifact: ${artifactPath}`);
+  if (result.finishReason === 'length') {
+    throw new Error('library read agent output was truncated before completing the Library read artifact');
   }
+  opts.onEvent?.({ type: 'stage', name: 'record-read' });
+  const body = normalizeLibraryReadBody(result.output);
+  if (!body) {
+    throw new Error('library read agent produced no Library read content');
+  }
+  writeLibraryReadArtifact({
+    workspaceRoot: opts.workspaceRoot,
+    artifactPath,
+    paper: opts.paper,
+    readId: opts.readId,
+    sourceId,
+    material,
+    body,
+  });
   return { artifactPath, title: material.meta.title || undefined };
+}
+
+function writeLibraryReadArtifact(opts: {
+  workspaceRoot: string;
+  artifactPath: string;
+  paper: Paper;
+  readId: string;
+  sourceId: string;
+  material: Awaited<ReturnType<typeof loadSourceMaterial>>;
+  body: string;
+}): void {
+  const title = opts.material.meta.title || opts.paper.title || opts.paper.id;
+  const sourceUrl = opts.paper.canonicalSource.url ?? opts.material.meta.abs_url ?? '';
+  const artifact = [
+    '---',
+    `title: ${JSON.stringify(title)}`,
+    `authors: ${JSON.stringify(opts.material.meta.authors ?? [])}`,
+    `paper_id: ${JSON.stringify(opts.paper.id)}`,
+    `source_kind: ${JSON.stringify(opts.paper.canonicalSource.kind)}`,
+    `source_id: ${JSON.stringify(opts.sourceId)}`,
+    `source_url: ${JSON.stringify(sourceUrl)}`,
+    `pdf_url: ${JSON.stringify(opts.material.meta.pdf_url ?? '')}`,
+    `read_id: ${JSON.stringify(opts.readId)}`,
+    'kind: library-read',
+    `tags: ${JSON.stringify(opts.paper.tags ?? [])}`,
+    '---',
+    '',
+    opts.body,
+    '',
+  ].join('\n');
+  writeFileSync(join(opts.workspaceRoot, opts.artifactPath), artifact);
+}
+
+function normalizeLibraryReadBody(output: string): string {
+  let body = output.trim();
+  body = body.replace(/^```(?:markdown)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  body = body.replace(/^\s*---[\s\S]*?---\s*/, '').trim();
+  body = body.replace(/\n+FILES_MODIFIED:\s*\n[\s\S]*$/i, '').trim();
+  return body;
 }
 
 function readMethodology(file: string): string {

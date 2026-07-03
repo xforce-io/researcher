@@ -7,6 +7,8 @@ export interface InvokeOptions {
   userPrompt: string;
   /** Hard timeout in milliseconds. */
   timeoutMs?: number;
+  /** Desired maximum model output tokens. Adapters that cannot enforce it may ignore it. */
+  maxTokens?: number;
 }
 
 export interface InvokeResult {
@@ -18,6 +20,8 @@ export interface InvokeResult {
   exitCode: number;
   /** stderr of the underlying process ('' on success). Persisted on failure for diagnosis. */
   stderr?: string;
+  /** Provider finish reason, when the adapter can recover it from the runtime trace. */
+  finishReason?: string;
 }
 
 export interface AgentRuntime {

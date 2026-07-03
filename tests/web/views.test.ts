@@ -344,11 +344,16 @@ describe('renderLibrary', () => {
     const html = renderLibraryPaper(detail);
     expect(html).toContain('Reading and parsing');
     expect(html).toContain('role="status"');
+    expect(html).toContain('id="library-read-heading"');
+    expect(html).toContain('id="library-read-retry"');
     expect(html).toContain('disabled>Deep read</button>');
     expect(html).toContain('id="library-read-stages"');
     expect(html).toContain('Fetch source');
     expect(html).toContain('Draft read artifact');
     expect(html).toContain('Record Library state');
+    expect(html).toContain("libHeading.textContent = libDone ? 'Read complete' : 'Read failed'");
+    expect(html).toContain("libRetry.textContent = 'Retry'");
+    expect(html).toContain("cls = 'error'");
     expect(html).toContain('class="read-item"');
     expect(html).toContain('class="read-path mono"');
   });
