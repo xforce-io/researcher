@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -46,16 +46,46 @@ export class MilkieAdapter implements AgentRuntime {
       );
       const stdout = result.stdout ?? '';
       const output = extractMilkieOutput(stdout);
+      const runId = extractMilkieRunId(stdout);
       return {
         output,
         exitCode: result.exitCode ?? 1,
         modifiedFiles: parseFilesModified(output || stdout),
         stderr: result.stderr ?? '',
+        finishReason: runId ? readMilkieFinishReason(opts.cwd, runId) : undefined,
       };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+}
+
+function extractMilkieRunId(stdout: string): string | undefined {
+  const last = stdout.trim().split('\n').filter(Boolean).at(-1);
+  if (!last) return undefined;
+  try {
+    const parsed = JSON.parse(last) as { runId?: unknown };
+    return typeof parsed.runId === 'string' ? parsed.runId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readMilkieFinishReason(cwd: string, runId: string): string | undefined {
+  const path = join(cwd, '.milkie', 'runs', `${runId}.jsonl`);
+  if (!existsSync(path)) return undefined;
+  try {
+    const lines = readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).reverse();
+    for (const line of lines) {
+      const ev = JSON.parse(line) as { type?: unknown; payload?: { response?: { finishReason?: unknown } } };
+      if (ev.type !== 'llm.responded') continue;
+      const finishReason = ev.payload?.response?.finishReason;
+      if (typeof finishReason === 'string') return finishReason;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 function stripNul(s: string): string {

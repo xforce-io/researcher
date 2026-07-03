@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 vi.mock('execa', () => ({
   execa: vi.fn(async (_bin: string, args: string[], _opts: object) => ({
@@ -55,6 +58,30 @@ describe('MilkieAdapter', () => {
     const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toBe('the real failure reason');
+  });
+
+  it('recovers finishReason from the Milkie run trace', async () => {
+    const { execa } = await import('execa');
+    const root = mkdtempSync(join(tmpdir(), 'rsw-milkie-trace-'));
+    const runId = 'run-with-length';
+    mkdirSync(join(root, '.milkie/runs'), { recursive: true });
+    writeFileSync(
+      join(root, `.milkie/runs/${runId}.jsonl`),
+      JSON.stringify({
+        type: 'llm.responded',
+        payload: { response: { finishReason: 'length', content: [], toolCalls: [] } },
+      }) + '\n',
+    );
+    (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify({ runId, status: 'completed', lastOutput: '' }) + '\n',
+      stderr: '',
+      args: [],
+    });
+
+    const a = new MilkieAdapter();
+    const r = await a.invoke({ cwd: root, systemPrompt: 'S', userPrompt: 'U' });
+    expect(r.finishReason).toBe('length');
   });
 
   it('allows RESEARCHER_MILKIE_BIN to override the packaged runtime', () => {
