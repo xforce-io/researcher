@@ -12,7 +12,7 @@ vi.mock('execa', () => ({
   })),
 }));
 
-import { MilkieAdapter } from '../../src/adapter/milkie.js';
+import { MilkieAdapter, resolveMilkieBin } from '../../src/adapter/milkie.js';
 
 describe('MilkieAdapter', () => {
   it('invokes milkie agent run with an input file', async () => {
@@ -23,7 +23,8 @@ describe('MilkieAdapter', () => {
     expect(r.modifiedFiles).toEqual(['notes/active/01_x.md']);
 
     const lastCall = (execa as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe('milkie');
+    expect(lastCall?.[0]).toContain('@freemanxu/milkie');
+    expect(lastCall?.[0]).toMatch(/dist\/cli\/index\.js$/);
     const args = lastCall?.[1] as string[];
     expect(args.slice(0, 3)).toEqual(['agent', 'run', 'researcher']);
     expect(args).toContain('--input-file');
@@ -54,5 +55,9 @@ describe('MilkieAdapter', () => {
     const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toBe('the real failure reason');
+  });
+
+  it('allows RESEARCHER_MILKIE_BIN to override the packaged runtime', () => {
+    expect(resolveMilkieBin({ RESEARCHER_MILKIE_BIN: '/custom/milkie' })).toBe('/custom/milkie');
   });
 });

@@ -1,10 +1,13 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execa } from 'execa';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from './interface.js';
 
-const MILKIE_BIN = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
+const require = createRequire(import.meta.url);
+
+const MILKIE_BIN = resolveMilkieBin();
 const MILKIE_AGENT = process.env.RESEARCHER_MILKIE_AGENT ?? 'researcher';
 
 export class MilkieAdapter implements AgentRuntime {
@@ -58,6 +61,21 @@ export class MilkieAdapter implements AgentRuntime {
 function stripNul(s: string): string {
   // eslint-disable-next-line no-control-regex -- intentional: matches NUL
   return s.replace(/\u0000/g, '');
+}
+
+export function resolveMilkieBin(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.RESEARCHER_MILKIE_BIN) return env.RESEARCHER_MILKIE_BIN;
+
+  try {
+    const pkgPath = require.resolve('@freemanxu/milkie/package.json');
+    const pkg = require(pkgPath) as { bin?: string | Record<string, string> };
+    const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.milkie;
+    if (binRel) return join(dirname(pkgPath), binRel);
+  } catch {
+    // Fall back to PATH for dev checkouts or manually installed runtimes.
+  }
+
+  return 'milkie';
 }
 
 function extractMilkieOutput(stdout: string): string {
