@@ -5,8 +5,10 @@ import { LIBRARY_DIR } from '../library/store.js';
 import { loadSourceMaterial } from '../pipeline/read.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { resolveResearcherHome } from '../paths.js';
+import { scaffoldMilkieRuntime } from '../commands/init.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import type { Paper } from '../library/model.js';
+import type { RunEvent } from '../pipeline/events.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -16,6 +18,7 @@ export interface LibraryReadRunnerOptions {
   readId: string;
   topicContext?: LibraryReadTopicContext;
   onLine?: (line: string) => void;
+  onEvent?: (ev: RunEvent) => void;
 }
 
 export interface LibraryReadTopicContext {
@@ -38,11 +41,14 @@ export async function runLibraryRead(
   opts: LibraryReadRunnerOptions & { adapter: AgentRuntime },
 ): Promise<LibraryReadResult> {
   const sourceId = opts.paper.canonicalSource.id;
+  opts.onEvent?.({ type: 'stage', name: 'fetch-source' });
   const material = await loadSourceMaterial(sourceId);
   const artifactPath = `${LIBRARY_DIR}/papers/${opts.paper.id}/reads/${opts.readId}.md`;
   mkdirSync(join(opts.workspaceRoot, LIBRARY_DIR, 'papers', opts.paper.id, 'reads'), { recursive: true });
   opts.onLine?.(`deep-read ${opts.paper.id}`);
 
+  opts.onEvent?.({ type: 'stage', name: 'draft-read' });
+  scaffoldMilkieRuntime({ root: opts.workspaceRoot });
   const result = await opts.adapter.invoke({
     cwd: opts.workspaceRoot,
     systemPrompt: librarySystemPrompt(),
@@ -55,8 +61,15 @@ export async function runLibraryRead(
       source_fetch_instruction: material.fetchInstruction,
       topic_context: topicContextText(opts.topicContext),
       artifact_path: artifactPath,
-      paper_id: opts.paper.id,
-      source_id: sourceId,
+      paper_title_json: JSON.stringify(material.meta.title || opts.paper.title || opts.paper.id),
+      authors_json: JSON.stringify(material.meta.authors ?? []),
+      paper_id_json: JSON.stringify(opts.paper.id),
+      source_kind_json: JSON.stringify(opts.paper.canonicalSource.kind),
+      source_id_json: JSON.stringify(sourceId),
+      source_url_json: JSON.stringify(opts.paper.canonicalSource.url ?? material.meta.abs_url ?? ''),
+      pdf_url_json: JSON.stringify(material.meta.pdf_url ?? ''),
+      read_id_json: JSON.stringify(opts.readId),
+      tags_json: JSON.stringify(opts.paper.tags ?? []),
     }),
     timeoutMs: TIMEOUT_MS,
   });
@@ -64,6 +77,7 @@ export async function runLibraryRead(
   if (result.exitCode !== 0) {
     throw new Error(`library read agent exited ${result.exitCode}${result.stderr ? `: ${result.stderr}` : ''}`);
   }
+  opts.onEvent?.({ type: 'stage', name: 'record-read' });
   if (!existsSync(join(opts.workspaceRoot, artifactPath))) {
     throw new Error(`library read did not write expected artifact: ${artifactPath}`);
   }

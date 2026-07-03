@@ -47,15 +47,28 @@ Use this structure:
 
 ```markdown
 ---
-paper_id: "{{paper_id}}"
-source_id: "{{source_id}}"
+title: {{paper_title_json}}
+authors: {{authors_json}}
+paper_id: {{paper_id_json}}
+source_kind: {{source_kind_json}}
+source_id: {{source_id_json}}
+source_url: {{source_url_json}}
+pdf_url: {{pdf_url_json}}
+read_id: {{read_id_json}}
 kind: library-read
-tags: []
+tags: {{tags_json}}
 ---
 
 # <paper title>
 
 > One-line Frame lede.
+
+## Brief
+
+A short reader-facing brief in 2–4 sentences: what problem this paper tackles,
+what it builds or measures, what the central evidence says, and why the result
+matters. This is the Library page's orientation layer; keep details in the
+sections below.
 
 ## Claims
 

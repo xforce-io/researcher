@@ -1,7 +1,7 @@
 import { it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { startServer } from '../../src/web/server.js';
 import { TaskRegistry } from '../../src/web/tasks.js';
 import { PaperLibrary } from '../../src/library/store.js';
@@ -50,8 +50,11 @@ beforeAll(async () => {
     libraryReadRunner: async ({ onLine }) => {
       onLine?.('mock library read');
       await new Promise<void>((resolve) => { releaseLibraryRead = resolve; });
+      const artifactPath = '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md';
+      mkdirSync(dirname(join(root, artifactPath)), { recursive: true });
+      writeFileSync(join(root, artifactPath), '# Mock read\n\n## Claims\n\n- x');
       return {
-        artifactPath: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md',
+        artifactPath,
         title: 'Metadata Title From Read',
       };
     },
@@ -60,10 +63,22 @@ beforeAll(async () => {
 });
 afterAll(async () => { await server.close(); });
 
-it('serves the dashboard at /', async () => {
+it('serves workspace home at /', async () => {
   const res = await fetch(base + '/');
   expect(res.status).toBe(200);
-  expect(await res.text()).toContain('/t/trace');
+  const html = await res.text();
+  expect(html).toContain('Workspace Home');
+  expect(html).toContain('/topics');
+  expect(html).toContain('/library');
+  expect(html).not.toContain('<main class="grid">');
+});
+
+it('serves the topic list at /topics', async () => {
+  const res = await fetch(base + '/topics');
+  expect(res.status).toBe(200);
+  const html = await res.text();
+  expect(html).toContain('/t/trace');
+  expect(html).toContain('Topics');
 });
 
 it('serves the library page', async () => {
@@ -100,8 +115,9 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
 
   const selected = await fetch(base + '/library?paper=paper_arxiv_2401_12345');
   expect(selected.status).toBe(200);
+  expect(selected.url).toBe(base + '/library/p/paper_arxiv_2401_12345');
   const selectedHtml = await selected.text();
-  expect(selectedHtml).toContain('Selected paper');
+  expect(selectedHtml).toContain('Paper detail');
   expect(selectedHtml).toContain('paper-card detail');
   expect(selectedHtml).toContain('Deep read');
   expect(selectedHtml).toContain('trace · linked');
@@ -112,26 +128,53 @@ it('starts a library deep read and records read state', async () => {
   const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345' });
   const first = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
   expect(first.status).toBe(303);
-  expect(first.headers.get('location')).toBe('/library?paper=paper_arxiv_2401_12345');
+  expect(first.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
 
   const lib = new PaperLibrary(root);
   await waitFor(() => lib.listReads('paper_arxiv_2401_12345').some((r) => r.status === 'reading'));
+
+  const detailDuringRead = await fetch(base + '/library/p/paper_arxiv_2401_12345');
+  const detailHtml = await detailDuringRead.text();
+  expect(detailHtml).toContain('id="library-read-stages"');
+  expect(detailHtml).toContain('data-library-task="');
+  expect(detailHtml).toContain('Fetch source');
+
+  const taskId = /data-library-task="([^"]+)"/.exec(detailHtml)?.[1];
+  expect(taskId).toBeTruthy();
 
   const second = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
   expect(second.status).toBe(409);
 
   releaseLibraryRead?.();
+  const sse = await fetch(base + `/library/read/${taskId}/stream`);
+  const sseText = await sse.text();
+  expect(sseText).toContain('event: plan');
+  expect(sseText).toContain('fetch-source');
+  expect(sseText).toContain('event: end');
   await waitFor(() => lib.listReads('paper_arxiv_2401_12345').some((r) =>
     r.status === 'read' &&
     r.artifactPath === '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'
   ));
   expect(lib.getPaper('paper_arxiv_2401_12345')?.title).toBe('Metadata Title From Read');
+
+  const completedDetail = await fetch(base + '/library/p/paper_arxiv_2401_12345');
+  const completedHtml = await completedDetail.text();
+  expect(completedHtml).toContain('Read artifact');
+  expect(completedHtml).toContain('Mock read');
 });
 
-it('redirects legacy paper detail URLs back to the unified library workspace', async () => {
+it('serves canonical paper detail URLs', async () => {
   const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
+  expect(res.status).toBe(200);
+  const html = await res.text();
+  expect(html).toContain('Paper detail');
+  expect(html).toContain('Deep read');
+});
+
+it('redirects legacy selected-paper query URLs to canonical paper detail', async () => {
+  const res = await fetch(base + '/library?paper=paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(303);
-  expect(res.headers.get('location')).toBe('/library?paper=paper_arxiv_2401_12345');
+  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
 });
 
 it('serves a topic page', async () => {

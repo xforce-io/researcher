@@ -11,7 +11,10 @@ export type Stage =
   | 'synthesize'
   | 'package'
   | 'feed-synthesize'
-  | 'feed-enrich';
+  | 'feed-enrich'
+  | 'fetch-source'
+  | 'draft-read'
+  | 'record-read';
 
 export function newRunId(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
