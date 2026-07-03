@@ -1,6 +1,7 @@
 # Issue 69: Runner-owned Library read artifacts
 
 Issue: https://github.com/xforce-io/researcher/issues/69
+Pull request: https://github.com/xforce-io/researcher/pull/70
 
 ## Problem
 
