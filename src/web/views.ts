@@ -1,6 +1,47 @@
 import { marked } from 'marked';
+import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
 import type { Zone } from '../state/zone.js';
+
+function renderMath(src: string, displayMode: boolean): string {
+  return katex.renderToString(src, {
+    displayMode,
+    output: 'mathml',
+    throwOnError: false,
+  });
+}
+
+marked.use({
+  extensions: [
+    {
+      name: 'mathBlock',
+      level: 'block',
+      start(src: string) { return src.match(/\$\$/)?.index; },
+      tokenizer(src: string) {
+        const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?[ \t]*\$\$(?:\n|$)/.exec(src);
+        if (!m) return;
+        return { type: 'mathBlock', raw: m[0], text: m[1].trim() };
+      },
+      renderer(token) {
+        return `<div class="math-display">${renderMath(String(token.text ?? ''), true)}</div>`;
+      },
+    },
+    {
+      name: 'mathInline',
+      level: 'inline',
+      start(src: string) { return src.indexOf('$'); },
+      tokenizer(src: string) {
+        if (src.startsWith('$$')) return;
+        const m = /^\$((?:\\.|[^\n$\\])+?)\$(?!\$)/.exec(src);
+        if (!m) return;
+        return { type: 'mathInline', raw: m[0], text: m[1].trim() };
+      },
+      renderer(token) {
+        return `<span class="math-inline">${renderMath(String(token.text ?? ''), false)}</span>`;
+      },
+    },
+  ],
+});
 
 export function escapeHtml(s: string): string {
   return s

@@ -21,6 +21,21 @@ describe('renderDoc', () => {
   it('renders markdown headings to html', () => {
     expect(renderDoc('# Hello')).toContain('<h1>Hello</h1>');
   });
+  it('renders inline and block math in read artifacts', () => {
+    const html = renderDoc([
+      'EEVEE uses $P = \\{p_1, \\ldots, p_K\\}$ and $\\hat{y} = M(x; p_z)$.',
+      '',
+      '$$',
+      'S_R = \\lambda_{acc}A + \\lambda_{con}C',
+      '$$',
+    ].join('\n'));
+    expect(html).toContain('class="math-inline"');
+    expect(html).toContain('class="math-display"');
+    expect(html).toContain('<math');
+    expect(html).toContain('<msub>');
+    expect(html).not.toContain('$P =');
+    expect(html).not.toContain('$$');
+  });
   it('lifts a report H1 + key/value blockquote into the aligned fm table', () => {
     const md = '# Decision Agent: Research Report\n\n> **Version:** v19 (19 papers)\n> **Last Updated:** 2026-06-04\n> **Papers:** [01](notes/01.md), [02](notes/02.md)\n\n---\n\n## Body';
     const html = renderDoc(md);
