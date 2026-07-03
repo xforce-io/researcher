@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { runLibraryRead } from '../../src/web/library-read.js';
 import { writeTextCache } from '../../src/sources/cache.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
@@ -18,14 +18,48 @@ vi.mock('../../src/sources/arxiv.js', async (orig) => ({
 class StubAdapter implements AgentRuntime {
   id = 'stub';
   lastPrompt = '';
+  lastMaxTokens: number | undefined;
 
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
     this.lastPrompt = opts.userPrompt;
-    const match = /Write a single new file at `([^`]+)`/.exec(opts.userPrompt);
-    const artifact = match?.[1] ?? '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md';
-    mkdirSync(dirname(join(opts.cwd, artifact)), { recursive: true });
-    writeFileSync(join(opts.cwd, artifact), '# Library read\n\n## Claims\n- x');
-    return { output: `done\n\nFILES_MODIFIED:\n${artifact}\n`, modifiedFiles: [artifact], exitCode: 0 };
+    this.lastMaxTokens = opts.maxTokens;
+    return {
+      output: [
+        '# Library Read Paper',
+        '',
+        '> Frame.',
+        '',
+        '## Brief',
+        '',
+        'This is the brief.',
+        '',
+        '## Claims',
+        '',
+        '- x',
+        '',
+        '## Assumptions',
+        '',
+        '- y',
+        '',
+        '## Method',
+        '',
+        '- z',
+        '',
+        '## Eval',
+        '',
+        '- e',
+        '',
+        '## Weaknesses',
+        '',
+        '- w',
+        '',
+        '## Relations',
+        '',
+        '- standalone [low]: test.',
+      ].join('\n'),
+      modifiedFiles: [],
+      exitCode: 0,
+    };
   }
 }
 
@@ -34,6 +68,14 @@ class EmptyStubAdapter implements AgentRuntime {
 
   async invoke(): Promise<InvokeResult> {
     return { output: '', modifiedFiles: [], exitCode: 0 };
+  }
+}
+
+class TruncatedStubAdapter implements AgentRuntime {
+  id = 'truncated-stub';
+
+  async invoke(): Promise<InvokeResult> {
+    return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
 
@@ -71,14 +113,23 @@ describe('runLibraryRead', () => {
     expect(adapter.lastPrompt).toContain('source_url: "https://arxiv.org/abs/2401.12345"');
     expect(adapter.lastPrompt).toContain('pdf_url: "https://arxiv.org/pdf/2401.12345"');
     expect(adapter.lastPrompt).toContain('read_id: "read_paper_arxiv_2401_12345"');
-    expect(adapter.lastPrompt).toContain('## Brief');
-    expect(adapter.lastPrompt).toContain('Library page');
+    const artifact = join(root, result.artifactPath);
+    expect(existsSync(artifact)).toBe(true);
+    const body = readFileSync(artifact, 'utf8');
+    expect(body).toContain('kind: library-read');
+    expect(body).toContain('title: "Library Read Paper"');
+    expect(body).toContain('## Brief');
+    expect(body).toContain('- x');
+    expect(adapter.lastMaxTokens).toBeGreaterThan(4096);
+    expect(adapter.lastPrompt).toContain('Return only the Markdown artifact body');
+    expect(adapter.lastPrompt).not.toContain('run_command');
+    expect(adapter.lastPrompt).not.toContain('FILES_MODIFIED:\n');
     expect(adapter.lastPrompt.indexOf('## Brief')).toBeLessThan(adapter.lastPrompt.indexOf('## Claims'));
     expect(existsSync(join(root, '.milkie/agents.json'))).toBe(true);
     expect(existsSync(join(root, 'agents/researcher.md'))).toBe(true);
   });
 
-  it('reports a completed agent run that did not write the expected read artifact', async () => {
+  it('fails when a completed agent run returns no artifact content', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-missing-'));
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
     writeTextCache('2401.12345', 'CACHED PAPER BODY');
@@ -97,6 +148,28 @@ describe('runLibraryRead', () => {
       paper,
       readId: 'read_paper_arxiv_2401_12345',
       adapter: new EmptyStubAdapter(),
-    })).rejects.toThrow('agent produced no final output');
+    })).rejects.toThrow('produced no Library read content');
+  });
+
+  it('fails clearly when the model output is truncated', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-truncated-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const paper: Paper = {
+      id: 'paper_arxiv_2401_12345',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
+      identifiers: { arxiv: '2401.12345' },
+      tags: [],
+      createdAt: '2026-07-02T00:00:00Z',
+      updatedAt: '2026-07-02T00:00:00Z',
+    };
+
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper,
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new TruncatedStubAdapter(),
+    })).rejects.toThrow('truncated');
   });
 });

@@ -38,27 +38,13 @@ END UNTRUSTED PAPER TEXT
 
 ## OUTPUT INSTRUCTIONS
 
-Write a single new file at `{{artifact_path}}`.
+Return only the Markdown artifact body. Do not write files, do not call tools,
+do not include frontmatter, and do not include a `FILES_MODIFIED` block. The
+runner owns file creation at `{{artifact_path}}` and will add frontmatter.
 
-The file is a standalone Library read artifact. It is not a topic note and must
-not include `zone` frontmatter.
-
-Use this structure:
+Use this exact body structure:
 
 ```markdown
----
-title: {{paper_title_json}}
-authors: {{authors_json}}
-paper_id: {{paper_id_json}}
-source_kind: {{source_kind_json}}
-source_id: {{source_id_json}}
-source_url: {{source_url_json}}
-pdf_url: {{pdf_url_json}}
-read_id: {{read_id_json}}
-kind: library-read
-tags: {{tags_json}}
----
-
 # <paper title>
 
 > One-line Frame lede.
@@ -83,13 +69,17 @@ sections below.
 ## Relations
 ```
 
-- Use `Write` tool, not `Edit` (the file does not exist yet).
-- Do NOT modify any other files.
-- Do NOT write into any topic `notes/` directory.
-- Do NOT update landscape, report, README, or `.researcher/`.
-- After writing, end your response with the line:
+The artifact metadata is fixed by the runner:
 
-FILES_MODIFIED:
-{{artifact_path}}
-
-That trailing block is parsed by the runner; keep it exact.
+```yaml
+title: {{paper_title_json}}
+authors: {{authors_json}}
+paper_id: {{paper_id_json}}
+source_kind: {{source_kind_json}}
+source_id: {{source_id_json}}
+source_url: {{source_url_json}}
+pdf_url: {{pdf_url_json}}
+read_id: {{read_id_json}}
+kind: library-read
+tags: {{tags_json}}
+```
