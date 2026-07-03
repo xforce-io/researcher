@@ -839,6 +839,18 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .read-surface .note-title + blockquote + h2 {
   margin-top:24px;
 }
+.math-inline math {
+  font-size:1em;
+}
+.math-display {
+  overflow-x:auto;
+  margin:14px 0;
+  padding:4px 0;
+}
+.math-display math {
+  display:block;
+  font-size:1.08em;
+}
 .fm div { display:grid; grid-template-columns:minmax(76px, .34fr) minmax(0, 1fr); gap:10px; align-items:baseline; min-width:0; }
 .fm div.wide { grid-column:1 / -1; grid-template-columns:minmax(120px, .16fr) minmax(0, 1fr); }
 .fm dt { color:var(--ink-faint); min-width:0; }
