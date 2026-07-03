@@ -79,7 +79,11 @@ export async function runLibraryRead(
   }
   opts.onEvent?.({ type: 'stage', name: 'record-read' });
   if (!existsSync(join(opts.workspaceRoot, artifactPath))) {
-    throw new Error(`library read did not write expected artifact: ${artifactPath}`);
+    const finalOutput = result.output.trim();
+    const detail = finalOutput
+      ? `last output: ${finalOutput.slice(0, 500)}`
+      : 'agent produced no final output';
+    throw new Error(`library read agent completed without writing expected artifact: ${artifactPath} (${detail})`);
   }
   return { artifactPath, title: material.meta.title || undefined };
 }

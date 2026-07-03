@@ -323,9 +323,9 @@ function renderDeepReadAction(
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
     return `<div class="read-status-panel" role="status" aria-live="polite">` +
-      `<div class="read-status-copy"><span class="pulse-dot"></span><div><b>Reading and parsing</b>` +
+      `<div class="read-status-copy"><span class="pulse-dot"></span><div><b id="library-read-heading">Reading and parsing</b>` +
       `<p id="library-read-status"${attrs}>Extracting paper text and drafting a Library read artifact.</p></div></div>` +
-      `<button class="primary" type="button" disabled>Deep read</button>` +
+      `<button id="library-read-retry" class="primary" type="button" disabled>Deep read</button>` +
       `<ol id="library-read-stages" class="run-stages library-read-stages">${stages}</ol>` +
       `<pre id="library-read-log" class="library-read-log"></pre>` +
     `</div>`;
@@ -404,18 +404,28 @@ const LIBRARY_READ_JS = `
 const libStatus = document.getElementById('library-read-status');
 const libStages = document.getElementById('library-read-stages');
 const libLog = document.getElementById('library-read-log');
+const libHeading = document.getElementById('library-read-heading');
+const libRetry = document.getElementById('library-read-retry');
 const libStageLabels = ${JSON.stringify(LIBRARY_READ_STAGE_LABELS)};
-let libPlan = Object.keys(libStageLabels), libCurrent = libPlan[0], libDone = false;
+let libPlan = Object.keys(libStageLabels), libCurrent = libPlan[0], libDone = false, libFailed = false;
 
 function renderLibraryStages() {
   if (!libStages) return;
   const currentIndex = libCurrent ? libPlan.indexOf(libCurrent) : -1;
   libStages.innerHTML = libPlan.map((name, i) => {
     let cls = 'pending', mk = '\\u00b7';
-    if (libDone || (currentIndex >= 0 && i < currentIndex)) { cls = 'done'; mk = '\\u2713'; }
+    if (libFailed && i === currentIndex) { cls = 'error'; mk = '!'; }
+    else if (libDone || (currentIndex >= 0 && i < currentIndex)) { cls = 'done'; mk = '\\u2713'; }
     else if (i === currentIndex) { cls = 'active'; mk = '\\u27f3'; }
     return '<li class="' + cls + '" data-stage="' + name + '"><span class="mk">' + mk + '</span>' + (libStageLabels[name] || name) + '</li>';
   }).join('');
+}
+
+function enableLibraryRetry() {
+  if (!libRetry) return;
+  libRetry.disabled = false;
+  libRetry.textContent = 'Retry';
+  libRetry.addEventListener('click', () => window.location.reload(), { once: true });
 }
 
 function appendLibraryLog(line) {
@@ -439,9 +449,12 @@ if (libStatus && libStatus.dataset.libraryTask) {
     let data = {};
     try { data = JSON.parse(ev.data || '{}'); } catch {}
     libDone = data.status === 'done' || data.exitCode === 0;
-    if (libStatus) libStatus.textContent = libDone ? 'Read artifact recorded. Refreshing to show the completed read.' : 'Read failed. Check the log below.';
+    libFailed = !libDone;
+    if (libHeading) libHeading.textContent = libDone ? 'Read complete' : 'Read failed';
+    if (libStatus) libStatus.textContent = libDone ? 'Read artifact recorded. Refreshing to show the completed read.' : 'Read failed. Refresh to retry, or check the log below.';
     renderLibraryStages();
     if (libDone) window.setTimeout(() => window.location.reload(), 900);
+    else enableLibraryRetry();
   });
   es.onerror = () => appendLibraryLog('progress connection closed');
 } else {

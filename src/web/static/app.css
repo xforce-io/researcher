@@ -522,6 +522,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .library-read-stages li { color:var(--ink-faint); }
 .library-read-stages li.done { color:var(--accent-ink); }
 .library-read-stages li.active { color:var(--ink); font-weight:700; }
+.library-read-stages li.error { color:#9a3f2f; font-weight:700; }
 .library-read-log {
   grid-column:1 / -1;
   display:block;

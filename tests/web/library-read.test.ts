@@ -29,6 +29,14 @@ class StubAdapter implements AgentRuntime {
   }
 }
 
+class EmptyStubAdapter implements AgentRuntime {
+  id = 'empty-stub';
+
+  async invoke(): Promise<InvokeResult> {
+    return { output: '', modifiedFiles: [], exitCode: 0 };
+  }
+}
+
 describe('runLibraryRead', () => {
   it('writes a standalone workspace library read without topic context', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-'));
@@ -68,5 +76,27 @@ describe('runLibraryRead', () => {
     expect(adapter.lastPrompt.indexOf('## Brief')).toBeLessThan(adapter.lastPrompt.indexOf('## Claims'));
     expect(existsSync(join(root, '.milkie/agents.json'))).toBe(true);
     expect(existsSync(join(root, 'agents/researcher.md'))).toBe(true);
+  });
+
+  it('reports a completed agent run that did not write the expected read artifact', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-missing-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const paper: Paper = {
+      id: 'paper_arxiv_2401_12345',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
+      identifiers: { arxiv: '2401.12345' },
+      tags: [],
+      createdAt: '2026-07-02T00:00:00Z',
+      updatedAt: '2026-07-02T00:00:00Z',
+    };
+
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper,
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new EmptyStubAdapter(),
+    })).rejects.toThrow('agent produced no final output');
   });
 });
