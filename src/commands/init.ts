@@ -12,6 +12,10 @@ export interface ScaffoldOptions {
   repoRoot: string;
 }
 
+export interface ScaffoldMilkieRuntimeOptions {
+  root: string;
+}
+
 function gitToplevel(dir: string): string | null {
   try {
     const { stdout } = execaSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir });
@@ -48,14 +52,25 @@ export function scaffoldTopicRepo(opts: ScaffoldOptions): void {
   }
   const pkg = resolvePackageRoot();
   mkdirSync(join(target, 'state'), { recursive: true });
-  mkdirSync(join(opts.repoRoot, '.milkie'), { recursive: true });
-  mkdirSync(join(opts.repoRoot, 'agents'), { recursive: true });
   copyFileSync(join(pkg, 'templates/project.yaml'), join(target, 'project.yaml'));
   copyFileSync(join(pkg, 'templates/thesis.md'), join(target, 'thesis.md'));
   copyFileSync(join(pkg, 'templates/researcher-gitignore'), join(target, '.gitignore'));
-  copyFileSync(join(pkg, 'templates/milkie-agents.json'), join(opts.repoRoot, '.milkie/agents.json'));
-  copyFileSync(join(pkg, 'templates/milkie-researcher.md'), join(opts.repoRoot, 'agents/researcher.md'));
+  scaffoldMilkieRuntime({ root: opts.repoRoot });
   writeFileSync(join(target, 'state/seen.jsonl'), '');
+}
+
+export function scaffoldMilkieRuntime(opts: ScaffoldMilkieRuntimeOptions): void {
+  const pkg = resolvePackageRoot();
+  mkdirSync(join(opts.root, '.milkie'), { recursive: true });
+  mkdirSync(join(opts.root, 'agents'), { recursive: true });
+  const agentsJson = join(opts.root, '.milkie/agents.json');
+  const researcherAgent = join(opts.root, 'agents/researcher.md');
+  if (!existsSync(agentsJson)) {
+    copyFileSync(join(pkg, 'templates/milkie-agents.json'), agentsJson);
+  }
+  if (!existsSync(researcherAgent)) {
+    copyFileSync(join(pkg, 'templates/milkie-researcher.md'), researcherAgent);
+  }
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {

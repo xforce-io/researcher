@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadDashboard, loadLibrary, loadTopic, resolveTopicDir } from './discovery.js';
-import { renderDashboard, renderLibrary, renderTopic, renderDoc } from './views.js';
+import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
+import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
@@ -11,6 +11,7 @@ import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { parseTags, runLibraryAdd, runLibraryLink } from '../commands/library.js';
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
+import type { Stage } from '../state/runs.js';
 
 export interface ServeOptions {
   root: string;
@@ -20,6 +21,7 @@ export interface ServeOptions {
 }
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
+const LIBRARY_READ_STAGES: Stage[] = ['fetch-source', 'draft-read', 'record-read'];
 
 function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
   res.writeHead(status, { 'content-type': type });
@@ -62,11 +64,17 @@ async function handle(
 
   // GET /
   if (req.method === 'GET' && path === '/') {
-    return send(res, 200, 'text/html; charset=utf-8', renderDashboard(loadDashboard(root)));
+    return send(res, 200, 'text/html; charset=utf-8', renderWorkspaceHome(loadWorkspaceHome(root)));
+  }
+  // GET /topics
+  if (req.method === 'GET' && path === '/topics') {
+    return send(res, 200, 'text/html; charset=utf-8', renderTopics(loadDashboard(root)));
   }
   // GET /library
   if (req.method === 'GET' && path === '/library') {
-    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, url.searchParams.get('paper'))));
+    const selected = url.searchParams.get('paper');
+    if (selected) return redirect(res, `/library/p/${encodeURIComponent(selected)}`);
+    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root)));
   }
   // POST /library/add
   if (req.method === 'POST' && path === '/library/add') {
@@ -108,7 +116,8 @@ async function handle(
     if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
     const readId = libraryReadId(paperId);
     lib.upsertRead({ id: readId, paperId, status: 'reading' });
-    registry.startJob(taskKey, async (onLine) => {
+    registry.startJob(taskKey, async (onLine, onEvent) => {
+      onEvent({ type: 'plan', stages: LIBRARY_READ_STAGES });
       try {
         const result = await libraryReadRunner({
           workspaceRoot: root,
@@ -116,6 +125,7 @@ async function handle(
           readId,
           topicContext: topic && topicDir ? { topicPath: topic, topicDir } : undefined,
           onLine,
+          onEvent,
         });
         if (result.title && !paper.title) {
           lib.upsertPaper({ ...paper, title: result.title });
@@ -128,11 +138,32 @@ async function handle(
         return 1;
       }
     });
-    return redirect(res, `/library?paper=${encodeURIComponent(paperId)}`);
+    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
+  }
+  const lsm = path.match(/^\/library\/read\/([^/]+)\/stream$/);
+  if (req.method === 'GET' && lsm) {
+    const taskId = decodeURIComponent(lsm[1]);
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+    const unsub = registry.subscribe(
+      taskId,
+      (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
+      (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
+      (task) => {
+        res.write(`event: end\ndata: ${JSON.stringify({ status: task.status, exitCode: task.exitCode })}\n\n`);
+        res.end();
+      },
+    );
+    req.on('close', unsub);
+    return;
   }
   const lm = path.match(/^\/library\/p\/([^/]+)$/);
   if (req.method === 'GET' && lm) {
-    return redirect(res, `/library?paper=${encodeURIComponent(decodeURIComponent(lm[1]))}`);
+    const paperId = decodeURIComponent(lm[1]);
+    const paper = loadLibraryPaper(root, paperId);
+    if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
+    const active = registry.activeTask(libraryReadTaskKey(paperId));
+    const activeRead = active ? { taskId: active.id, startedAt: active.startedAt } : null;
+    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead));
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {

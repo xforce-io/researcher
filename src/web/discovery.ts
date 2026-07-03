@@ -24,6 +24,26 @@ export interface DashboardModel {
   root: string;
   topics: TopicCard[];
 }
+export interface WorkspaceHomeModel {
+  root: string;
+  topicCounts: {
+    total: number;
+    active: number;
+    available: number;
+    dormant: number;
+    unavailable: number;
+  };
+  libraryCounts: {
+    papers: number;
+    unread: number;
+    reading: number;
+    read: number;
+    failed: number;
+    linked: number;
+    integrated: number;
+  };
+  activeTopics: TopicCard[];
+}
 export interface DocRef { path: string; label: string; }
 export interface NoteRef {
   path: string;
@@ -72,13 +92,13 @@ export interface LibraryView {
   root: string;
   topics: LibraryTopicRef[];
   papers: LibraryPaperSummary[];
-  selectedPaper: LibraryPaperDetailView | null;
 }
 export interface LibraryPaperDetailView {
   root: string;
   paper: LibraryPaperSummary;
   topics: LibraryTopicRef[];
   reads: PaperRead[];
+  latestReadArtifact: { path: string; markdown: string } | null;
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
 }
@@ -221,12 +241,41 @@ function summarizePaper(lib: PaperLibrary, paper: Paper, relation?: PaperRelatio
 
 export function loadLibrary(root: string, selectedPaperId?: string | null): LibraryView {
   const lib = new PaperLibrary(root);
-  const selectedPaper = selectedPaperId ? loadLibraryPaper(root, selectedPaperId) : null;
+  void selectedPaperId;
   return {
     root,
     topics: libraryTopics(root),
     papers: lib.listPapers().map((p) => summarizePaper(lib, p)),
-    selectedPaper,
+  };
+}
+
+export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
+  const dashboard = loadDashboard(root);
+  const lib = new PaperLibrary(root);
+  const papers = lib.listPapers();
+  const summaries = papers.map((p) => summarizePaper(lib, p));
+  const counts = {
+    unread: summaries.filter((p) => p.readStatus === 'unread').length,
+    reading: summaries.filter((p) => p.readStatus === 'reading').length,
+    read: summaries.filter((p) => p.readStatus === 'read').length,
+    failed: summaries.filter((p) => p.readStatus === 'failed').length,
+  };
+  return {
+    root,
+    topicCounts: {
+      total: dashboard.topics.length,
+      active: dashboard.topics.filter((t) => t.active).length,
+      available: dashboard.topics.filter((t) => t.available).length,
+      dormant: dashboard.topics.filter((t) => !t.active).length,
+      unavailable: dashboard.topics.filter((t) => !t.available).length,
+    },
+    libraryCounts: {
+      papers: papers.length,
+      ...counts,
+      linked: new Set(lib.listLinks().filter((l) => l.surfaceType === 'topic').map((l) => l.paperId)).size,
+      integrated: new Set(lib.listIntegrations().map((i) => i.paperId)).size,
+    },
+    activeTopics: dashboard.topics.filter((t) => t.active && t.available).slice(0, 6),
   };
 }
 
@@ -234,14 +283,28 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   const lib = new PaperLibrary(root);
   const paper = lib.getPaper(paperId);
   if (!paper) return null;
+  const reads = lib.listReads(paperId);
   return {
     root,
     paper: summarizePaper(lib, paper),
     topics: libraryTopics(root),
-    reads: lib.listReads(paperId),
+    reads,
+    latestReadArtifact: latestReadArtifact(root, reads),
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),
   };
+}
+
+function latestReadArtifact(root: string, reads: PaperRead[]): LibraryPaperDetailView['latestReadArtifact'] {
+  const read = [...reads]
+    .filter((r) => r.status === 'read' && r.artifactPath)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  if (!read?.artifactPath) return null;
+  const abs = resolve(root, read.artifactPath);
+  const base = resolve(root, '.researcher-workspace', 'library');
+  if (abs !== base && !abs.startsWith(base + sep)) return null;
+  if (!existsSync(abs)) return null;
+  return { path: read.artifactPath, markdown: readFileSync(abs, 'utf8') };
 }
 
 /**

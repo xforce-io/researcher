@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { runLibraryRead } from '../../src/web/library-read.js';
@@ -55,5 +55,18 @@ describe('runLibraryRead', () => {
     expect(result.artifactPath).toBe('.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md');
     expect(adapter.lastPrompt).toContain('None. Read this paper as a standalone Library artifact.');
     expect(adapter.lastPrompt).toContain('CACHED PAPER BODY');
+    expect(adapter.lastPrompt).toContain('title: "Library Read Paper"');
+    expect(adapter.lastPrompt).toContain('authors: ["A"]');
+    expect(adapter.lastPrompt).toContain('paper_id: "paper_arxiv_2401_12345"');
+    expect(adapter.lastPrompt).toContain('source_kind: "arxiv"');
+    expect(adapter.lastPrompt).toContain('source_id: "arxiv:2401.12345"');
+    expect(adapter.lastPrompt).toContain('source_url: "https://arxiv.org/abs/2401.12345"');
+    expect(adapter.lastPrompt).toContain('pdf_url: "https://arxiv.org/pdf/2401.12345"');
+    expect(adapter.lastPrompt).toContain('read_id: "read_paper_arxiv_2401_12345"');
+    expect(adapter.lastPrompt).toContain('## Brief');
+    expect(adapter.lastPrompt).toContain('Library page');
+    expect(adapter.lastPrompt.indexOf('## Brief')).toBeLessThan(adapter.lastPrompt.indexOf('## Claims'));
+    expect(existsSync(join(root, '.milkie/agents.json'))).toBe(true);
+    expect(existsSync(join(root, 'agents/researcher.md'))).toBe(true);
   });
 });

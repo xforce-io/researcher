@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadDashboard, loadLibrary, loadTopic } from '../../src/web/discovery.js';
+import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome } from '../../src/web/discovery.js';
 import { PaperLibrary } from '../../src/library/store.js';
 
 let root: string;
@@ -52,6 +52,8 @@ beforeAll(() => {
     tags: ['agent', 'planning'],
   });
   lib.upsertRead({ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md' });
+  mkdirSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345'), { recursive: true });
+  writeFileSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md'), '# Library Read\n\n## Findings\n\n- Useful paper.');
   lib.upsertLink({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', rationale: 'matches RQ1' });
   lib.upsertIntegration({ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', notePath: 'trace/notes/active/03_active.md', zone: 'active', integratedAt: '2026-07-02T01:00:00Z', summary: 'used in landscape' });
 
@@ -82,6 +84,30 @@ describe('loadDashboard', () => {
     expect(trace.decisionCounts).toEqual({ 'deep-read': 1, skim: 1, reject: 0 });
     expect(decision.active).toBe(false);
     expect(decision.available).toBe(false);
+  });
+});
+
+describe('loadWorkspaceHome', () => {
+  it('summarizes workspace topics and library state', () => {
+    const m = loadWorkspaceHome(root);
+    expect(m.root).toBe(root);
+    expect(m.topicCounts).toEqual({
+      total: 3,
+      active: 2,
+      available: 2,
+      dormant: 1,
+      unavailable: 1,
+    });
+    expect(m.libraryCounts).toEqual({
+      papers: 1,
+      unread: 0,
+      reading: 0,
+      read: 1,
+      failed: 0,
+      linked: 1,
+      integrated: 1,
+    });
+    expect(m.activeTopics.map((t) => t.path)).toEqual(['trace', 'feeds/ai-safety']);
   });
 });
 
@@ -158,7 +184,6 @@ describe('loadLibrary', () => {
         integratedTopicCount: 1,
       }),
     ]);
-    expect(v.selectedPaper).toBeNull();
     expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
   });
 
@@ -175,12 +200,15 @@ describe('loadLibrary', () => {
     expect(paper.displayTitle).toBe('arXiv 2606.29957');
   });
 
-  it('loads a selected paper detail with reads and relations', () => {
-    const library = loadLibrary(root, 'paper_arxiv_2401_12345');
-    const v = library.selectedPaper!;
+  it('loads a paper detail with reads and relations', () => {
+    const v = loadLibraryPaper(root, 'paper_arxiv_2401_12345')!;
     expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
     expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
+    expect(v.latestReadArtifact).toEqual({
+      path: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md',
+      markdown: '# Library Read\n\n## Findings\n\n- Useful paper.',
+    });
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
   });

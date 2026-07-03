@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, renderDoc, renderDashboard, renderLibrary, renderTopic, tocTitle } from '../../src/web/views.js';
-import type { DashboardModel, LibraryPaperDetailView, LibraryView, TopicView } from '../../src/web/discovery.js';
+import {
+  escapeHtml,
+  renderDoc,
+  renderLibrary,
+  renderLibraryPaper,
+  renderTopic,
+  renderTopics,
+  renderWorkspaceHome,
+  tocTitle,
+} from '../../src/web/views.js';
+import type { DashboardModel, LibraryPaperDetailView, LibraryView, TopicView, WorkspaceHomeModel } from '../../src/web/discovery.js';
 
 describe('escapeHtml', () => {
   it('escapes angle brackets and ampersands', () => {
@@ -109,9 +118,55 @@ describe('renderDoc', () => {
     expect(html).toContain('an agent reasons over metadata');
     expect(html).toContain('<h2>Claims</h2>');
   });
+  it('does not duplicate the H1 when frontmatter title matches the body title', () => {
+    const md = [
+      '---',
+      'title: "SWE-Together"',
+      'authors: ["A", "B"]',
+      'source_url: "https://arxiv.org/abs/2606.29957"',
+      'kind: library-read',
+      '---',
+      '',
+      '# SWE-Together',
+      '',
+      '> one-line frame',
+      '',
+      '## Claims',
+    ].join('\n');
+    const html = renderDoc(md);
+    expect(html.match(/SWE-Together/g)).toHaveLength(1);
+    expect(html).toContain('<dt>authors</dt><dd>A, B</dd>');
+    expect(html).toContain('href="https://arxiv.org/abs/2606.29957"');
+    expect(html).toContain('<blockquote>');
+  });
 });
 
-describe('renderDashboard', () => {
+describe('renderWorkspaceHome', () => {
+  const m: WorkspaceHomeModel = {
+    root: '/ws',
+    topicCounts: { total: 2, active: 1, available: 1, dormant: 1, unavailable: 1 },
+    libraryCounts: { papers: 3, unread: 1, reading: 1, read: 1, failed: 0, linked: 2, integrated: 1 },
+    activeTopics: [
+      { slug: 'trace', path: 'trace', active: true, available: true, oneline: 'triage <x>',
+        noteCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
+    ],
+  };
+
+  it('renders workspace-first entry points and summary metrics', () => {
+    const html = renderWorkspaceHome(m);
+    expect(html).toContain('Workspace Home');
+    expect(html).toContain('/library');
+    expect(html).toContain('/topics');
+    expect(html).toContain('3 papers');
+    expect(html).toContain('1 active');
+    expect(html).toContain('trace');
+    expect(html).not.toContain('href="/">Workspace</a>');
+    expect(html).not.toContain('workspace-actions');
+    expect(html).not.toContain('<main class="grid">');
+  });
+});
+
+describe('renderTopics', () => {
   const m: DashboardModel = {
     root: '/ws',
     topics: [
@@ -122,7 +177,8 @@ describe('renderDashboard', () => {
     ],
   };
   it('lists topic paths and links to detail pages', () => {
-    const html = renderDashboard(m);
+    const html = renderTopics(m);
+    expect(html).toContain('Topics');
     expect(html).toContain('/t/trace');
     expect(html).toContain('triage &lt;x&gt;');     // escaped
     expect(html).toContain('class="card-foot"');     // meta row must match the styled CSS class
@@ -130,7 +186,7 @@ describe('renderDashboard', () => {
     expect(html).toMatch(/unavailable|missing/i);    // unavailable marker
   });
   it('uses the styled triage bar / legend / stats, note count, and formatted date', () => {
-    const html = renderDashboard(m);
+    const html = renderTopics(m);
     expect(html).toContain('class="triage"');        // colored intake bar
     expect(html).toContain('class="legend"');        // deep/skim/reject legend
     expect(html).toContain('class="stats"');         // note count + date row
@@ -187,6 +243,7 @@ describe('renderTopic', () => {
     expect(html).toContain('class="meta-list"');        // Sources/Questions use the styled list
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
     expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
+    expect(html).toContain('<h1 class="sr-only">Topic: trace</h1>');
     expect(html).toContain('Related papers');
     expect(html).toContain('paper-card compact');
     expect(html).toContain('Reusable Paper Cards');
@@ -218,7 +275,6 @@ describe('renderLibrary', () => {
       integratedTopicCount: 1,
       updatedAt: '2026-07-02T00:00:00Z',
     }],
-    selectedPaper: null,
   };
 
   it('renders a prominent add paper modal trigger and shared paper cards', () => {
@@ -233,28 +289,43 @@ describe('renderLibrary', () => {
     expect(html).toContain('paper-card');
     expect(html).toContain('Reusable Paper Cards');
     expect(html).toContain('tag-chip');
-    expect(html).toContain('/library?paper=paper_arxiv_2401_12345');
+    expect(html).toContain('/library/p/paper_arxiv_2401_12345');
+    expect(html).toContain('library-rail');
+    expect(html).toContain('data-library-search');
+    expect(html).toContain('data-filter="unread"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('class="empty-state library-no-results" hidden');
+    expect(html).toContain('applyLibraryFilters');
+    expect(html).toContain('data-search="reusable paper cards arxiv:2401.12345 arxiv read agent planning"');
+    expect(html).toContain('data-status="read"');
+    expect(html).toContain('data-linked="1"');
+    expect(html).toContain('data-integrated="1"');
+    expect(html).not.toContain('Selected paper');
     expect(html.match(/<button[^>]*data-open-add-paper/g)).toHaveLength(1);
   });
 
-  it('renders selected paper detail inside the unified library workspace', () => {
+  it('renders paper detail as a first-class page with actions in the inspector', () => {
     const detail: LibraryPaperDetailView = {
       root: '/ws',
       paper: library.papers[0],
       topics: library.topics,
       reads: [{ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: 'read.md', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      latestReadArtifact: { path: 'read.md', markdown: '# Library Read\n\n## Findings\n\n- Useful paper.' },
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
     };
-    const html = renderLibrary({ ...library, selectedPaper: detail });
-    expect(html).toContain('Library');
-    expect(html).toContain('Add paper');
-    expect(html).toContain('Selected paper');
+    const html = renderLibraryPaper(detail);
+    expect(html).toContain('Paper detail');
+    expect(html).toContain('/library');
     expect(html).toContain('paper-card detail');
+    expect(html).toContain('paper-detail-main');
+    expect(html).toContain('paper-inspector');
     expect(html).toContain('action="/library/read"');
     expect(html).toContain('name="paperId"');
     expect(html).toContain('Deep read');
-    expect(html).toContain('Reads');
+    expect(html).toContain('Read artifact');
+    expect(html).toContain('<h1>Library Read</h1>');
+    expect(html).toContain('<h2>Findings</h2>');
     expect(html).toContain('Relations');
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
@@ -266,15 +337,36 @@ describe('renderLibrary', () => {
       paper: { ...library.papers[0], readStatus: 'reading' },
       topics: library.topics,
       reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      latestReadArtifact: null,
       links: [],
       integrations: [],
     };
-    const html = renderLibrary({ ...library, selectedPaper: detail });
+    const html = renderLibraryPaper(detail);
     expect(html).toContain('Reading and parsing');
     expect(html).toContain('role="status"');
     expect(html).toContain('disabled>Deep read</button>');
+    expect(html).toContain('id="library-read-stages"');
+    expect(html).toContain('Fetch source');
+    expect(html).toContain('Draft read artifact');
+    expect(html).toContain('Record Library state');
     expect(html).toContain('class="read-item"');
     expect(html).toContain('class="read-path mono"');
+  });
+
+  it('embeds active library read task metadata for live progress', () => {
+    const detail: LibraryPaperDetailView = {
+      root: '/ws',
+      paper: { ...library.papers[0], readStatus: 'reading' },
+      topics: library.topics,
+      reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+    };
+    const html = renderLibraryPaper(detail, { taskId: 'task-9', startedAt: 1719000000000 });
+    expect(html).toContain('data-library-task="task-9"');
+    expect(html).toContain('data-started-at="1719000000000"');
+    expect(html).toContain('/library/read/');
   });
 });
 
