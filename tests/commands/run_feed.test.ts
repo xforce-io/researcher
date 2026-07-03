@@ -6,6 +6,7 @@ import { execaSync } from 'execa';
 import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
+import { RUN_IPC_ENV } from '../../src/pipeline/events.js';
 
 class ScriptedAdapter implements AgentRuntime {
   id = 'scripted';
@@ -88,12 +89,17 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
   let proj: string;
   let inbox: string;
   let _origSend: typeof process.send;
+  let _origRunIpc: string | undefined;
   beforeEach(() => {
     _origSend = process.send;
+    _origRunIpc = process.env[RUN_IPC_ENV];
     (process as { send?: unknown }).send = undefined;
+    delete process.env[RUN_IPC_ENV];
   });
   afterEach(() => {
     (process as { send?: unknown }).send = _origSend;
+    if (_origRunIpc === undefined) delete process.env[RUN_IPC_ENV];
+    else process.env[RUN_IPC_ENV] = _origRunIpc;
   });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-feed-'));
@@ -122,6 +128,7 @@ describe('researcher run (feed / x-inbox, allowlist upstream, no triage)', () =>
     const adapter = new ScriptedAdapter([soulStep(), feedSynthesizeStep(), packageStep()]);
     const { runRun } = await import('../../src/commands/run.js');
     const sent: unknown[] = [];
+    process.env[RUN_IPC_ENV] = '1';
     (process as { send?: unknown }).send = (m: unknown) => { sent.push(m); return true; };
     const res = await runRun({ cwd: proj, adapter });
 
