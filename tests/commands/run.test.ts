@@ -7,6 +7,8 @@ import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import type { Triaged } from '../../src/config/triaged.js';
 import { RUN_IPC_ENV } from '../../src/pipeline/events.js';
+import { PaperLibrary } from '../../src/library/store.js';
+import type { LibraryReadRunner } from '../../src/web/library-read.js';
 
 // The read stage calls fetchArxivMetadata against the real network.
 // In run tests the deep-read pick is a synthetic id; stub the metadata fetch
@@ -75,16 +77,9 @@ function discoverStep(payload: Triaged) {
     return { output: `done\n\nFILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
   };
 }
-function readStep(): (opts: InvokeOptions) => InvokeResult {
-  // Title in the mocked arxiv metadata is "stub" → slug "stub" → first new note is 01_stub.md.
+function synthesizeStep(expectPromptIncludes?: string): (opts: InvokeOptions) => InvokeResult {
   return (opts) => {
-    mkdirSync(join(opts.cwd, 'notes', 'active'), { recursive: true });
-    writeFileSync(join(opts.cwd, 'notes', 'active', '01_stub.md'), '# Stub note\n\n## Claims\n- something\n');
-    return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_stub.md\n', modifiedFiles: ['notes/active/01_stub.md'], exitCode: 0 };
-  };
-}
-function synthesizeStep(): (opts: InvokeOptions) => InvokeResult {
-  return (opts) => {
+    if (expectPromptIncludes) expect(opts.userPrompt).toContain(expectPromptIncludes);
     const landscape = join(opts.cwd, 'notes/00_research_landscape.md');
     writeFileSync(landscape, readFileSync(landscape, 'utf8') + '\n- new entry\n');
     const cm = /`([^`]+contradictions\.md)`/.exec(opts.userPrompt);
@@ -113,6 +108,33 @@ describe('researcher run (autonomous)', () => {
     (process as { send?: unknown }).send = undefined;
     delete process.env[RUN_IPC_ENV];
   });
+
+  const libraryPaperId = 'paper_arxiv_2401_55555';
+  const libraryArtifactPath = `.researcher-workspace/library/papers/${libraryPaperId}/reads/read_${libraryPaperId}.md`;
+
+  function upsertLibraryRead(root: string, body = '# Existing Library Read\n\nReusable library artifact body.\n'): void {
+    const lib = new PaperLibrary(root, { now: () => '2026-07-04T00:00:00.000Z' });
+    lib.upsertPaper({
+      id: libraryPaperId,
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.55555', url: 'https://arxiv.org/abs/2401.55555' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.55555', url: 'https://arxiv.org/abs/2401.55555' }],
+      identifiers: { arxiv: '2401.55555' },
+      title: 'Auto-picked deep read',
+      tags: ['reuse'],
+    });
+    mkdirSync(join(root, '.researcher-workspace/library/papers', libraryPaperId, 'reads'), { recursive: true });
+    writeFileSync(join(root, libraryArtifactPath), body);
+    lib.upsertRead({ id: `read_${libraryPaperId}`, paperId: libraryPaperId, status: 'read', artifactPath: libraryArtifactPath });
+  }
+
+  function fakeLibraryRead(body = '# New Library Read\n\nFresh library artifact body.\n'): LibraryReadRunner {
+    return async ({ workspaceRoot, paper, readId }) => {
+      const artifactPath = `.researcher-workspace/library/papers/${paper.id}/reads/${readId}.md`;
+      mkdirSync(join(workspaceRoot, '.researcher-workspace/library/papers', paper.id, 'reads'), { recursive: true });
+      writeFileSync(join(workspaceRoot, artifactPath), body);
+      return { artifactPath, title: 'Auto-picked deep read' };
+    };
+  }
   afterEach(() => {
     (process as { send?: unknown }).send = _origSend;
     if (_origRunIpc === undefined) delete process.env[RUN_IPC_ENV];
@@ -140,8 +162,7 @@ describe('researcher run (autonomous)', () => {
     const adapter = new ScriptedAdapter([
       soulStep(),
       discoverStep(triagedDeepRead),
-      readStep(),
-      synthesizeStep(),
+      synthesizeStep('Fresh library artifact body.'),
       packageStep(),
     ]);
     const sent: Array<{ type: string; stages?: string[]; name?: string }> = [];
@@ -150,7 +171,7 @@ describe('researcher run (autonomous)', () => {
     (process as { send?: unknown }).send = (m: unknown) => { sent.push(m as never); return true; };
     const { runRun } = await import('../../src/commands/run.js');
     try {
-      await runRun({ cwd: proj, adapter });
+      await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
     } finally {
       (process as { send?: unknown }).send = orig;
     }
@@ -161,7 +182,9 @@ describe('researcher run (autonomous)', () => {
     });
     expect(sent).toContainEqual({ type: 'stage', name: 'synthesize' });
 
-    expect(adapter.callCount).toBe(5);
+    expect(adapter.callCount).toBe(4);
+    expect(readFileSync(join(proj, libraryArtifactPath), 'utf8')).toContain('Fresh library artifact body.');
+    expect(readFileSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'), 'utf8')).toContain(libraryArtifactPath);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
     expect(seen).toContain('arxiv:2401.55555'); // deep-read pick
     expect(seen).toContain('arxiv:2401.66666'); // skim
@@ -170,6 +193,53 @@ describe('researcher run (autonomous)', () => {
     expect(deepReadLine).not.toContain('manual feed');
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim())
       .toMatch(/^researcher\//);
+  });
+
+  it('reuses an existing Library read artifact instead of reading source material again', async () => {
+    upsertLibraryRead(proj);
+    const adapter = new ScriptedAdapter([
+      soulStep(),
+      discoverStep(triagedDeepRead),
+      synthesizeStep('Reusable library artifact body.'),
+      packageStep(),
+    ]);
+
+    const { runRun } = await import('../../src/commands/run.js');
+    await runRun({
+      cwd: proj,
+      workspaceRoot: proj,
+      adapter,
+      libraryReadRunner: async () => {
+        throw new Error('Library read runner should not run when a read artifact already exists');
+      },
+    });
+
+    expect(adapter.callCount).toBe(4);
+    expect(readFileSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'), 'utf8')).toContain('Reusable library artifact body.');
+  });
+
+  it('normalizes canonical url: source ids into Library papers', async () => {
+    const { bootstrap } = await import('../../src/pipeline/bootstrap.js');
+    const { libraryTopicRead } = await import('../../src/pipeline/library_topic_read.js');
+    const { newRunId, RunDir } = await import('../../src/state/runs.js');
+    const runDir = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({
+      projectRoot: proj,
+      adapter: new ScriptedAdapter([]),
+      runDir,
+      addSourceId: 'url:https://example.com/paper',
+    });
+    await libraryTopicRead(ctx, {
+      workspaceRoot: proj,
+      libraryReadRunner: fakeLibraryRead('# URL Read\n\nURL library artifact body.\n'),
+    });
+    const papers = new PaperLibrary(proj).listPapers();
+    expect(papers).toHaveLength(1);
+    expect(papers[0].canonicalSource).toEqual({
+      kind: 'url',
+      id: 'url:https://example.com/paper',
+      url: 'https://example.com/paper',
+    });
   });
 
   it('exits cleanly when discover returns no deep-read candidate (no commits, no branch)', async () => {

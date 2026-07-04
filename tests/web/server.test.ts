@@ -5,11 +5,14 @@ import { dirname, join } from 'node:path';
 import { startServer } from '../../src/web/server.js';
 import { TaskRegistry } from '../../src/web/tasks.js';
 import { PaperLibrary } from '../../src/library/store.js';
+import type { LibraryReadTopicContext } from '../../src/web/library-read.js';
 
 let root: string;
 let server: { port: number; close: () => Promise<void> };
 let base: string;
 let releaseLibraryRead: (() => void) | undefined;
+let libraryReadCalls = 0;
+const libraryReadTopicContexts: (LibraryReadTopicContext | undefined)[] = [];
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'rsw-srv-'));
@@ -47,7 +50,9 @@ beforeAll(async () => {
     root,
     port: 0,
     registry,
-    libraryReadRunner: async ({ onLine }) => {
+    libraryReadRunner: async ({ onLine, topicContext }) => {
+      libraryReadCalls++;
+      libraryReadTopicContexts.push(topicContext);
       onLine?.('mock library read');
       await new Promise<void>((resolve) => { releaseLibraryRead = resolve; });
       const artifactPath = '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md';
@@ -156,6 +161,8 @@ it('starts a library deep read and records read state', async () => {
     r.artifactPath === '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'
   ));
   expect(lib.getPaper('paper_arxiv_2401_12345')?.title).toBe('Metadata Title From Read');
+  expect(libraryReadCalls).toBe(1);
+  expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
 
   const completedDetail = await fetch(base + '/library/p/paper_arxiv_2401_12345');
   const completedHtml = await completedDetail.text();
@@ -163,12 +170,61 @@ it('starts a library deep read and records read state', async () => {
   expect(completedHtml).toContain('Mock read');
 });
 
+it('does not rerun an existing read unless force is explicit', async () => {
+  const before = libraryReadCalls;
+  const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345', topic: 'trace' });
+  const res = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
+  expect(res.status).toBe(303);
+  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
+  expect(libraryReadCalls).toBe(before);
+});
+
+it('force reruns a Library read without forwarding topic context', async () => {
+  releaseLibraryRead = undefined;
+  const before = libraryReadCalls;
+  const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345', topic: 'feeds/ai-safety', force: '1' });
+  const res = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
+  expect(res.status).toBe(303);
+  await waitFor(() => libraryReadCalls === before + 1);
+  expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
+  releaseLibraryRead?.();
+  await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'));
+});
+
+it('upserts topic links separately from Library reads', async () => {
+  const form = new URLSearchParams({
+    paperId: 'paper_arxiv_2401_12345',
+    topic: 'feeds/ai-safety',
+    relation: 'relevant',
+    rationale: 'matches the feed topic',
+  });
+  const res = await fetch(base + '/library/link', { method: 'POST', body: form, redirect: 'manual' });
+  expect(res.status).toBe(303);
+  const lib = new PaperLibrary(root);
+  expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual(expect.arrayContaining([
+    expect.objectContaining({ surfaceId: 'trace', relation: 'candidate' }),
+    expect.objectContaining({ surfaceId: 'feeds/ai-safety', relation: 'relevant', rationale: 'matches the feed topic' }),
+  ]));
+
+  const update = new URLSearchParams({
+    paperId: 'paper_arxiv_2401_12345',
+    topic: 'feeds/ai-safety',
+    relation: 'archived',
+  });
+  const second = await fetch(base + '/library/link', { method: 'POST', body: update, redirect: 'manual' });
+  expect(second.status).toBe(303);
+  expect(lib.listLinks('paper_arxiv_2401_12345').filter((l) => l.surfaceId === 'feeds/ai-safety')).toEqual([
+    expect.objectContaining({ relation: 'archived' }),
+  ]);
+});
+
 it('serves canonical paper detail URLs', async () => {
   const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
   expect(html).toContain('Paper detail');
-  expect(html).toContain('Deep read');
+  expect(html).toContain('Re-run read');
+  expect(html).toContain('Link topic');
 });
 
 it('redirects legacy selected-paper query URLs to canonical paper detail', async () => {

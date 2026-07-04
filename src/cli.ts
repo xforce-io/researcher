@@ -109,7 +109,7 @@ program
       await runWorkspace({ cwd });
     } else {
       const { runRun } = await import('./commands/run.js');
-      await runRun({ cwd });
+      await runRun({ cwd, workspaceRoot: process.env.RESEARCHER_WORKSPACE_ROOT });
     }
   });
 

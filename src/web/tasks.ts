@@ -6,6 +6,7 @@ export type Runner = (
   cwd: string,
   onLine: (line: string) => void,
   onEvent: (ev: RunEvent) => void,
+  workspaceRoot?: string,
 ) => Promise<number>;
 
 export type TaskJob = (
@@ -40,9 +41,11 @@ const defaultIdSeq = () => `task-${++globalSeq}`;
  * never collide and need no ordering guarantee.
  */
 export function defaultRunner(cliEntry: string): Runner {
-  return (cwd, onLine, onEvent) =>
+  return (cwd, onLine, onEvent, workspaceRoot) =>
     new Promise<number>((resolve) => {
-      const child = fork(cliEntry, ['run'], { cwd, silent: true, env: { ...process.env, [RUN_IPC_ENV]: '1' } });
+      const env: NodeJS.ProcessEnv = { ...process.env, [RUN_IPC_ENV]: '1' };
+      if (workspaceRoot) env.RESEARCHER_WORKSPACE_ROOT = workspaceRoot;
+      const child = fork(cliEntry, ['run'], { cwd, silent: true, env });
       let buf = '';
       const onData = (chunk: Buffer) => {
         buf += chunk.toString();
@@ -86,8 +89,8 @@ export class TaskRegistry {
     return undefined;
   }
 
-  start(slug: string, cwd: string): RunTask {
-    return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent));
+  start(slug: string, cwd: string, workspaceRoot?: string): RunTask {
+    return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent, workspaceRoot));
   }
 
   startJob(slug: string, job: TaskJob): RunTask {

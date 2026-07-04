@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { Seen } from '../state/seen.js';
@@ -34,6 +34,7 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
+      '.researcher-workspace/',
       LANDSCAPE,
       ctx.newNoteRelPath,
       ...extraAllowedPrefixes,
@@ -97,6 +98,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     'README.md',
     'report.md',
     'papers/README.md',
+    ...listFilesRecursive(join(ctx.projectRoot, '.researcher-workspace'), '.researcher-workspace'),
     '.researcher/project.yaml',
     '.researcher/thesis.md',
     '.researcher/.gitignore',
@@ -179,6 +181,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     'README.md',
     'report.md',
     'papers/README.md',
+    '.researcher-workspace',
     '.researcher/project.yaml',
     '.researcher/thesis.md',
     '.researcher/.gitignore',
@@ -200,4 +203,17 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   process.stdout.write(`\nworking tree is on branch ${branch}.\n`);
   const reviewTarget = ctx.pushRemote ? 'the PR' : 'this branch';
   process.stdout.write(`when you're done reviewing ${reviewTarget}, switch back: \`git checkout ${baseBranch}\`.\n`);
+}
+
+function listFilesRecursive(absDir: string, relDir: string): string[] {
+  if (!existsSync(absDir)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(absDir)) {
+    const abs = join(absDir, name);
+    const rel = `${relDir}/${name}`;
+    const st = statSync(abs);
+    if (st.isDirectory()) out.push(...listFilesRecursive(abs, rel));
+    else if (st.isFile()) out.push(rel);
+  }
+  return out;
 }

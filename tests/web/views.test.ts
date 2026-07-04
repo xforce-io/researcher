@@ -336,8 +336,13 @@ describe('renderLibrary', () => {
     expect(html).toContain('paper-detail-main');
     expect(html).toContain('paper-inspector');
     expect(html).toContain('action="/library/read"');
+    expect(html).toContain('action="/library/link"');
     expect(html).toContain('name="paperId"');
-    expect(html).toContain('Deep read');
+    expect(html).toContain('Re-run read');
+    expect(html).toContain('name="force" value="1"');
+    expect(html).toContain('Link topic');
+    expect(html).toContain('name="relation"');
+    expect(html).not.toContain('Context<select');
     expect(html).toContain('Read artifact');
     expect(html).toContain('<h1>Library Read</h1>');
     expect(html).toContain('<h2>Findings</h2>');
