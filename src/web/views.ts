@@ -301,44 +301,6 @@ export function renderLibrary(v: LibraryView): string {
   return page('Library · researcher', body);
 }
 
-function renderPaperDetailPanel(v: LibraryPaperDetailView): string {
-  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
-  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
-  const topicOptions = v.topics
-    .filter((t) => t.available)
-    .map((t) => {
-      const selected = t.path === preferredTopic ? ' selected' : '';
-      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
-      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
-    })
-    .join('');
-  const contextOptions = `<option value="">none</option>${topicOptions}`;
-  const reads = renderReads(v.reads);
-  const links = v.links.map((l) =>
-    `<li><b>${escapeHtml(l.surfaceId)}</b> <span class="paper-relation">${escapeHtml(l.relation)}</span></li>`
-  ).join('');
-  const integrations = v.integrations.map((i) =>
-    `<li><b>${escapeHtml(i.topicId)}</b> ${i.zone ? `<span class="source-badge">${escapeHtml(i.zone)}</span>` : ''} ` +
-    `<span class="mono">${escapeHtml(i.notePath ?? i.integratedAt)}</span></li>`
-  ).join('');
-  const firstLink = v.links.find((l) => l.surfaceType === 'topic');
-  const miniMap = firstLink
-    ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
-      `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
-    : '<p class="muted">No topic relation yet.</p>';
-  return `<section class="selected-paper">` +
-    `<div class="selected-paper-head"><h2>Selected paper</h2>${renderStatusBadge(v.paper.readStatus)}</div>` +
-    `${renderPaperCard(v.paper, 'detail')}` +
-    `${renderDeepReadAction(v.paper.id, v.paper.readStatus, contextOptions)}` +
-    `<div class="detail-grid inline">` +
-      `<div class="detail-panel"><h2>Reads</h2><ul class="meta-list">${reads || '<li>—</li>'}</ul></div>` +
-      `<div class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></div>` +
-      `<div class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></div>` +
-      `<div class="detail-panel"><h2>Mini map</h2>${miniMap}</div>` +
-    `</div>` +
-  `</section>`;
-}
-
 interface ActiveTaskView {
   taskId: string;
   startedAt: number;
@@ -353,7 +315,6 @@ const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
 function renderDeepReadAction(
   paperId: string,
   status: LibraryPaperSummary['readStatus'],
-  contextOptions: string,
   activeRead: ActiveTaskView | null = null,
 ): string {
   if (status === 'reading') {
@@ -371,10 +332,37 @@ function renderDeepReadAction(
       `<pre id="library-read-log" class="library-read-log"></pre>` +
     `</div>`;
   }
+  const isRerun = status === 'read';
+  const force = isRerun ? '<input type="hidden" name="force" value="1">' : '';
+  const label = isRerun ? 'Re-run read' : 'Deep read';
   return `<form class="deep-read-form" action="/library/read" method="post">` +
     `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
-    `<label>Context<select name="topic">${contextOptions}</select></label>` +
-    `<button class="primary" type="submit">Deep read</button>` +
+    force +
+    `<button class="primary" type="submit">${label}</button>` +
+  `</form>`;
+}
+
+function renderLinkTopicAction(v: LibraryPaperDetailView): string {
+  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
+  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
+  const preferredLink = preferredTopic ? v.links.find((l) => l.surfaceType === 'topic' && l.surfaceId === preferredTopic) : undefined;
+  const topicOptions = v.topics
+    .filter((t) => t.available)
+    .map((t) => {
+      const selected = t.path === preferredTopic ? ' selected' : '';
+      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
+      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
+    })
+    .join('');
+  const relationOptions = ['candidate', 'relevant', 'integrated', 'rejected', 'archived']
+    .map((r) => `<option value="${r}"${preferredLink?.relation === r ? ' selected' : ''}>${r}</option>`)
+    .join('');
+  return `<form class="deep-read-form" action="/library/link" method="post">` +
+    `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+    `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
+    `<label>Relation<select name="relation">${relationOptions}</select></label>` +
+    `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}"></label>` +
+    `<button class="secondary" type="submit">Link topic</button>` +
   `</form>`;
 }
 
@@ -413,16 +401,6 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
 }
 
 function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
-  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
-  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
-  const topicOptions = v.topics
-    .filter((t) => t.available)
-    .map((t) => {
-      const selected = t.path === preferredTopic ? ' selected' : '';
-      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
-      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
-    })
-    .join('');
   const links = v.links.map((l) =>
     `<li><b>${escapeHtml(l.surfaceId)}</b> <span class="paper-relation">${escapeHtml(l.relation)}</span></li>`
   ).join('');
@@ -435,7 +413,8 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
     ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
-  return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, `<option value="">none</option>${topicOptions}`, activeRead)}</section>` +
+  return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead)}</section>` +
+    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v)}</section>` +
     `<section class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Mini map</h2>${miniMap}</section>`;

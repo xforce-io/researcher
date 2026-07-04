@@ -22,6 +22,17 @@ export function normalizePaperInput(input: string): SourceRef {
   };
 }
 
+export function sourceRefForId(id: string): SourceRef {
+  if (id.startsWith('url:')) {
+    return {
+      kind: 'url',
+      id,
+      url: id.slice('url:'.length),
+    };
+  }
+  return normalizePaperInput(id);
+}
+
 export function paperIdForSource(source: SourceRef): string {
   if (source.kind === 'arxiv') {
     return `paper_arxiv_${source.id.replace(/^arxiv:/, '').replace(/\./g, '_')}`;

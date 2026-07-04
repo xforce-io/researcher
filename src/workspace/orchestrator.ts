@@ -77,7 +77,7 @@ export async function runWorkspace(opts: WorkspaceRunOptions): Promise<Workspace
 
     process.stdout.write(`\n=== [${t.path}] tick${charterSynced ? ' (charter synced)' : ''} ===\n`);
     try {
-      const res = await runTopic({ cwd: topicDir, adapter: opts.adapter });
+      const res = await runTopic({ cwd: topicDir, workspaceRoot: opts.cwd, topicPath: t.path, adapter: opts.adapter });
       results.push({ path: t.path, status: 'ok', outcome: res.outcome, charterSynced });
     } catch (err) {
       results.push({ path: t.path, status: 'error', charterSynced, message: errMsg(err) });

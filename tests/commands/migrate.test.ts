@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrateFlatNotesInTopic } from '../../src/commands/migrate.js';
+import { backfillLibraryFromTopicNotes, migrateFlatNotesInTopic } from '../../src/commands/migrate.js';
 import { parseNote } from '../../src/state/zone.js';
+import { PaperLibrary } from '../../src/library/store.js';
 
 describe('migrateFlatNotesInTopic', () => {
   it('moves flat numbered notes into notes/active and adds active frontmatter', () => {
@@ -33,5 +34,59 @@ describe('migrateFlatNotesInTopic', () => {
     expect(migrated).toContain('zone: active');
     expect(migrated).toContain('paper: Autodata: an automatic data scientist to collaborate with humans');
     expect(migrated).toContain('year: 2026');
+  });
+});
+
+describe('backfillLibraryFromTopicNotes', () => {
+  it('imports source-bearing historical topic notes into Library links and integrations idempotently', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-lib-backfill-'));
+    const trace = join(root, 'trace');
+    const decision = join(root, 'decision');
+    mkdirSync(join(trace, '.researcher'), { recursive: true });
+    mkdirSync(join(decision, '.researcher'), { recursive: true });
+    mkdirSync(join(trace, 'notes/active'), { recursive: true });
+    mkdirSync(join(trace, 'notes/buffer'), { recursive: true });
+    mkdirSync(join(decision, 'notes/history'), { recursive: true });
+    writeFileSync(join(root, 'researcher.workspace.yml'),
+      'version: 1\n' +
+      'topics:\n' +
+      '  - { path: trace, active: true }\n' +
+      '  - { path: decision, active: true }\n',
+    );
+    writeFileSync(join(trace, 'notes/active/01_frontmatter.md'),
+      '---\nzone: active\narxiv: "2604.00356"\ntitle: "Signals"\n---\n# Signals\n',
+    );
+    writeFileSync(join(trace, 'notes/buffer/02_link.md'),
+      '---\nzone: buffer\n---\n# AgentHER\n\n> **arXiv:** [2603.21357](https://arxiv.org/abs/2603.21357)\n',
+    );
+    writeFileSync(join(decision, 'notes/history/03_url.md'),
+      '---\nzone: history\nurl: https://example.com/paper\npaper: URL Paper\n---\n# URL Paper\n',
+    );
+
+    const first = backfillLibraryFromTopicNotes(root);
+    const second = backfillLibraryFromTopicNotes(root);
+
+    expect(first.importedPapers).toBe(3);
+    expect(first.importedReads).toBe(3);
+    expect(second.importedPapers).toBe(0);
+    expect(second.importedReads).toBe(0);
+    const lib = new PaperLibrary(root);
+    expect(lib.listPapers().map((p) => p.canonicalSource.id).sort()).toEqual([
+      'arxiv:2603.21357',
+      'arxiv:2604.00356',
+      'url:https://example.com/paper',
+    ]);
+    expect(lib.listLinks()).toHaveLength(3);
+    expect(lib.listIntegrations()).toHaveLength(3);
+    expect(lib.listReads()).toHaveLength(3);
+    expect(lib.listReads().every((r) => r.status === 'read' && r.artifactPath)).toBe(true);
+    const artifact = readFileSync(join(root, lib.listReads('paper_arxiv_2604_00356')[0].artifactPath!), 'utf8');
+    expect(artifact).toContain('kind: legacy-topic-read');
+    expect(artifact).toContain('source_note: "notes/active/01_frontmatter.md"');
+    expect(lib.listIntegrations().find((i) => i.paperId === 'paper_arxiv_2604_00356')).toMatchObject({
+      topicId: 'trace',
+      notePath: 'notes/active/01_frontmatter.md',
+      zone: 'active',
+    });
   });
 });

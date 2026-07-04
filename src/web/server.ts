@@ -8,7 +8,7 @@ import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
-import { parseTags, runLibraryAdd, runLibraryLink } from '../commands/library.js';
+import { parseRelation, parseTags, runLibraryAdd, runLibraryLink } from '../commands/library.js';
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Stage } from '../state/runs.js';
@@ -105,13 +105,14 @@ async function handle(
     const body = await readBody(req);
     const form = new URLSearchParams(body);
     const paperId = form.get('paperId')?.trim() ?? '';
-    const topic = form.get('topic')?.trim() ?? '';
+    const force = form.get('force') === '1';
     if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    const topicDir = topic ? resolveTopicDir(root, topic) : null;
-    if (topic && !topicDir) return send(res, 404, 'text/plain', 'unknown topic');
     const lib = new PaperLibrary(root);
     const paper = lib.getPaper(paperId);
     if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
+    if (!force && hasCompletedRead(lib, root, paperId)) {
+      return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
+    }
     const taskKey = libraryReadTaskKey(paperId);
     if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
     const readId = libraryReadId(paperId);
@@ -123,7 +124,6 @@ async function handle(
           workspaceRoot: root,
           paper,
           readId,
-          topicContext: topic && topicDir ? { topicPath: topic, topicDir } : undefined,
           onLine,
           onEvent,
         });
@@ -138,6 +138,26 @@ async function handle(
         return 1;
       }
     });
+    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
+  }
+  // POST /library/link
+  if (req.method === 'POST' && path === '/library/link') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const paperId = form.get('paperId')?.trim() ?? '';
+    const topic = form.get('topic')?.trim() ?? '';
+    const relationRaw = form.get('relation')?.trim() || 'candidate';
+    const rationale = form.get('rationale')?.trim() || undefined;
+    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
+    if (!topic) return send(res, 400, 'text/plain', 'missing topic');
+    if (!resolveTopicDir(root, topic)) return send(res, 404, 'text/plain', 'unknown topic');
+    const lib = new PaperLibrary(root);
+    if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
+    try {
+      runLibraryLink({ cwd: root, paperId, topic, relation: parseRelation(relationRaw), rationale, write: () => {} });
+    } catch (err) {
+      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
     return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
   }
   const lsm = path.match(/^\/library\/read\/([^/]+)\/stream$/);
@@ -209,7 +229,7 @@ async function handle(
     // POST /t/:slug/run
     if (req.method === 'POST' && sub === '/run') {
       if (registry.isBusy(decoded)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
-      const task = registry.start(decoded, topicDir);
+      const task = registry.start(decoded, topicDir, root);
       return send(res, 200, 'application/json', JSON.stringify({ taskId: task.id }));
     }
     // GET /t/:slug/run/:taskId/stream  (SSE)
@@ -254,4 +274,8 @@ function libraryReadTaskKey(paperId: string): string {
 
 function libraryReadId(paperId: string): string {
   return `read_${paperId}`;
+}
+
+function hasCompletedRead(lib: PaperLibrary, root: string, paperId: string): boolean {
+  return lib.listReads(paperId).some((r) => r.status === 'read' && r.artifactPath && existsSync(join(root, r.artifactPath)));
 }

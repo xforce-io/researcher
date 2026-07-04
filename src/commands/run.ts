@@ -12,7 +12,7 @@ import { emitEvent } from '../pipeline/events.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
-import { read } from '../pipeline/read.js';
+import { libraryTopicRead } from '../pipeline/library_topic_read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { feedEnrich } from '../pipeline/feed_enrich.js';
@@ -22,6 +22,7 @@ import { feedPackage } from '../pipeline/package_feed.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
 import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
+import type { LibraryReadRunner } from '../web/library-read.js';
 
 /** Resolve a configured inbox_dir, expanding a leading ~. */
 function resolveInboxDir(p: string | undefined): string | null {
@@ -31,8 +32,11 @@ function resolveInboxDir(p: string | undefined): string | null {
 
 export interface RunOptions {
   cwd: string;
+  workspaceRoot?: string;
+  topicPath?: string;
   /** Injectable for tests. Production: MilkieAdapter. */
   adapter?: AgentRuntime;
+  libraryReadRunner?: LibraryReadRunner;
 }
 
 /** What a single autonomous tick concluded — surfaced for workspace summaries. */
@@ -143,7 +147,14 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     }
 
     await runStages(runDir, [
-      { name: 'read',       fn: async () => read(ctx!) },
+      {
+        name: 'read',
+        fn: async () => libraryTopicRead(ctx!, {
+          workspaceRoot: opts.workspaceRoot ?? opts.cwd,
+          topicPath: opts.topicPath,
+          libraryReadRunner: opts.libraryReadRunner,
+        }),
+      },
       { name: 'rebalance',  fn: async () => rebalance(ctx!) },
       { name: 'synthesize', fn: async () => synthesize(ctx!) },
       { name: 'package',    fn: async () => packageStage(ctx!) },
