@@ -1,4 +1,4 @@
-import { it, expect, beforeAll, afterAll } from 'vitest';
+import { it, expect, beforeAll, afterAll, describe } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -301,3 +301,86 @@ async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void
   }
   expect(predicate()).toBe(true);
 }
+
+describe('library deep-read failure + orphan reclaim (#78)', () => {
+  it('marks a failed deep read with lastError', async () => {
+    const failRoot = mkdtempSync(join(tmpdir(), 'rsw-srv-fail-'));
+    writeFileSync(join(failRoot, 'researcher.workspace.yml'), 'version: 1\ntopics:\n  - { path: t, active: true }\n');
+    mkdirSync(join(failRoot, 't/.researcher'), { recursive: true });
+    writeFileSync(join(failRoot, 't/.researcher/project.yaml'),
+      'meta: { language: zh }\nresearch_questions: [{ id: RQ1, text: x }]\ninclusion_criteria: []\nexclusion_criteria: []\n' +
+      'sources: [{ kind: arxiv, queries: [a] }]\ncadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }\n');
+    writeFileSync(join(failRoot, 't/.researcher/thesis.md'), '# T\n');
+    const lib = new PaperLibrary(failRoot);
+    lib.upsertPaper({
+      id: 'paper_arxiv_2603_23971',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2603.23971', url: 'https://arxiv.org/abs/2603.23971' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2603.23971', url: 'https://arxiv.org/abs/2603.23971' }],
+      identifiers: { arxiv: '2603.23971' },
+      tags: [],
+    });
+
+    const registry = new TaskRegistry({ idSeq: (() => { let n = 0; return () => `fail-${++n}`; })() });
+    const srv = await startServer({
+      root: failRoot,
+      port: 0,
+      registry,
+      libraryReadRunner: async ({ onLine }) => {
+        onLine?.('mock fail');
+        throw new Error('library read agent exited 1: Request was aborted.');
+      },
+    });
+    const failBase = `http://127.0.0.1:${srv.port}`;
+    try {
+      const form = new URLSearchParams({ paperId: 'paper_arxiv_2603_23971' });
+      const res = await fetch(failBase + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
+      expect(res.status).toBe(303);
+      await waitFor(() => new PaperLibrary(failRoot).listReads('paper_arxiv_2603_23971').some((r) => r.status === 'failed'), 2000);
+      const read = new PaperLibrary(failRoot).listReads('paper_arxiv_2603_23971')[0];
+      expect(read).toMatchObject({
+        status: 'failed',
+        lastError: expect.stringMatching(/aborted|exited 1/i),
+      });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('reclaims orphan reading records when serve starts', async () => {
+    const orphanRoot = mkdtempSync(join(tmpdir(), 'rsw-srv-orphan-'));
+    writeFileSync(join(orphanRoot, 'researcher.workspace.yml'), 'version: 1\ntopics:\n  - { path: t, active: true }\n');
+    mkdirSync(join(orphanRoot, 't/.researcher'), { recursive: true });
+    writeFileSync(join(orphanRoot, 't/.researcher/project.yaml'),
+      'meta: { language: zh }\nresearch_questions: [{ id: RQ1, text: x }]\ninclusion_criteria: []\nexclusion_criteria: []\n' +
+      'sources: [{ kind: arxiv, queries: [a] }]\ncadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }\n');
+    writeFileSync(join(orphanRoot, 't/.researcher/thesis.md'), '# T\n');
+    const lib = new PaperLibrary(orphanRoot);
+    lib.upsertPaper({
+      id: 'paper_arxiv_2603_23971',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2603.23971', url: 'https://arxiv.org/abs/2603.23971' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2603.23971', url: 'https://arxiv.org/abs/2603.23971' }],
+      identifiers: { arxiv: '2603.23971' },
+      tags: [],
+    });
+    lib.upsertRead({ id: 'read_paper_arxiv_2603_23971', paperId: 'paper_arxiv_2603_23971', status: 'reading' });
+
+    const srv = await startServer({
+      root: orphanRoot,
+      port: 0,
+      registry: new TaskRegistry(),
+      libraryReadRunner: async () => ({ artifactPath: 'x.md' }),
+    });
+    try {
+      const after = new PaperLibrary(orphanRoot).listReads('paper_arxiv_2603_23971')[0];
+      expect(after.status).toBe('failed');
+      expect(after.lastError).toMatch(/restart|orphan|interrupted/i);
+
+      const page = await fetch(`http://127.0.0.1:${srv.port}/library/p/paper_arxiv_2603_23971`);
+      const html = await page.text();
+      expect(html).toContain('failed');
+      expect(html).not.toContain('Read interrupted');
+    } finally {
+      await srv.close();
+    }
+  });
+});

@@ -30,6 +30,8 @@ export interface PaperRead {
   paperId: string;
   status: PaperReadStatus;
   artifactPath?: string;
+  /** Terminal failure reason when status is failed (timeout, API error, orphan reclaim, …). */
+  lastError?: string;
   createdAt: string;
   updatedAt: string;
 }
