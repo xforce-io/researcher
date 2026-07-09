@@ -1,3 +1,6 @@
+import type { DocType } from './doc-type.js';
+
+export type { DocType } from './doc-type.js';
 export type SourceKind = 'arxiv' | 'url';
 
 export interface SourceRef {
@@ -19,6 +22,8 @@ export interface Paper {
     doi?: string;
   };
   tags: string[];
+  /** Content shape for deep-read templates. Absent ⇒ treat as paper for back-compat. */
+  docType?: DocType;
   createdAt: string;
   updatedAt: string;
 }

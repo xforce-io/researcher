@@ -1,4 +1,5 @@
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
+import { defaultDocTypeForSource, type DocType } from '../library/doc-type.js';
 import { PaperLibrary } from '../library/store.js';
 import type { PaperRelation, TopicIntegration } from '../library/model.js';
 
@@ -6,6 +7,7 @@ export interface LibraryAddOptions {
   cwd: string;
   input: string;
   tags?: string[];
+  docType?: DocType;
   write?: (s: string) => void;
 }
 
@@ -43,14 +45,16 @@ export function runLibraryAdd(opts: LibraryAddOptions): void {
   const lib = new PaperLibrary(opts.cwd);
   const existing = lib.getPaper(id);
   const tags = opts.tags ?? existing?.tags ?? [];
+  const docType = opts.docType ?? existing?.docType ?? defaultDocTypeForSource(source);
   const paper = lib.upsertPaper({
     id,
     canonicalSource: existing?.canonicalSource ?? source,
     sources: [...(existing?.sources ?? []), source],
     identifiers: { ...(existing?.identifiers ?? {}), ...identifiersForSource(source) },
     tags,
+    docType,
   });
-  write(`${paper.id}\t${paper.canonicalSource.id}\n`);
+  write(`${paper.id}\t${paper.canonicalSource.id}\t${paper.docType ?? 'paper'}\n`);
 }
 
 export function runLibraryList(opts: LibraryListOptions): void {

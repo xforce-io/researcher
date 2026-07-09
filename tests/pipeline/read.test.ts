@@ -103,17 +103,22 @@ describe('read stage', () => {
     expect(adapter.lastPrompt).toContain('zh');
   });
 
-  it('renders source_fetch_instruction and url-derived slug for url: source', async () => {
+  it('runner-fetches URL text and uses title for the note slug', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      `<html><head><title>Autodata Blog</title></head><body><article><p>URL body for read stage.</p></article></body></html>`,
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
     class CapturingAdapter implements AgentRuntime {
       id = 'capture-url';
       lastPrompt = '';
       async invoke(opts: InvokeOptions): Promise<InvokeResult> {
         this.lastPrompt = opts.userPrompt;
-        // The read stage reads back the file the agent is supposed to write.
-        // Mirror the filename it computes from the url path slug.
-        const noteContent = '# Autodata\n\n## Claims\n- something';
-        writeFileSync(join(opts.cwd, 'notes', 'active', '01_autodata.md'), noteContent);
-        return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_autodata.md\n', modifiedFiles: ['notes/active/01_autodata.md'], exitCode: 0 };
+        const noteContent = '# Autodata Blog\n\n## Claims\n- something';
+        mkdirSync(join(opts.cwd, 'notes', 'active'), { recursive: true });
+        writeFileSync(join(opts.cwd, 'notes', 'active', '01_autodata_blog.md'), noteContent);
+        return { output: 'done\n\nFILES_MODIFIED:\nnotes/active/01_autodata_blog.md\n', modifiedFiles: ['notes/active/01_autodata_blog.md'], exitCode: 0 };
       }
     }
     const adapter = new CapturingAdapter();
@@ -124,10 +129,15 @@ describe('read stage', () => {
       runDir: rd,
       addSourceId: 'url:https://facebookresearch.github.io/RAM/blogs/autodata/',
     });
-    await read(ctx);
-    expect(adapter.lastPrompt).toContain('### Source acquisition');
-    expect(adapter.lastPrompt).toContain('https://facebookresearch.github.io/RAM/blogs/autodata/');
-    expect(ctx.newNoteFilename).toBe('01_autodata.md');
+    try {
+      await read(ctx);
+      expect(adapter.lastPrompt).toContain('URL body for read stage.');
+      expect(adapter.lastPrompt).toContain('https://facebookresearch.github.io/RAM/blogs/autodata/');
+      expect(ctx.newNoteFilename).toBe('01_autodata_blog.md');
+      expect(fetchMock).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('ensures the new note carries zone frontmatter (active)', async () => {
