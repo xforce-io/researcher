@@ -307,14 +307,22 @@ describe('renderLibrary', () => {
     expect(html).toContain('/library/p/paper_arxiv_2401_12345');
     expect(html).toContain('library-rail');
     expect(html).toContain('data-library-search');
+    expect(html).toContain('data-filter="unlinked"');
     expect(html).toContain('data-filter="unread"');
-    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('data-filter="all"');
+    // Default inbox: Unlinked is active on first paint.
+    expect(html).toMatch(/<button class="active"[^>]*data-filter="unlinked"[^>]*aria-pressed="true"/);
+    expect(html).toMatch(/data-filter="all"[^>]*aria-pressed="false"/);
+    expect(html).toContain("activeLibraryFilter = 'unlinked'");
+    expect(html).toContain("activeLibraryFilter === 'unlinked'");
     expect(html).toContain('class="empty-state library-no-results" hidden');
     expect(html).toContain('applyLibraryFilters');
     expect(html).toContain('data-search="reusable paper cards arxiv:2401.12345 arxiv read agent planning"');
     expect(html).toContain('data-status="read"');
     expect(html).toContain('data-linked="1"');
     expect(html).toContain('data-integrated="1"');
+    // Linked papers are hidden on first paint (default Unlinked filter).
+    expect(html).toMatch(/paper-card row" hidden[^>]*data-linked="1"/);
     expect(html).not.toContain('Selected paper');
     expect(html.match(/<button[^>]*data-open-add-paper/g)).toHaveLength(1);
   });

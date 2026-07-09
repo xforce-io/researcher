@@ -235,7 +235,11 @@ function renderTagChips(tags: string[]): string {
     : '<span class="muted">no tags</span>';
 }
 
-function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'detail' = 'row'): string {
+function renderPaperCard(
+  p: LibraryPaperSummary,
+  variant: 'row' | 'compact' | 'detail' = 'row',
+  opts: { defaultHidden?: boolean } = {},
+): string {
   const relation = p.relation ? `<span class="paper-relation">${escapeHtml(p.relation)}</span>` : '';
   const counts = `${p.readStatus} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
@@ -246,7 +250,9 @@ function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'd
     p.relation,
     ...p.tags,
   ].filter(Boolean).join(' ').toLowerCase();
-  return `<article class="paper-card ${variant}" data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}">` +
+  // Library list defaults to Unlinked: hide linked cards on first paint (JS re-filters on click).
+  const hidden = opts.defaultHidden ? ' hidden' : '';
+  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}">` +
     `<div class="paper-main">` +
       `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
@@ -262,7 +268,9 @@ export function renderLibrary(v: LibraryView): string {
   const topicOptions = v.topics
     .map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`)
     .join('');
-  const papers = v.papers.map((p) => renderPaperCard(p)).join('');
+  const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
+    defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
+  })).join('');
   const addPaperModal = `<div id="add-paper-modal" class="modal-backdrop" hidden>` +
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
@@ -281,7 +289,8 @@ export function renderLibrary(v: LibraryView): string {
         `<div class="library-rail-head"><h2>Papers</h2><span>${v.papers.length}</span></div>` +
         `<label class="library-search">Search<input type="search" placeholder="Title, tag, source" data-library-search></label>` +
         `<div class="library-filters" role="group" aria-label="Library filters">` +
-          `<button class="active" type="button" data-filter="all" aria-pressed="true">All</button>` +
+          `<button class="active" type="button" data-filter="unlinked" aria-pressed="true">Unlinked</button>` +
+          `<button type="button" data-filter="all" aria-pressed="false">All</button>` +
           `<button type="button" data-filter="unread" aria-pressed="false">Unread</button>` +
           `<button type="button" data-filter="read" aria-pressed="false">Read</button>` +
           `<button type="button" data-filter="linked" aria-pressed="false">Linked</button>` +
@@ -520,10 +529,12 @@ const librarySearch = document.querySelector('[data-library-search]');
 const libraryFilterButtons = Array.from(document.querySelectorAll('[data-filter]'));
 const libraryCards = Array.from(document.querySelectorAll('.paper-card.row'));
 const libraryNoResults = document.querySelector('.library-no-results');
-let activeLibraryFilter = 'all';
+// Default inbox: papers not yet linked to any topic.
+let activeLibraryFilter = 'unlinked';
 
 function cardMatchesFilter(card) {
   if (activeLibraryFilter === 'all') return true;
+  if (activeLibraryFilter === 'unlinked') return card.dataset.linked !== '1';
   if (activeLibraryFilter === 'linked') return card.dataset.linked === '1';
   if (activeLibraryFilter === 'integrated') return card.dataset.integrated === '1';
   return card.dataset.status === activeLibraryFilter;
@@ -543,7 +554,7 @@ function applyLibraryFilters() {
 
 librarySearch?.addEventListener('input', applyLibraryFilters);
 libraryFilterButtons.forEach((button) => button.addEventListener('click', () => {
-  activeLibraryFilter = button.dataset.filter || 'all';
+  activeLibraryFilter = button.dataset.filter || 'unlinked';
   libraryFilterButtons.forEach((b) => {
     const active = b === button;
     b.classList.toggle('active', active);

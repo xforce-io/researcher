@@ -46,7 +46,11 @@ export class PaperLibrary {
   }
 
   listPapers(): Paper[] {
-    return readJsonl<Paper>(this.path('papers.jsonl')).sort((a, b) => a.id.localeCompare(b.id));
+    // Newest activity first — Library inbox should surface recent upserts/reads above stale ids.
+    return readJsonl<Paper>(this.path('papers.jsonl')).sort((a, b) => {
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt);
+      return byUpdated !== 0 ? byUpdated : a.id.localeCompare(b.id);
+    });
   }
 
   upsertRead(input: ReadInput): PaperRead {
