@@ -8,7 +8,7 @@ import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
-import { parseRelation, parseTags, runLibraryAdd, runLibraryLink } from '../commands/library.js';
+import { parseRelation, parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink } from '../commands/library.js';
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Stage } from '../state/runs.js';
@@ -154,6 +154,21 @@ async function handle(
       }
     });
     return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
+  }
+  // POST /library/delete — only unlinked papers
+  if (req.method === 'POST' && path === '/library/delete') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const paperId = form.get('paperId')?.trim() ?? '';
+    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
+    try {
+      runLibraryDelete({ cwd: root, paperId, write: () => {} });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = /unknown paper/i.test(message) ? 404 : 400;
+      return send(res, status, 'text/plain', message);
+    }
+    return redirect(res, '/library');
   }
   // POST /library/link
   if (req.method === 'POST' && path === '/library/link') {

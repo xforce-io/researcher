@@ -67,6 +67,13 @@ library
     const zone = parseZone(opts.zone);
     runLibraryIntegrate({ paperId, cwd: process.cwd(), topic: opts.topic, notePath: opts.note, zone, summary: opts.summary });
   });
+library
+  .command('delete <paper-id>')
+  .description('Delete an unlinked Library paper (refuses if linked/integrated to any topic)')
+  .action(async (paperId: string) => {
+    const { runLibraryDelete } = await import('./commands/library.js');
+    runLibraryDelete({ paperId, cwd: process.cwd() });
+  });
 
 program
   .command('add <input>')

@@ -274,6 +274,19 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   cursor:pointer;
 }
 .primary:hover { background:var(--accent-ink); text-decoration:none; }
+.danger {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:34px;
+  padding:0 13px;
+  border:1px solid #c45c4a;
+  border-radius:6px;
+  background:#f8e5df;
+  color:#9a3f2f;
+  font:650 13px var(--sans);
+  cursor:pointer;
+}
+.danger:hover { background:#f0d4cc; text-decoration:none; }
+.danger-panel h2 { color:#9a3f2f; }
 
 /* ── workspace library ─────────────────────────────── */
 .library-shell {

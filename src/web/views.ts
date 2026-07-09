@@ -432,8 +432,20 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
   const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  const canDelete = v.paper.linkedTopicCount === 0 && v.links.length === 0 && v.integrations.length === 0;
+  const deleteAction = canDelete
+    ? `<section class="detail-panel danger-panel"><h2>Delete</h2>` +
+      `<p class="muted">Remove this unlinked paper and its Library reads from the workspace.</p>` +
+      `<form class="deep-read-form" action="/library/delete" method="post"` +
+      ` onsubmit="return confirm('Delete this paper from the Library? This cannot be undone.');">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<button class="danger" type="submit">Delete from Library</button>` +
+      `</form></section>`
+    : `<section class="detail-panel"><h2>Delete</h2>` +
+      `<p class="muted">Linked or integrated papers cannot be deleted. Unlink from all topics first.</p></section>`;
   return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
     `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v)}</section>` +
+    deleteAction +
     `<section class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Mini map</h2>${miniMap}</section>`;

@@ -35,6 +35,12 @@ export interface LibraryIntegrateOptions {
   write?: (s: string) => void;
 }
 
+export interface LibraryDeleteOptions {
+  cwd: string;
+  paperId: string;
+  write?: (s: string) => void;
+}
+
 const defaultWrite = (s: string) => process.stdout.write(s);
 const RELATIONS: PaperRelation[] = ['candidate', 'relevant', 'integrated', 'rejected', 'archived'];
 
@@ -109,6 +115,14 @@ export function runLibraryIntegrate(opts: LibraryIntegrateOptions): void {
     rationale: opts.summary,
   });
   write(`${integration.paperId}\ttopic:${integration.topicId}\tintegrated\n`);
+}
+
+/** Delete a Library paper only when it has no topic links/integrations. */
+export function runLibraryDelete(opts: LibraryDeleteOptions): void {
+  const write = opts.write ?? defaultWrite;
+  const lib = new PaperLibrary(opts.cwd);
+  const result = lib.deletePaper(opts.paperId);
+  write(`deleted\t${result.paperId}\treads=${result.removedReads}\n`);
 }
 
 export function parseTags(raw: string | undefined): string[] {

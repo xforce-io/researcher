@@ -275,6 +275,56 @@ describe('renderTopic', () => {
   });
 });
 
+describe('renderLibraryPaper delete affordance', () => {
+  const basePaper = {
+    id: 'paper_url_deadbeef',
+    displayTitle: 'Ephemeral Doc',
+    canonicalId: 'url:https://example.com/x',
+    sourceLabel: 'URL',
+    tags: [] as string[],
+    readStatus: 'unread' as const,
+    linkedTopicCount: 0,
+    integratedTopicCount: 0,
+    updatedAt: '2026-07-09T00:00:00Z',
+  };
+
+  it('shows delete form for unlinked papers', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: basePaper,
+      topics: [],
+      reads: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+    });
+    expect(html).toContain('action="/library/delete"');
+    expect(html).toContain('Delete from Library');
+    expect(html).toContain('name="paperId"');
+  });
+
+  it('hides delete form for linked papers', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: { ...basePaper, linkedTopicCount: 1, integratedTopicCount: 0 },
+      topics: [],
+      reads: [],
+      latestReadArtifact: null,
+      links: [{
+        paperId: basePaper.id,
+        surfaceType: 'topic',
+        surfaceId: 'trace',
+        relation: 'candidate',
+        createdAt: '2026-07-09T00:00:00Z',
+        updatedAt: '2026-07-09T00:00:00Z',
+      }],
+      integrations: [],
+    });
+    expect(html).not.toContain('action="/library/delete"');
+    expect(html).toContain('cannot be deleted');
+  });
+});
+
 describe('renderLibrary', () => {
   const library: LibraryView = {
     root: '/ws',
