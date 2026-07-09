@@ -128,6 +128,34 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(selectedHtml).toContain('trace · linked');
 });
 
+it('deletes an unlinked library paper and refuses a linked one', async () => {
+  const add = new URLSearchParams({ input: 'https://example.com/ephemeral-doc' });
+  const added = await fetch(base + '/library/add', { method: 'POST', body: add, redirect: 'manual' });
+  expect(added.status).toBe(303);
+  const lib = new PaperLibrary(root);
+  const paper = lib.listPapers().find((p) => p.canonicalSource.id.includes('ephemeral-doc'));
+  expect(paper).toBeTruthy();
+
+  const del = await fetch(base + '/library/delete', {
+    method: 'POST',
+    body: new URLSearchParams({ paperId: paper!.id }),
+    redirect: 'manual',
+  });
+  expect(del.status).toBe(303);
+  expect(del.headers.get('location')).toBe('/library');
+  expect(new PaperLibrary(root).getPaper(paper!.id)).toBeUndefined();
+
+  // paper_arxiv_2401_12345 is linked to trace from earlier test
+  const refuse = await fetch(base + '/library/delete', {
+    method: 'POST',
+    body: new URLSearchParams({ paperId: 'paper_arxiv_2401_12345' }),
+    redirect: 'manual',
+  });
+  expect(refuse.status).toBe(400);
+  expect(await refuse.text()).toMatch(/linked/i);
+  expect(new PaperLibrary(root).getPaper('paper_arxiv_2401_12345')).toBeTruthy();
+});
+
 it('starts a library deep read and records read state', async () => {
   releaseLibraryRead = undefined;
   const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345' });

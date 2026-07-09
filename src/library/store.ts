@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Paper, PaperRead, PaperSurfaceLink, TopicIntegration } from './model.js';
 
@@ -119,6 +119,45 @@ export class PaperLibrary {
     return reclaimed;
   }
 
+  /**
+   * Delete a Library paper that is not linked/integrated into any topic surface.
+   * Removes paper + reads ledger rows and the on-disk artifact directory under library/papers/<id>/.
+   */
+  deletePaper(id: string): { deleted: true; paperId: string; removedReads: number } {
+    const paper = this.getPaper(id);
+    if (!paper) throw new Error(`unknown paper id: ${id}`);
+
+    const topicLinks = this.listLinks(id).filter((l) => l.surfaceType === 'topic');
+    if (topicLinks.length > 0) {
+      throw new Error(
+        `cannot delete ${id}: linked to topic(s) ${topicLinks.map((l) => l.surfaceId).join(', ')}. unlink first.`,
+      );
+    }
+    const integrations = this.listIntegrations(id);
+    if (integrations.length > 0) {
+      throw new Error(
+        `cannot delete ${id}: has topic integration(s) on ${integrations.map((i) => i.topicId).join(', ')}.`,
+      );
+    }
+    // Any non-topic surface link also blocks delete — keep library relations intact.
+    const otherLinks = this.listLinks(id);
+    if (otherLinks.length > 0) {
+      throw new Error(`cannot delete ${id}: still linked to ${otherLinks.length} surface(s).`);
+    }
+
+    const reads = this.listReads(id);
+    writeJsonlFilter(this.path('papers.jsonl'), (p: Paper) => p.id !== id);
+    writeJsonlFilter(this.path('reads.jsonl'), (r: PaperRead) => r.paperId !== id);
+    // links/integrations already empty for this paper; rewrite keeps other rows intact
+    writeJsonlFilter(this.path('links.jsonl'), (l: PaperSurfaceLink) => l.paperId !== id);
+    writeJsonlFilter(this.path('integrations.jsonl'), (i: TopicIntegration) => i.paperId !== id);
+
+    const artifactDir = join(this.rootDir, 'papers', id);
+    if (existsSync(artifactDir)) rmSync(artifactDir, { recursive: true, force: true });
+
+    return { deleted: true, paperId: id, removedReads: reads.length };
+  }
+
   private path(file: string): string {
     return join(this.rootDir, file);
   }
@@ -139,6 +178,12 @@ function writeJsonlUpsert<T>(path: string, item: T, keyOf: (x: T) => string): vo
   mkdirSync(dirname(path), { recursive: true });
   const lines = [...byKey.values()].map((x) => JSON.stringify(x));
   writeFileSync(path, lines.length ? `${lines.join('\n')}\n` : '');
+}
+
+function writeJsonlFilter<T>(path: string, keep: (item: T) => boolean): void {
+  const kept = readJsonl<T>(path).filter(keep);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, kept.length ? `${kept.map((x) => JSON.stringify(x)).join('\n')}\n` : '');
 }
 
 function uniqueStrings(items: string[]): string[] {
