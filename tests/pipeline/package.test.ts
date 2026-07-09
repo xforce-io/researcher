@@ -7,7 +7,6 @@ import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { packageStage } from '../../src/pipeline/package.js';
-import { rebalance } from '../../src/pipeline/rebalance.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 

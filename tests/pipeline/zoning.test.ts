@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countCitations, scoreNote, assignZones } from '../../src/pipeline/zoning.js';
+import { countCitations, assignZones } from '../../src/pipeline/zoning.js';
 import type { NoteEntry } from '../../src/state/note_index.js';
 import type { Zone } from '../../src/state/zone.js';
 

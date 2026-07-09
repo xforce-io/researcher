@@ -6,6 +6,7 @@ import { execaSync } from 'execa';
 import { rebalance } from '../../src/pipeline/rebalance.js';
 import { parseNote } from '../../src/state/zone.js';
 import { RunDir, newRunId } from '../../src/state/runs.js';
+import type { RunContext } from '../../src/pipeline/context.js';
 
 function noteFile(zone: string, num: string, slug: string, dwell = 9, pin = false) {
   return {
@@ -14,14 +15,14 @@ function noteFile(zone: string, num: string, slug: string, dwell = 9, pin = fals
   };
 }
 
-function makeCtx(proj: string, cfg = { active_max: 2, buffer_max: 2, min_dwell: 0 }) {
+function makeCtx(proj: string, cfg = { active_max: 2, buffer_max: 2, min_dwell: 0 }): RunContext {
   const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
   return {
     projectRoot: proj,
     researcherDir: join(proj, '.researcher'),
-    projectYaml: { zoning: cfg } as any,
+    projectYaml: { zoning: cfg },
     runDir: rd,
-  } as any;
+  } as unknown as RunContext;
 }
 
 describe('rebalance', () => {

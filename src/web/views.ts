@@ -312,15 +312,28 @@ const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
   'record-read': 'Record Library state',
 };
 
+function renderDeepReadForm(paperId: string, label: string, force = false): string {
+  return `<form class="deep-read-form" action="/library/read" method="post">` +
+    `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
+    (force ? '<input type="hidden" name="force" value="1">' : '') +
+    `<button class="primary" type="submit">${escapeHtml(label)}</button>` +
+  `</form>`;
+}
+
 function renderDeepReadAction(
   paperId: string,
   status: LibraryPaperSummary['readStatus'],
   activeRead: ActiveTaskView | null = null,
 ): string {
   if (status === 'reading') {
-    const attrs = activeRead
-      ? ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}"`
-      : '';
+    if (!activeRead) {
+      return `<div class="read-status-panel stale" role="status" aria-live="polite">` +
+        `<div class="read-status-copy"><span class="stale-dot"></span><div><b>Read interrupted</b>` +
+        `<p>This paper was restored in a reading state, but no active read task is running. The previous task likely stopped before recording a final state.</p></div></div>` +
+        renderDeepReadForm(paperId, 'Retry deep read', true) +
+      `</div>`;
+    }
+    const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}"`;
     const stages = Object.entries(LIBRARY_READ_STAGE_LABELS).map(([name, label], i) =>
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
@@ -333,13 +346,7 @@ function renderDeepReadAction(
     `</div>`;
   }
   const isRerun = status === 'read';
-  const force = isRerun ? '<input type="hidden" name="force" value="1">' : '';
-  const label = isRerun ? 'Re-run read' : 'Deep read';
-  return `<form class="deep-read-form" action="/library/read" method="post">` +
-    `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
-    force +
-    `<button class="primary" type="submit">${label}</button>` +
-  `</form>`;
+  return renderDeepReadForm(paperId, isRerun ? 'Re-run read' : 'Deep read', isRerun);
 }
 
 function renderLinkTopicAction(v: LibraryPaperDetailView): string {
@@ -396,7 +403,7 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
         readSurface +
       `</section>` +
       `<aside class="paper-inspector">${renderPaperInspector(v, activeRead)}</aside>` +
-    `</main>${v.paper.readStatus === 'reading' ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
+    `</main>${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
   return page(`${v.paper.displayTitle} · researcher`, body);
 }
 

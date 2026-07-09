@@ -351,7 +351,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('trace');
   });
 
-  it('renders an active reading state without overflowing raw read ids', () => {
+  it('renders a recoverable interrupted state for restored reading records without active tasks', () => {
     const detail: LibraryPaperDetailView = {
       root: '/ws',
       paper: { ...library.papers[0], readStatus: 'reading' },
@@ -362,18 +362,13 @@ describe('renderLibrary', () => {
       integrations: [],
     };
     const html = renderLibraryPaper(detail);
-    expect(html).toContain('Reading and parsing');
-    expect(html).toContain('role="status"');
-    expect(html).toContain('id="library-read-heading"');
-    expect(html).toContain('id="library-read-retry"');
-    expect(html).toContain('disabled>Deep read</button>');
-    expect(html).toContain('id="library-read-stages"');
-    expect(html).toContain('Fetch source');
-    expect(html).toContain('Draft read artifact');
-    expect(html).toContain('Record Library state');
-    expect(html).toContain("libHeading.textContent = libDone ? 'Read complete' : 'Read failed'");
-    expect(html).toContain("libRetry.textContent = 'Retry'");
-    expect(html).toContain("cls = 'error'");
+    expect(html).toContain('Read interrupted');
+    expect(html).toContain('no active read task is running');
+    expect(html).toContain('Retry deep read');
+    expect(html).toContain('name="force" value="1"');
+    expect(html).not.toContain('Live stage stream is unavailable');
+    expect(html).not.toContain('disabled>Deep read</button>');
+    expect(html).not.toContain('/library/read/');
     expect(html).toContain('class="read-item"');
     expect(html).toContain('class="read-path mono"');
   });
@@ -389,6 +384,18 @@ describe('renderLibrary', () => {
       integrations: [],
     };
     const html = renderLibraryPaper(detail, { taskId: 'task-9', startedAt: 1719000000000 });
+    expect(html).toContain('Reading and parsing');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('id="library-read-heading"');
+    expect(html).toContain('id="library-read-retry"');
+    expect(html).toContain('disabled>Deep read</button>');
+    expect(html).toContain('id="library-read-stages"');
+    expect(html).toContain('Fetch source');
+    expect(html).toContain('Draft read artifact');
+    expect(html).toContain('Record Library state');
+    expect(html).toContain("libHeading.textContent = libDone ? 'Read complete' : 'Read failed'");
+    expect(html).toContain("libRetry.textContent = 'Retry'");
+    expect(html).toContain("cls = 'error'");
     expect(html).toContain('data-library-task="task-9"');
     expect(html).toContain('data-started-at="1719000000000"');
     expect(html).toContain('/library/read/');
