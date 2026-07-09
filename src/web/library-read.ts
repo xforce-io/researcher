@@ -10,8 +10,10 @@ import type { AgentRuntime } from '../adapter/interface.js';
 import type { Paper } from '../library/model.js';
 import type { RunEvent } from '../pipeline/events.js';
 
-const TIMEOUT_MS = 15 * 60 * 1000;
+/** Bound the model call so silent hangs cannot stretch to the SDK's default 10min×retries. */
+const TIMEOUT_MS = 5 * 60 * 1000;
 const LIBRARY_READ_MAX_TOKENS = 8192;
+const DEFAULT_HEARTBEAT_MS = 10_000;
 
 export interface LibraryReadRunnerOptions {
   workspaceRoot: string;
@@ -20,6 +22,8 @@ export interface LibraryReadRunnerOptions {
   topicContext?: LibraryReadTopicContext;
   onLine?: (line: string) => void;
   onEvent?: (ev: RunEvent) => void;
+  /** Override heartbeat interval (ms). Production default 10s; tests use a short value. */
+  heartbeatMs?: number;
 }
 
 export interface LibraryReadTopicContext {
@@ -42,39 +46,59 @@ export async function runLibraryRead(
   opts: LibraryReadRunnerOptions & { adapter: AgentRuntime },
 ): Promise<LibraryReadResult> {
   const sourceId = opts.paper.canonicalSource.id;
+  const heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+
   opts.onEvent?.({ type: 'stage', name: 'fetch-source' });
+  opts.onLine?.(`fetch-source: loading ${sourceId}`);
   const material = await loadSourceMaterial(sourceId);
+  opts.onLine?.(
+    `fetch-source: got ${material.paperText.length} chars of paper text` +
+      (material.meta.title ? ` ("${material.meta.title.slice(0, 80)}")` : ''),
+  );
+
   const artifactPath = `${LIBRARY_DIR}/papers/${opts.paper.id}/reads/${opts.readId}.md`;
   mkdirSync(join(opts.workspaceRoot, LIBRARY_DIR, 'papers', opts.paper.id, 'reads'), { recursive: true });
   opts.onLine?.(`deep-read ${opts.paper.id}`);
 
   opts.onEvent?.({ type: 'stage', name: 'draft-read' });
   scaffoldMilkieRuntime({ root: opts.workspaceRoot });
-  const result = await opts.adapter.invoke({
-    cwd: opts.workspaceRoot,
-    systemPrompt: librarySystemPrompt(),
-    userPrompt: renderTemplate(loadPromptTemplate('stage-library-read.md'), {
-      language: 'zh',
-      methodology_reading: readMethodology('01-reading.md'),
-      methodology_writing: readMethodology('06-writing.md'),
-      paper_metadata: JSON.stringify(material.meta, null, 2),
-      paper_text: material.paperText.slice(0, 80_000),
-      source_fetch_instruction: material.fetchInstruction,
-      topic_context: topicContextText(opts.topicContext),
-      artifact_path: artifactPath,
-      paper_title_json: JSON.stringify(material.meta.title || opts.paper.title || opts.paper.id),
-      authors_json: JSON.stringify(material.meta.authors ?? []),
-      paper_id_json: JSON.stringify(opts.paper.id),
-      source_kind_json: JSON.stringify(opts.paper.canonicalSource.kind),
-      source_id_json: JSON.stringify(sourceId),
-      source_url_json: JSON.stringify(opts.paper.canonicalSource.url ?? material.meta.abs_url ?? ''),
-      pdf_url_json: JSON.stringify(material.meta.pdf_url ?? ''),
-      read_id_json: JSON.stringify(opts.readId),
-      tags_json: JSON.stringify(opts.paper.tags ?? []),
-    }),
-    timeoutMs: TIMEOUT_MS,
-    maxTokens: LIBRARY_READ_MAX_TOKENS,
-  });
+
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => {
+    const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+    opts.onLine?.(`draft-read still waiting on model… ${elapsedSec}s`);
+  }, heartbeatMs);
+
+  let result;
+  try {
+    result = await opts.adapter.invoke({
+      cwd: opts.workspaceRoot,
+      systemPrompt: librarySystemPrompt(),
+      userPrompt: renderTemplate(loadPromptTemplate('stage-library-read.md'), {
+        language: 'zh',
+        methodology_reading: readMethodology('01-reading.md'),
+        methodology_writing: readMethodology('06-writing.md'),
+        paper_metadata: JSON.stringify(material.meta, null, 2),
+        paper_text: material.paperText.slice(0, 80_000),
+        source_fetch_instruction: material.fetchInstruction,
+        topic_context: topicContextText(opts.topicContext),
+        artifact_path: artifactPath,
+        paper_title_json: JSON.stringify(material.meta.title || opts.paper.title || opts.paper.id),
+        authors_json: JSON.stringify(material.meta.authors ?? []),
+        paper_id_json: JSON.stringify(opts.paper.id),
+        source_kind_json: JSON.stringify(opts.paper.canonicalSource.kind),
+        source_id_json: JSON.stringify(sourceId),
+        source_url_json: JSON.stringify(opts.paper.canonicalSource.url ?? material.meta.abs_url ?? ''),
+        pdf_url_json: JSON.stringify(material.meta.pdf_url ?? ''),
+        read_id_json: JSON.stringify(opts.readId),
+        tags_json: JSON.stringify(opts.paper.tags ?? []),
+      }),
+      timeoutMs: TIMEOUT_MS,
+      maxTokens: LIBRARY_READ_MAX_TOKENS,
+    });
+  } finally {
+    clearInterval(heartbeat);
+  }
 
   if (result.exitCode !== 0) {
     throw new Error(`library read agent exited ${result.exitCode}${result.stderr ? `: ${result.stderr}` : ''}`);
@@ -83,6 +107,7 @@ export async function runLibraryRead(
     throw new Error('library read agent output was truncated before completing the Library read artifact');
   }
   opts.onEvent?.({ type: 'stage', name: 'record-read' });
+  opts.onLine?.(`record-read: writing artifact (${result.output.length} chars of model output)`);
   const body = normalizeLibraryReadBody(result.output);
   if (!body) {
     throw new Error('library read agent produced no Library read content');

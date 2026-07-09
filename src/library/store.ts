@@ -97,6 +97,24 @@ export class PaperLibrary {
     return paperId ? integrations.filter((i) => i.paperId === paperId) : integrations;
   }
 
+  /**
+   * Mark every in-flight `reading` record as `failed`. Used on serve startup: TaskRegistry
+   * is in-memory only, so a previous process death leaves orphan `reading` rows with no live task.
+   */
+  reclaimOrphanReads(reason = 'serve restarted while reading — previous task did not record a final state'): PaperRead[] {
+    const reclaimed: PaperRead[] = [];
+    for (const read of this.listReads()) {
+      if (read.status !== 'reading') continue;
+      reclaimed.push(this.upsertRead({
+        ...read,
+        status: 'failed',
+        lastError: reason,
+        // keep artifactPath if any partial file was written; usually absent for orphans
+      }));
+    }
+    return reclaimed;
+  }
+
   private path(file: string): string {
     return join(this.rootDir, file);
   }

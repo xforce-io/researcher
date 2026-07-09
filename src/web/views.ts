@@ -324,6 +324,7 @@ function renderDeepReadAction(
   paperId: string,
   status: LibraryPaperSummary['readStatus'],
   activeRead: ActiveTaskView | null = null,
+  lastError?: string,
 ): string {
   if (status === 'reading') {
     if (!activeRead) {
@@ -333,7 +334,7 @@ function renderDeepReadAction(
         renderDeepReadForm(paperId, 'Retry deep read', true) +
       `</div>`;
     }
-    const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}"`;
+    const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}" data-paper-id="${escapeHtml(paperId)}"`;
     const stages = Object.entries(LIBRARY_READ_STAGE_LABELS).map(([name, label], i) =>
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
@@ -343,6 +344,15 @@ function renderDeepReadAction(
       `<button id="library-read-retry" class="primary" type="button" disabled>Deep read</button>` +
       `<ol id="library-read-stages" class="run-stages library-read-stages">${stages}</ol>` +
       `<pre id="library-read-log" class="library-read-log"></pre>` +
+    `</div>`;
+  }
+  if (status === 'failed') {
+    const err = lastError
+      ? `<p class="read-error mono">${escapeHtml(lastError)}</p>`
+      : `<p>The previous deep read failed. Retry to run it again.</p>`;
+    return `<div class="read-status-panel stale" role="status">` +
+      `<div class="read-status-copy"><span class="stale-dot"></span><div><b>Read failed</b>${err}</div></div>` +
+      renderDeepReadForm(paperId, 'Retry deep read', true) +
     `</div>`;
   }
   const isRerun = status === 'read';
@@ -377,8 +387,9 @@ function renderReads(reads: LibraryPaperDetailView['reads']): string {
   return reads.map((r) => {
     const path = r.artifactPath ?? r.id;
     const label = r.artifactPath ? basename(path) : r.id;
+    const err = r.lastError ? ` <span class="read-error mono" title="${escapeHtml(r.lastError)}">${escapeHtml(r.lastError)}</span>` : '';
     return `<li class="read-item">${renderStatusBadge(r.status)}` +
-      `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(label)}</span></li>`;
+      `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(label)}</span>${err}</li>`;
   }).join('');
 }
 
@@ -420,7 +431,8 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
     ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
       `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
     : '<p class="muted">No topic relation yet.</p>';
-  return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead)}</section>` +
+  const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
     `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v)}</section>` +
     `<section class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
@@ -452,7 +464,17 @@ function enableLibraryRetry() {
   if (!libRetry) return;
   libRetry.disabled = false;
   libRetry.textContent = 'Retry';
-  libRetry.addEventListener('click', () => window.location.reload(), { once: true });
+  libRetry.addEventListener('click', () => {
+    const paperId = libStatus && libStatus.dataset.paperId;
+    if (!paperId) { window.location.reload(); return; }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/library/read';
+    form.innerHTML = '<input type="hidden" name="paperId" value="' + paperId + '">' +
+      '<input type="hidden" name="force" value="1">';
+    document.body.appendChild(form);
+    form.submit();
+  }, { once: true });
 }
 
 function appendLibraryLog(line) {

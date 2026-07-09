@@ -19,10 +19,12 @@ class StubAdapter implements AgentRuntime {
   id = 'stub';
   lastPrompt = '';
   lastMaxTokens: number | undefined;
+  lastTimeoutMs: number | undefined;
 
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
     this.lastPrompt = opts.userPrompt;
     this.lastMaxTokens = opts.maxTokens;
+    this.lastTimeoutMs = opts.timeoutMs;
     return {
       output: [
         '# Library Read Paper',
@@ -121,6 +123,7 @@ describe('runLibraryRead', () => {
     expect(body).toContain('## Brief');
     expect(body).toContain('- x');
     expect(adapter.lastMaxTokens).toBeGreaterThan(4096);
+    expect(adapter.lastTimeoutMs).toBeGreaterThan(0);
     expect(adapter.lastPrompt).toContain('Return only the Markdown artifact body');
     expect(adapter.lastPrompt).not.toContain('run_command');
     expect(adapter.lastPrompt).not.toContain('FILES_MODIFIED:\n');
@@ -171,5 +174,45 @@ describe('runLibraryRead', () => {
       readId: 'read_paper_arxiv_2401_12345',
       adapter: new TruncatedStubAdapter(),
     })).rejects.toThrow('truncated');
+  });
+
+  it('emits fetch progress and draft-read heartbeats while waiting on the model', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-hb-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const lines: string[] = [];
+    const paper: Paper = {
+      id: 'paper_arxiv_2401_12345',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
+      identifiers: { arxiv: '2401.12345' },
+      tags: [],
+      createdAt: '2026-07-02T00:00:00Z',
+      updatedAt: '2026-07-02T00:00:00Z',
+    };
+
+    class SlowAdapter implements AgentRuntime {
+      id = 'slow-stub';
+      async invoke(): Promise<InvokeResult> {
+        await new Promise((r) => setTimeout(r, 60));
+        return {
+          output: '# Library Read Paper\n\n> Frame.\n\n## Brief\n\nok\n\n## Claims\n\n- x\n\n## Assumptions\n\n- y\n\n## Method\n\n- z\n\n## Eval\n\n- e\n\n## Weaknesses\n\n- w\n\n## Relations\n\n- standalone [low]: test.\n',
+          modifiedFiles: [],
+          exitCode: 0,
+        };
+      }
+    }
+
+    await runLibraryRead({
+      workspaceRoot: root,
+      paper,
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new SlowAdapter(),
+      heartbeatMs: 20,
+      onLine: (line) => lines.push(line),
+    });
+
+    expect(lines.some((l) => /fetch-source/i.test(l))).toBe(true);
+    expect(lines.some((l) => /draft-read still waiting/i.test(l))).toBe(true);
   });
 });

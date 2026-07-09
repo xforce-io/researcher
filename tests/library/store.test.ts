@@ -39,4 +39,50 @@ describe('PaperLibrary store', () => {
     expect(existsSync(join(root, '.researcher-workspace/library/reads.jsonl'))).toBe(true);
     expect(existsSync(join(root, '.researcher-workspace/library/links.jsonl'))).toBe(true);
   });
+
+  it('reclaims orphan reading records to failed with lastError', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-lib-'));
+    const lib = new PaperLibrary(root, { now: () => '2026-07-09T00:00:00.000Z' });
+    const source = normalizePaperInput('2603.23971');
+    const id = paperIdForSource(source);
+    lib.upsertPaper({ id, canonicalSource: source, sources: [source], identifiers: { arxiv: '2603.23971' }, tags: [] });
+    lib.upsertRead({ id: `read_${id}`, paperId: id, status: 'reading' });
+    lib.upsertRead({
+      id: 'read_other_done',
+      paperId: id,
+      status: 'read',
+      artifactPath: `.researcher-workspace/library/papers/${id}/reads/done.md`,
+    });
+
+    const reclaimed = lib.reclaimOrphanReads('serve restarted while reading');
+
+    expect(reclaimed).toHaveLength(1);
+    expect(reclaimed[0]).toMatchObject({
+      id: `read_${id}`,
+      status: 'failed',
+      lastError: 'serve restarted while reading',
+    });
+    expect(lib.listReads(id).find((r) => r.id === `read_${id}`)?.status).toBe('failed');
+    expect(lib.listReads(id).find((r) => r.id === 'read_other_done')?.status).toBe('read');
+  });
+
+  it('persists lastError on failed reads', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-lib-'));
+    const lib = new PaperLibrary(root, { now: () => '2026-07-09T00:00:00.000Z' });
+    const source = normalizePaperInput('2401.00001');
+    const id = paperIdForSource(source);
+    lib.upsertPaper({ id, canonicalSource: source, sources: [source], identifiers: { arxiv: '2401.00001' }, tags: [] });
+    lib.upsertRead({
+      id: `read_${id}`,
+      paperId: id,
+      status: 'failed',
+      lastError: 'library read agent exited 1: Request was aborted.',
+    });
+
+    const line = readFileSync(join(root, '.researcher-workspace/library/reads.jsonl'), 'utf8').trim();
+    expect(JSON.parse(line)).toMatchObject({
+      status: 'failed',
+      lastError: 'library read agent exited 1: Request was aborted.',
+    });
+  });
 });

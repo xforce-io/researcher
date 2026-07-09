@@ -40,6 +40,14 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   const registry = opts.registry ?? new TaskRegistry();
   const libraryReadRunner = opts.libraryReadRunner ?? defaultLibraryReadRunner;
 
+  // TaskRegistry is in-memory only: any `reading` left on disk from a previous process is orphaned.
+  const reclaimed = new PaperLibrary(opts.root).reclaimOrphanReads();
+  if (reclaimed.length > 0) {
+    process.stderr.write(
+      `researcher serve: reclaimed ${reclaimed.length} orphan library read(s) still marked reading\n`,
+    );
+  }
+
   const server = createServer((req, res) => {
     handle(req, res, opts.root, registry, libraryReadRunner).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
@@ -116,7 +124,7 @@ async function handle(
     const taskKey = libraryReadTaskKey(paperId);
     if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
     const readId = libraryReadId(paperId);
-    lib.upsertRead({ id: readId, paperId, status: 'reading' });
+    lib.upsertRead({ id: readId, paperId, status: 'reading', lastError: undefined });
     registry.startJob(taskKey, async (onLine, onEvent) => {
       onEvent({ type: 'plan', stages: LIBRARY_READ_STAGES });
       try {
@@ -130,11 +138,18 @@ async function handle(
         if (result.title && !paper.title) {
           lib.upsertPaper({ ...paper, title: result.title });
         }
-        lib.upsertRead({ id: readId, paperId, status: 'read', artifactPath: result.artifactPath });
+        lib.upsertRead({
+          id: readId,
+          paperId,
+          status: 'read',
+          artifactPath: result.artifactPath,
+          lastError: undefined,
+        });
         return 0;
       } catch (err) {
-        onLine(err instanceof Error ? err.message : String(err));
-        lib.upsertRead({ id: readId, paperId, status: 'failed' });
+        const message = err instanceof Error ? err.message : String(err);
+        onLine(message);
+        lib.upsertRead({ id: readId, paperId, status: 'failed', lastError: message });
         return 1;
       }
     });
