@@ -15,6 +15,17 @@ vi.mock('../../src/sources/arxiv.js', async (orig) => ({
   }),
 }));
 
+vi.mock('../../src/sources/url-fetch.js', async (orig) => ({
+  ...(await orig() as object),
+  fetchUrlMaterial: async () => ({
+    title: 'Internal Design Doc',
+    text: 'We chose event sourcing for the audit log. Tradeoff: complexity vs replayability.',
+    contentType: 'text/html',
+    docType: 'design-doc' as const,
+    url: 'https://example.com/design/event-sourcing',
+  }),
+}));
+
 class StubAdapter implements AgentRuntime {
   id = 'stub';
   lastPrompt = '';
@@ -105,7 +116,7 @@ describe('runLibraryRead', () => {
     });
 
     expect(result.artifactPath).toBe('.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md');
-    expect(adapter.lastPrompt).toContain('None. Read this paper as a standalone Library artifact.');
+    expect(adapter.lastPrompt).toContain('None. Read this source as a standalone Library artifact.');
     expect(adapter.lastPrompt).toContain('CACHED PAPER BODY');
     expect(adapter.lastPrompt).toContain('title: "Library Read Paper"');
     expect(adapter.lastPrompt).toContain('authors: ["A"]');
@@ -174,6 +185,45 @@ describe('runLibraryRead', () => {
       readId: 'read_paper_arxiv_2401_12345',
       adapter: new TruncatedStubAdapter(),
     })).rejects.toThrow('truncated');
+  });
+
+  it('deep-reads a URL document with runner-owned text and non-paper sections', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-doc-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    const adapter = new StubAdapter();
+    const paper: Paper = {
+      id: 'paper_url_deadbeef',
+      canonicalSource: {
+        kind: 'url',
+        id: 'url:https://example.com/design/event-sourcing',
+        url: 'https://example.com/design/event-sourcing',
+      },
+      sources: [{
+        kind: 'url',
+        id: 'url:https://example.com/design/event-sourcing',
+        url: 'https://example.com/design/event-sourcing',
+      }],
+      identifiers: { url: 'https://example.com/design/event-sourcing' },
+      tags: [],
+      docType: 'design-doc',
+      createdAt: '2026-07-02T00:00:00Z',
+      updatedAt: '2026-07-02T00:00:00Z',
+    };
+
+    const result = await runLibraryRead({
+      workspaceRoot: root,
+      paper,
+      readId: 'read_paper_url_deadbeef',
+      adapter,
+    });
+
+    expect(adapter.lastPrompt).toContain('event sourcing');
+    expect(adapter.lastPrompt).toContain('Key takeaways');
+    expect(adapter.lastPrompt).not.toContain('## Eval');
+    const body = readFileSync(join(root, result.artifactPath), 'utf8');
+    expect(body).toContain('doc_type: "design-doc"');
+    expect(body).toContain('kind: library-read');
+    expect(result.title).toBe('Internal Design Doc');
   });
 
   it('emits fetch progress and draft-read heartbeats while waiting on the model', async () => {

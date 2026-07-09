@@ -25,11 +25,18 @@ methodology.command('edit <name>').action(async (name: string) => (await import(
 const library = program.command('library').description('Manage the workspace paper library');
 library
   .command('add <input>')
-  .description('Add or update a paper in the workspace library')
+  .description('Add or update a paper/document in the workspace library')
   .option('--tags <tags>', 'comma-separated paper-level tags')
-  .action(async (input: string, opts: { tags?: string }) => {
+  .option('--type <docType>', 'paper | design-doc | spec | blog | api-doc | other')
+  .action(async (input: string, opts: { tags?: string; type?: string }) => {
     const { parseTags, runLibraryAdd } = await import('./commands/library.js');
-    runLibraryAdd({ input, cwd: process.cwd(), tags: opts.tags === undefined ? undefined : parseTags(opts.tags) });
+    const { parseDocType } = await import('./library/doc-type.js');
+    runLibraryAdd({
+      input,
+      cwd: process.cwd(),
+      tags: opts.tags === undefined ? undefined : parseTags(opts.tags),
+      docType: opts.type === undefined ? undefined : parseDocType(opts.type),
+    });
   });
 library
   .command('list')

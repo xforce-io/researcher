@@ -78,4 +78,17 @@ describe('researcher library commands', () => {
     expect(parseRelation('relevant')).toBe('relevant');
     expect(() => parseRelation('maybe')).toThrow(/invalid relation/);
   });
+
+  it('stores explicit docType on library add', () => {
+    runLibraryAdd({
+      cwd: root,
+      input: 'https://example.com/design/cache',
+      docType: 'design-doc',
+      write: () => {},
+    });
+    const lib = new PaperLibrary(root);
+    const paper = lib.listPapers()[0];
+    expect(paper.docType).toBe('design-doc');
+    expect(paper.canonicalSource.kind).toBe('url');
+  });
 });
