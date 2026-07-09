@@ -281,7 +281,8 @@ export function renderLibrary(v: LibraryView): string {
         `<div class="library-rail-head"><h2>Papers</h2><span>${v.papers.length}</span></div>` +
         `<label class="library-search">Search<input type="search" placeholder="Title, tag, source" data-library-search></label>` +
         `<div class="library-filters" role="group" aria-label="Library filters">` +
-          `<button class="active" type="button" data-filter="all" aria-pressed="true">All</button>` +
+          `<button class="active" type="button" data-filter="unlinked" aria-pressed="true">Unlinked</button>` +
+          `<button type="button" data-filter="all" aria-pressed="false">All</button>` +
           `<button type="button" data-filter="unread" aria-pressed="false">Unread</button>` +
           `<button type="button" data-filter="read" aria-pressed="false">Read</button>` +
           `<button type="button" data-filter="linked" aria-pressed="false">Linked</button>` +
@@ -520,10 +521,12 @@ const librarySearch = document.querySelector('[data-library-search]');
 const libraryFilterButtons = Array.from(document.querySelectorAll('[data-filter]'));
 const libraryCards = Array.from(document.querySelectorAll('.paper-card.row'));
 const libraryNoResults = document.querySelector('.library-no-results');
-let activeLibraryFilter = 'all';
+// Default inbox: papers not yet linked to any topic.
+let activeLibraryFilter = 'unlinked';
 
 function cardMatchesFilter(card) {
   if (activeLibraryFilter === 'all') return true;
+  if (activeLibraryFilter === 'unlinked') return card.dataset.linked !== '1';
   if (activeLibraryFilter === 'linked') return card.dataset.linked === '1';
   if (activeLibraryFilter === 'integrated') return card.dataset.integrated === '1';
   return card.dataset.status === activeLibraryFilter;
@@ -543,7 +546,7 @@ function applyLibraryFilters() {
 
 librarySearch?.addEventListener('input', applyLibraryFilters);
 libraryFilterButtons.forEach((button) => button.addEventListener('click', () => {
-  activeLibraryFilter = button.dataset.filter || 'all';
+  activeLibraryFilter = button.dataset.filter || 'unlinked';
   libraryFilterButtons.forEach((b) => {
     const active = b === button;
     b.classList.toggle('active', active);

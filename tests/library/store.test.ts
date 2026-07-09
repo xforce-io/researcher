@@ -85,4 +85,33 @@ describe('PaperLibrary store', () => {
       lastError: 'library read agent exited 1: Request was aborted.',
     });
   });
+
+  it('lists papers newest-updated first', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-lib-'));
+    let t = 0;
+    const lib = new PaperLibrary(root, {
+      now: () => `2026-07-0${++t}T00:00:00.000Z`,
+    });
+    const older = normalizePaperInput('2401.00001');
+    const newer = normalizePaperInput('2401.00002');
+    lib.upsertPaper({
+      id: paperIdForSource(older),
+      canonicalSource: older,
+      sources: [older],
+      identifiers: { arxiv: '2401.00001' },
+      tags: [],
+    });
+    lib.upsertPaper({
+      id: paperIdForSource(newer),
+      canonicalSource: newer,
+      sources: [newer],
+      identifiers: { arxiv: '2401.00002' },
+      tags: [],
+    });
+
+    const ids = lib.listPapers().map((p) => p.id);
+    expect(ids[0]).toBe(paperIdForSource(newer));
+    expect(ids[1]).toBe(paperIdForSource(older));
+    expect(lib.listPapers()[0].updatedAt > lib.listPapers()[1].updatedAt).toBe(true);
+  });
 });
