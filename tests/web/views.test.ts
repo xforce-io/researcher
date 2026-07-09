@@ -321,6 +321,8 @@ describe('renderLibrary', () => {
     expect(html).toContain('data-status="read"');
     expect(html).toContain('data-linked="1"');
     expect(html).toContain('data-integrated="1"');
+    // Linked papers are hidden on first paint (default Unlinked filter).
+    expect(html).toMatch(/paper-card row" hidden[^>]*data-linked="1"/);
     expect(html).not.toContain('Selected paper');
     expect(html.match(/<button[^>]*data-open-add-paper/g)).toHaveLength(1);
   });

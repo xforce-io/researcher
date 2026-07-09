@@ -235,7 +235,11 @@ function renderTagChips(tags: string[]): string {
     : '<span class="muted">no tags</span>';
 }
 
-function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'detail' = 'row'): string {
+function renderPaperCard(
+  p: LibraryPaperSummary,
+  variant: 'row' | 'compact' | 'detail' = 'row',
+  opts: { defaultHidden?: boolean } = {},
+): string {
   const relation = p.relation ? `<span class="paper-relation">${escapeHtml(p.relation)}</span>` : '';
   const counts = `${p.readStatus} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
@@ -246,7 +250,9 @@ function renderPaperCard(p: LibraryPaperSummary, variant: 'row' | 'compact' | 'd
     p.relation,
     ...p.tags,
   ].filter(Boolean).join(' ').toLowerCase();
-  return `<article class="paper-card ${variant}" data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}">` +
+  // Library list defaults to Unlinked: hide linked cards on first paint (JS re-filters on click).
+  const hidden = opts.defaultHidden ? ' hidden' : '';
+  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}">` +
     `<div class="paper-main">` +
       `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
@@ -262,7 +268,9 @@ export function renderLibrary(v: LibraryView): string {
   const topicOptions = v.topics
     .map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`)
     .join('');
-  const papers = v.papers.map((p) => renderPaperCard(p)).join('');
+  const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
+    defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
+  })).join('');
   const addPaperModal = `<div id="add-paper-modal" class="modal-backdrop" hidden>` +
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +

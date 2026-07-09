@@ -370,6 +370,8 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   padding:12px 14px;
   border-top:1px solid var(--line-soft);
 }
+/* class display:grid would otherwise override the hidden attr used by Library filters */
+.paper-card[hidden] { display:none !important; }
 .paper-card:first-child { border-top:0; }
 .paper-card.paper-header {
   min-height:36px;
