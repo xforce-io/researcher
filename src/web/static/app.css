@@ -510,6 +510,16 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .read-status-panel .primary {
   align-self:center;
 }
+.read-status-panel.stale {
+  border-color:#d6a75d;
+  background:#fff7e6;
+}
+.read-status-panel.stale .deep-read-form {
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+}
 .library-read-stages {
   grid-column:1 / -1;
   margin:2px 0 0;
@@ -554,14 +564,21 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   font-size:12px;
   line-height:1.35;
 }
-.pulse-dot {
+.pulse-dot,
+.stale-dot {
   width:9px;
   height:9px;
   margin-top:4px;
   border-radius:50%;
+  flex:0 0 auto;
+}
+.pulse-dot {
   background:var(--accent);
   box-shadow:0 0 0 5px rgba(63,107,79,.12);
-  flex:0 0 auto;
+}
+.stale-dot {
+  background:#c27b2c;
+  box-shadow:0 0 0 5px rgba(194,123,44,.14);
 }
 .primary:disabled {
   opacity:.68;
