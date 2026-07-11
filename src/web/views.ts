@@ -413,6 +413,60 @@ function basename(path: string): string {
   return path.split('/').at(-1) ?? path;
 }
 
+const PAPER_NOTE_KINDS = ['note', 'clarification', 'caveat', 'idea', 'question'] as const;
+
+function renderPaperNotes(v: LibraryPaperDetailView): string {
+  const kindOptions = PAPER_NOTE_KINDS.map((k) =>
+    `<option value="${k}"${k === 'note' ? ' selected' : ''}>${k}</option>`,
+  ).join('');
+  const items = v.notes.map((n) => {
+    const pinLabel = n.pinned ? 'Unpin' : 'Pin';
+    const pinAction = n.pinned ? 'unpin' : 'pin';
+    return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
+      `<div class="paper-note-head">` +
+        `<span class="note-kind">${escapeHtml(n.kind)}</span>` +
+        `${n.pinned ? '<span class="note-pin-badge">pinned</span>' : ''}` +
+        `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
+      `</div>` +
+      `<p class="paper-note-body">${escapeHtml(n.body)}</p>` +
+      `<div class="paper-note-actions">` +
+        `<form action="/library/note" method="post">` +
+          `<input type="hidden" name="action" value="${pinAction}">` +
+          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+          `<button class="secondary note-action-btn" type="submit">${pinLabel}</button>` +
+        `</form>` +
+        `<form action="/library/note" method="post" onsubmit="return confirm('Delete this note?');">` +
+          `<input type="hidden" name="action" value="delete">` +
+          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+          `<button class="danger note-action-btn" type="submit">Delete</button>` +
+        `</form>` +
+      `</div>` +
+    `</li>`;
+  }).join('');
+
+  return `<section class="detail-panel paper-notes-panel" id="notes">` +
+    `<div class="paper-notes-head">` +
+      `<h2>Notes</h2>` +
+      `<span class="muted">Your attention on this paper — survives re-read</span>` +
+    `</div>` +
+    `<form class="paper-note-form" action="/library/note" method="post">` +
+      `<input type="hidden" name="action" value="create">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<label class="note-body-label">New note` +
+        `<textarea name="body" rows="3" required placeholder="Clarification, caveat, open question…"></textarea>` +
+      `</label>` +
+      `<div class="paper-note-form-row">` +
+        `<label>Kind<select name="kind">${kindOptions}</select></label>` +
+        `<label class="note-pin-check"><input type="checkbox" name="pinned" value="1"> Pin</label>` +
+        `<button class="primary" type="submit">Add note</button>` +
+      `</div>` +
+    `</form>` +
+    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">No notes yet. Capture what you want to remember.</li>'}</ul>` +
+  `</section>`;
+}
+
 export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
   const readSurface = v.latestReadArtifact
     ? `<section class="reader read-surface"><div class="read-artifact-head"><h2>Read artifact</h2><span class="mono">${escapeHtml(v.latestReadArtifact.path)}</span></div>${renderDoc(v.latestReadArtifact.markdown)}</section>`
@@ -424,6 +478,7 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
         `<div class="library-head"><div><h1>Paper detail</h1><p>${escapeHtml(v.paper.displayTitle)}</p></div>${renderStatusBadge(v.paper.readStatus)}</div>` +
         `${renderPaperCard(v.paper, 'detail')}` +
         readSurface +
+        renderPaperNotes(v) +
       `</section>` +
       `<aside class="paper-inspector">${renderPaperInspector(v, activeRead)}</aside>` +
     `</main>${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;

@@ -356,6 +356,7 @@ describe('renderLibraryPaper delete affordance', () => {
       paper: basePaper,
       topics: [],
       reads: [],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],
@@ -371,6 +372,7 @@ describe('renderLibraryPaper delete affordance', () => {
       paper: { ...basePaper, linkedTopicCount: 1, integratedTopicCount: 0 },
       topics: [],
       reads: [],
+      notes: [],
       latestReadArtifact: null,
       links: [{
         paperId: basePaper.id,
@@ -445,6 +447,15 @@ describe('renderLibrary', () => {
       paper: library.papers[0],
       topics: library.topics,
       reads: [{ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: 'read.md', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [{
+        id: 'note_1',
+        paperId: 'paper_arxiv_2401_12345',
+        body: 'Selection not generation',
+        kind: 'clarification',
+        pinned: true,
+        createdAt: '2026-07-02T00:00:00Z',
+        updatedAt: '2026-07-02T00:00:00Z',
+      }],
       latestReadArtifact: { path: 'read.md', markdown: '# Library Read\n\n## Findings\n\n- Useful paper.' },
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
@@ -469,6 +480,11 @@ describe('renderLibrary', () => {
     expect(html).toContain('Relations');
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
+    expect(html).toContain('id="notes"');
+    expect(html).toContain('action="/library/note"');
+    expect(html).toContain('Selection not generation');
+    expect(html).toContain('clarification');
+    expect(html).toContain('pinned');
   });
 
   it('renders a recoverable interrupted state for restored reading records without active tasks', () => {
@@ -477,6 +493,7 @@ describe('renderLibrary', () => {
       paper: { ...library.papers[0], readStatus: 'reading' },
       topics: library.topics,
       reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],
@@ -499,6 +516,7 @@ describe('renderLibrary', () => {
       paper: { ...library.papers[0], readStatus: 'reading' },
       topics: library.topics,
       reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],
