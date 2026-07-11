@@ -91,6 +91,8 @@ describe('loadWorkspaceHome', () => {
   it('summarizes workspace topics and library state', () => {
     const m = loadWorkspaceHome(root);
     expect(m.root).toBe(root);
+    expect(m.name).toBe(root.split('/').pop());
+    expect(m.lastActivity).toBeTruthy();
     expect(m.topicCounts).toEqual({
       total: 3,
       active: 2,
@@ -106,8 +108,14 @@ describe('loadWorkspaceHome', () => {
       failed: 0,
       linked: 1,
       integrated: 1,
+      unlinked: 0,
+      toIntegrate: 0,
     });
     expect(m.activeTopics.map((t) => t.path)).toEqual(['trace', 'feeds/ai-safety']);
+    expect(m.topicPaths).toEqual(['trace', 'decision', 'feeds/ai-safety']);
+    expect(m.recentPapers.map((p) => p.id)).toEqual(['paper_arxiv_2401_12345']);
+    // feeds/ai-safety never ran → stale attention item
+    expect(m.attention.some((a) => a.kind === 'stale-topic' && a.title === 'feeds/ai-safety')).toBe(true);
   });
 });
 

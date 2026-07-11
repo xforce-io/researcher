@@ -264,14 +264,11 @@ function renderPaperCard(
   `</article>`;
 }
 
-export function renderLibrary(v: LibraryView): string {
-  const topicOptions = v.topics
-    .map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`)
+function renderAddPaperModal(topicPaths: string[]): string {
+  const topicOptions = topicPaths
+    .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
     .join('');
-  const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
-    defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
-  })).join('');
-  const addPaperModal = `<div id="add-paper-modal" class="modal-backdrop" hidden>` +
+  return `<div id="add-paper-modal" class="modal-backdrop" hidden>` +
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
       `<button class="icon-button" type="button" data-close-add-paper aria-label="Close">x</button></div>` +
@@ -283,6 +280,12 @@ export function renderLibrary(v: LibraryView): string {
       `</form>` +
     `</div>` +
   `</div>`;
+}
+
+export function renderLibrary(v: LibraryView): string {
+  const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
+    defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
+  })).join('');
   const body = topbar(v.root, 'library') +
     `<main class="library-shell no-selection">` +
       `<aside class="library-rail">` +
@@ -306,7 +309,7 @@ export function renderLibrary(v: LibraryView): string {
           `<p class="empty-state library-no-results" hidden>No papers match the current filters.</p>` +
         `</div>` +
       `</section>` +
-    `</main>${addPaperModal}<script>${LIBRARY_JS}</script>`;
+    `</main>${renderAddPaperModal(v.topics.map((t) => t.path))}<script>${LIBRARY_JS}</script>`;
   return page('Library · researcher', body);
 }
 
@@ -533,10 +536,33 @@ if (libStatus && libStatus.dataset.libraryTask) {
 }
 `;
 
-const LIBRARY_JS = `
+// Shared by Library and Workspace Home — modal open/close only.
+const ADD_PAPER_JS = `
 const addPaperModal = document.getElementById('add-paper-modal');
-const openAddPaper = document.querySelector('[data-open-add-paper]');
+const openAddPaperButtons = Array.from(document.querySelectorAll('[data-open-add-paper]'));
 const closeAddPaper = document.querySelector('[data-close-add-paper]');
+
+function showAddPaper() {
+  if (!addPaperModal) return;
+  addPaperModal.hidden = false;
+  addPaperModal.querySelector('input[name="input"]')?.focus();
+}
+function hideAddPaper() {
+  if (!addPaperModal) return;
+  addPaperModal.hidden = true;
+  openAddPaperButtons[0]?.focus();
+}
+openAddPaperButtons.forEach((btn) => btn.addEventListener('click', showAddPaper));
+closeAddPaper?.addEventListener('click', hideAddPaper);
+addPaperModal?.addEventListener('click', (e) => {
+  if (e.target === addPaperModal) hideAddPaper();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && addPaperModal && !addPaperModal.hidden) hideAddPaper();
+});
+`;
+
+const LIBRARY_JS = `
 const librarySearch = document.querySelector('[data-library-search]');
 const libraryFilterButtons = Array.from(document.querySelectorAll('[data-filter]'));
 const libraryCards = Array.from(document.querySelectorAll('.paper-card.row'));
@@ -575,32 +601,32 @@ libraryFilterButtons.forEach((button) => button.addEventListener('click', () => 
   applyLibraryFilters();
 }));
 applyLibraryFilters();
-
-function showAddPaper() {
-  if (!addPaperModal) return;
-  addPaperModal.hidden = false;
-  addPaperModal.querySelector('input[name="input"]')?.focus();
-}
-function hideAddPaper() {
-  if (!addPaperModal) return;
-  addPaperModal.hidden = true;
-  openAddPaper?.focus();
-}
-openAddPaper?.addEventListener('click', showAddPaper);
-closeAddPaper?.addEventListener('click', hideAddPaper);
-addPaperModal?.addEventListener('click', (e) => {
-  if (e.target === addPaperModal) hideAddPaper();
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && addPaperModal && !addPaperModal.hidden) hideAddPaper();
-});
-`;
+` + ADD_PAPER_JS;
 
 // ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
 function fmtDate(iso: string | null): string {
   if (!iso) return 'never run';
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
   return m ? m[1] : escapeHtml(iso);
+}
+
+// Relative age for home / activity surfaces. Absolute date stays in title attr.
+function fmtRelative(iso: string | null, now = Date.now()): string {
+  if (!iso) return 'never';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return fmtDate(iso);
+  const sec = Math.max(0, Math.round((now - t) / 1000));
+  if (sec < 60) return 'just now';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 48) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 14) return `${day}d ago`;
+  if (day < 60) return `${Math.round(day / 7)}w ago`;
+  const mo = Math.round(day / 30);
+  if (mo < 18) return `${mo}mo ago`;
+  return `${Math.round(day / 365)}y ago`;
 }
 
 // Triage intake bar + legend, built from the committed seen-ledger counts.
@@ -620,25 +646,165 @@ function triageBar(c: TopicCard['decisionCounts']): string {
     `</div>`;
 }
 
-export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
-  const topicPreview = m.activeTopics.map((t) =>
-    `<li><a href="/t/${t.slug}">${escapeHtml(t.path)}</a><span>${t.noteCount} notes · ${fmtDate(t.lastRun)}</span></li>`
+type HomePrimaryCta =
+  | { kind: 'link'; href: string; label: string }
+  | { kind: 'add-paper'; label: string };
+
+function homePrimaryCta(m: WorkspaceHomeModel): HomePrimaryCta {
+  const reading = m.attention.find((a) => a.kind === 'reading');
+  if (reading) return { kind: 'link', href: reading.href, label: 'Continue reading' };
+  if (m.libraryCounts.unlinked > 0) return { kind: 'link', href: '/library', label: 'Review library' };
+  // Empty library: intake is the primary job.
+  if (m.libraryCounts.papers === 0) return { kind: 'add-paper', label: 'Add paper' };
+  if (m.activeTopics.length > 0) return { kind: 'link', href: `/t/${m.activeTopics[0].slug}`, label: 'Open topic' };
+  return { kind: 'link', href: '/topics', label: 'View topics' };
+}
+
+function homeHeroActions(m: WorkspaceHomeModel): string {
+  const cta = homePrimaryCta(m);
+  const primary = cta.kind === 'add-paper'
+    ? `<button class="primary home-cta" type="button" data-open-add-paper>${escapeHtml(cta.label)}</button>`
+    : `<a class="primary home-cta" href="${escapeHtml(cta.href)}">${escapeHtml(cta.label)}</a>`;
+  // Secondary Add paper only when primary is something else — avoid two identical CTAs.
+  const secondary = cta.kind === 'add-paper'
+    ? ''
+    : `<button class="secondary home-cta-secondary" type="button" data-open-add-paper>Add paper</button>`;
+  return `<div class="home-actions">${primary}${secondary}</div>`;
+}
+
+function homeMetric(
+  href: string,
+  value: number | string,
+  label: string,
+  opts: { emphasize?: boolean; zeroMuted?: boolean } = {},
+): string {
+  const n = typeof value === 'number' ? value : null;
+  const classes = [
+    'metric',
+    opts.emphasize ? 'metric-hot' : '',
+    opts.zeroMuted && n === 0 ? 'metric-zero' : '',
+  ].filter(Boolean).join(' ');
+  const display = opts.zeroMuted && n === 0 ? '—' : escapeHtml(String(value));
+  return `<a class="${classes}" href="${href}"><b>${display}</b><span>${escapeHtml(label)}</span></a>`;
+}
+
+function homeAttention(m: WorkspaceHomeModel): string {
+  if (m.attention.length === 0) {
+    return `<div class="home-panel home-attention">` +
+      `<h2>Needs attention</h2>` +
+      `<p class="home-empty">Nothing needs you right now. Topics are current and the library inbox is clear.</p>` +
+      `<a href="/library">Browse library</a>` +
+    `</div>`;
+  }
+  const items = m.attention.map((a) =>
+    `<li class="attention-item kind-${escapeHtml(a.kind)}">` +
+      `<div class="attention-body">` +
+        `<a class="attention-title" href="${escapeHtml(a.href)}">${escapeHtml(a.title)}</a>` +
+        `<span class="attention-detail">${escapeHtml(a.detail)}</span>` +
+      `</div>` +
+      `<a class="attention-cta" href="${escapeHtml(a.href)}">${escapeHtml(a.cta)}</a>` +
+    `</li>`,
   ).join('');
+  return `<div class="home-panel home-attention">` +
+    `<h2>Needs attention</h2>` +
+    `<ul class="attention-list">${items}</ul>` +
+  `</div>`;
+}
+
+function homeTopics(m: WorkspaceHomeModel): string {
+  const rows = m.activeTopics.map((t) => {
+    const abs = fmtDate(t.lastRun);
+    const rel = fmtRelative(t.lastRun);
+    const stale = abs === 'never run' || rel.endsWith('w ago') || rel.endsWith('mo ago') || rel.endsWith('y ago');
+    return `<li class="${stale ? 'is-stale' : ''}">` +
+      `<span class="topic-dot" aria-hidden="true"></span>` +
+      `<a href="/t/${t.slug}">${escapeHtml(t.path)}</a>` +
+      `<span title="${escapeHtml(abs)}">${t.noteCount} notes · ${escapeHtml(rel)}</span>` +
+    `</li>`;
+  }).join('');
+  return `<div class="home-panel home-topics">` +
+    `<h2>Active Topics</h2>` +
+    `<ul class="home-list">${rows || '<li class="muted">No active topics.</li>'}</ul>` +
+    `<a href="/topics">View all topics</a>` +
+  `</div>`;
+}
+
+function homeLibrary(m: WorkspaceHomeModel): string {
+  const lc = m.libraryCounts;
+  const pct = lc.papers > 0 ? Math.round((lc.integrated / lc.papers) * 100) : 0;
+  const recent = m.recentPapers.map((p) =>
+    `<li>` +
+      `<a href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<span>${escapeHtml(p.readStatus)} · ${escapeHtml(fmtRelative(p.updatedAt))}</span>` +
+    `</li>`,
+  ).join('');
+  return `<section class="home-panel home-library">` +
+    `<div class="home-library-head">` +
+      `<h2>Library health</h2>` +
+      `<a href="/library">Open library →</a>` +
+    `</div>` +
+    `<div class="health-bar" role="img" aria-label="${lc.integrated} of ${lc.papers} papers integrated">` +
+      `<span style="width:${pct}%"></span>` +
+    `</div>` +
+    `<p class="health-caption"><b>${lc.integrated}</b> / ${lc.papers} integrated · ${pct}%</p>` +
+    `<dl class="health-stats">` +
+      `<div><dt>Unread</dt><dd>${lc.unread}</dd></div>` +
+      `<div><dt>Reading</dt><dd>${lc.reading}</dd></div>` +
+      `<div><dt>Linked</dt><dd>${lc.linked}</dd></div>` +
+      `<div><dt>Unlinked</dt><dd>${lc.unlinked}</dd></div>` +
+      `<div><dt>Failed</dt><dd>${lc.failed}</dd></div>` +
+      `<div><dt>To integrate</dt><dd>${lc.toIntegrate}</dd></div>` +
+    `</dl>` +
+    (recent
+      ? `<h3 class="home-subhead">Recent papers</h3><ul class="home-list recent-papers">${recent}</ul>`
+      : `<p class="home-empty">No papers yet — use Add paper above.</p>`) +
+  `</section>`;
+}
+
+export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
+  const topicSub = m.topicCounts.active === m.topicCounts.total && m.topicCounts.total > 0
+    ? 'all active'
+    : `${m.topicCounts.active} active`;
+  const readingHref = m.attention.find((a) => a.kind === 'reading')?.href ?? '/library';
+  const activity = m.lastActivity
+    ? `last activity ${fmtRelative(m.lastActivity)}`
+    : 'no activity yet';
+  const heroMeta = [
+    `${m.topicCounts.active} active topic${m.topicCounts.active === 1 ? '' : 's'}`,
+    `${m.libraryCounts.papers} paper${m.libraryCounts.papers === 1 ? '' : 's'}`,
+    activity,
+  ].join(' · ');
+
   const body = topbar(m.root, 'workspace') +
     `<main class="workspace-home">` +
-      `<section class="workspace-hero"><h1>Workspace Home</h1><p>Research topics, paper intake, and reading state for this workspace.</p></section>` +
+      `<section class="workspace-hero">` +
+        `<div>` +
+          `<h1>${escapeHtml(m.name)}</h1>` +
+          `<p>${escapeHtml(heroMeta)}</p>` +
+        `</div>` +
+        homeHeroActions(m) +
+      `</section>` +
       `<section class="metric-grid">` +
-        `<div class="metric"><b>${m.topicCounts.active}</b><span>${m.topicCounts.active} active topics</span></div>` +
-        `<div class="metric"><b>${m.topicCounts.available}</b><span>${m.topicCounts.available} available topics</span></div>` +
-        `<div class="metric"><b>${m.libraryCounts.papers}</b><span>papers</span></div>` +
-        `<div class="metric"><b>${m.libraryCounts.reading}</b><span>reading</span></div>` +
+        homeMetric('/topics', m.topicCounts.total, topicSub) +
+        homeMetric('/library', m.libraryCounts.papers, `${m.libraryCounts.read} read`) +
+        homeMetric('/library', m.libraryCounts.unlinked, 'to link', {
+          emphasize: m.libraryCounts.unlinked > 0,
+          zeroMuted: true,
+        }) +
+        homeMetric(readingHref, m.libraryCounts.reading, 'reading', {
+          emphasize: m.libraryCounts.reading > 0,
+          zeroMuted: true,
+        }) +
       `</section>` +
       `<section class="home-columns">` +
-        `<div><h2>Active Topics</h2><ul class="home-list">${topicPreview || '<li class="muted">No active topics.</li>'}</ul><a href="/topics">View all topics</a></div>` +
-        `<div><h2>Library</h2><p>${m.libraryCounts.papers} papers · ${m.libraryCounts.unread} unread · ${m.libraryCounts.read} read · ${m.libraryCounts.linked} linked · ${m.libraryCounts.integrated} integrated</p><a href="/library">Open library</a></div>` +
+        homeAttention(m) +
+        homeTopics(m) +
       `</section>` +
-    `</main>`;
-  return page('Workspace Home · researcher', body);
+      homeLibrary(m) +
+    `</main>` +
+    renderAddPaperModal(m.topicPaths) +
+    `<script>${ADD_PAPER_JS}</script>`;
+  return page(`${m.name} · researcher`, body);
 }
 
 export function renderTopics(m: DashboardModel): string {

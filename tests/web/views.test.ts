@@ -159,25 +159,87 @@ describe('renderDoc', () => {
 describe('renderWorkspaceHome', () => {
   const m: WorkspaceHomeModel = {
     root: '/ws',
+    name: 'research-harness',
+    lastActivity: '2026-06-20T10:00:00Z',
     topicCounts: { total: 2, active: 1, available: 1, dormant: 1, unavailable: 1 },
-    libraryCounts: { papers: 3, unread: 1, reading: 1, read: 1, failed: 0, linked: 2, integrated: 1 },
+    libraryCounts: {
+      papers: 3, unread: 1, reading: 1, read: 1, failed: 0,
+      linked: 2, integrated: 1, unlinked: 1, toIntegrate: 1,
+    },
     activeTopics: [
       { slug: 'trace', path: 'trace', active: true, available: true, oneline: 'triage <x>',
         noteCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
     ],
+    attention: [
+      {
+        kind: 'reading',
+        title: 'Paper in flight',
+        detail: 'Deep-read in progress',
+        href: '/library/p/paper_1',
+        cta: 'Resume',
+      },
+      {
+        kind: 'to-link',
+        title: '1 unlinked paper',
+        detail: 'In the library inbox, not attached to any topic',
+        href: '/library',
+        cta: 'Triage',
+      },
+    ],
+    recentPapers: [
+      {
+        id: 'paper_1',
+        displayTitle: 'Paper in flight',
+        canonicalId: 'arxiv:1',
+        sourceLabel: 'arXiv',
+        tags: [],
+        readStatus: 'reading',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-06-20T10:00:00Z',
+      },
+    ],
+    topicPaths: ['trace', 'decision'],
   };
 
-  it('renders workspace-first entry points and summary metrics', () => {
+  it('renders decision-oriented home: hero, metrics, attention, library health', () => {
     const html = renderWorkspaceHome(m);
-    expect(html).toContain('Workspace Home');
+    expect(html).toContain('research-harness');
+    expect(html).toContain('Continue reading');
+    expect(html).toContain('/library/p/paper_1');
     expect(html).toContain('/library');
     expect(html).toContain('/topics');
-    expect(html).toContain('3 papers');
-    expect(html).toContain('1 active');
+    expect(html).toContain('to link');
+    expect(html).toContain('Needs attention');
+    expect(html).toContain('Library health');
+    expect(html).toContain('1</b> / 3 integrated');
     expect(html).toContain('trace');
+    expect(html).toContain('Paper in flight');
+    // contextual primary + secondary Add paper (same modal as Library)
+    expect(html).toContain('data-open-add-paper');
+    expect(html).toContain('id="add-paper-modal"');
+    expect(html).toContain('action="/library/add"');
+    expect(html).toMatch(/<button class="secondary home-cta-secondary"[^>]*>Add paper<\/button>/);
+    expect(html).not.toContain('Workspace Home');
     expect(html).not.toContain('href="/">Workspace</a>');
     expect(html).not.toContain('workspace-actions');
     expect(html).not.toContain('<main class="grid">');
+  });
+
+  it('promotes Add paper to primary when the library is empty', () => {
+    const empty: WorkspaceHomeModel = {
+      ...m,
+      libraryCounts: {
+        papers: 0, unread: 0, reading: 0, read: 0, failed: 0,
+        linked: 0, integrated: 0, unlinked: 0, toIntegrate: 0,
+      },
+      attention: [],
+      recentPapers: [],
+    };
+    const html = renderWorkspaceHome(empty);
+    expect(html).toMatch(/<button class="primary home-cta"[^>]*data-open-add-paper[^>]*>Add paper<\/button>/);
+    // no duplicate secondary when primary is already Add paper
+    expect(html).not.toContain('home-cta-secondary');
   });
 });
 

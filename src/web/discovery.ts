@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { loadWorkspaceManifest, resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { loadProjectYaml } from '../config/project-yaml.js';
 import { Seen, type SeenEntry } from '../state/seen.js';
@@ -24,8 +24,25 @@ export interface DashboardModel {
   root: string;
   topics: TopicCard[];
 }
+export type HomeAttentionKind =
+  | 'reading'
+  | 'failed'
+  | 'to-link'
+  | 'to-integrate'
+  | 'stale-topic';
+
+export interface HomeAttentionItem {
+  kind: HomeAttentionKind;
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
+}
+
 export interface WorkspaceHomeModel {
   root: string;
+  name: string;
+  lastActivity: string | null;
   topicCounts: {
     total: number;
     active: number;
@@ -41,8 +58,14 @@ export interface WorkspaceHomeModel {
     failed: number;
     linked: number;
     integrated: number;
+    unlinked: number;
+    toIntegrate: number;
   };
   activeTopics: TopicCard[];
+  /** Topic paths for Add paper modal topic-context select (manifest order). */
+  topicPaths: string[];
+  attention: HomeAttentionItem[];
+  recentPapers: LibraryPaperSummary[];
 }
 export interface DocRef { path: string; label: string; }
 export interface NoteRef {
@@ -249,19 +272,103 @@ export function loadLibrary(root: string, selectedPaperId?: string | null): Libr
   };
 }
 
+const STALE_TOPIC_MS = 14 * 24 * 60 * 60 * 1000;
+const HOME_ATTENTION_LIMIT = 5;
+const HOME_RECENT_PAPERS = 4;
+
+function isStaleTopic(lastRun: string | null, now: number): boolean {
+  if (!lastRun) return true;
+  const t = Date.parse(lastRun);
+  if (Number.isNaN(t)) return true;
+  return now - t >= STALE_TOPIC_MS;
+}
+
+function maxIso(...values: Array<string | null | undefined>): string | null {
+  let best: string | null = null;
+  for (const v of values) {
+    if (!v) continue;
+    if (!best || v > best) best = v;
+  }
+  return best;
+}
+
 export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
   const dashboard = loadDashboard(root);
   const lib = new PaperLibrary(root);
   const papers = lib.listPapers();
   const summaries = papers.map((p) => summarizePaper(lib, p));
+  const now = Date.now();
   const counts = {
     unread: summaries.filter((p) => p.readStatus === 'unread').length,
     reading: summaries.filter((p) => p.readStatus === 'reading').length,
     read: summaries.filter((p) => p.readStatus === 'read').length,
     failed: summaries.filter((p) => p.readStatus === 'failed').length,
   };
+  const linked = new Set(lib.listLinks().filter((l) => l.surfaceType === 'topic').map((l) => l.paperId)).size;
+  const integrated = new Set(lib.listIntegrations().map((i) => i.paperId)).size;
+  const unlinked = summaries.filter((p) => p.linkedTopicCount === 0).length;
+  const toIntegrate = summaries.filter((p) => p.linkedTopicCount > 0 && p.integratedTopicCount === 0).length;
+  const activeTopics = dashboard.topics.filter((t) => t.active && t.available).slice(0, 6);
+
+  const attention: HomeAttentionItem[] = [];
+  for (const p of summaries.filter((s) => s.readStatus === 'reading')) {
+    attention.push({
+      kind: 'reading',
+      title: p.displayTitle,
+      detail: 'Deep-read in progress',
+      href: `/library/p/${encodeURIComponent(p.id)}`,
+      cta: 'Resume',
+    });
+  }
+  for (const p of summaries.filter((s) => s.readStatus === 'failed')) {
+    attention.push({
+      kind: 'failed',
+      title: p.displayTitle,
+      detail: 'Last read failed — retry or inspect',
+      href: `/library/p/${encodeURIComponent(p.id)}`,
+      cta: 'Inspect',
+    });
+  }
+  if (toIntegrate > 0) {
+    const sample = summaries.find((p) => p.linkedTopicCount > 0 && p.integratedTopicCount === 0);
+    attention.push({
+      kind: 'to-integrate',
+      title: `${toIntegrate} linked paper${toIntegrate === 1 ? '' : 's'} not integrated`,
+      detail: sample ? `e.g. ${sample.displayTitle}` : 'Linked to a topic but not yet in notes',
+      href: '/library',
+      cta: 'Review',
+    });
+  }
+  if (unlinked > 0) {
+    attention.push({
+      kind: 'to-link',
+      title: `${unlinked} unlinked paper${unlinked === 1 ? '' : 's'}`,
+      detail: 'In the library inbox, not attached to any topic',
+      href: '/library',
+      cta: 'Triage',
+    });
+  }
+  for (const t of activeTopics.filter((topic) => isStaleTopic(topic.lastRun, now))) {
+    attention.push({
+      kind: 'stale-topic',
+      title: t.path,
+      detail: t.lastRun ? 'No run in 2+ weeks' : 'Never run',
+      href: `/t/${t.slug}`,
+      cta: 'Open',
+    });
+  }
+
+  const recentPapers = [...summaries]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, HOME_RECENT_PAPERS);
+
   return {
     root,
+    name: basename(root) || root,
+    lastActivity: maxIso(
+      ...dashboard.topics.map((t) => t.lastRun),
+      ...summaries.map((p) => p.updatedAt),
+    ),
     topicCounts: {
       total: dashboard.topics.length,
       active: dashboard.topics.filter((t) => t.active).length,
@@ -272,10 +379,15 @@ export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
     libraryCounts: {
       papers: papers.length,
       ...counts,
-      linked: new Set(lib.listLinks().filter((l) => l.surfaceType === 'topic').map((l) => l.paperId)).size,
-      integrated: new Set(lib.listIntegrations().map((i) => i.paperId)).size,
+      linked,
+      integrated,
+      unlinked,
+      toIntegrate,
     },
-    activeTopics: dashboard.topics.filter((t) => t.active && t.available).slice(0, 6),
+    activeTopics,
+    topicPaths: dashboard.topics.map((t) => t.path),
+    attention: attention.slice(0, HOME_ATTENTION_LIMIT),
+    recentPapers,
   };
 }
 
