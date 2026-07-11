@@ -450,7 +450,7 @@ describe('renderLibrary', () => {
       notes: [{
         id: 'note_1',
         paperId: 'paper_arxiv_2401_12345',
-        body: 'Selection not generation',
+        body: '**Selection** not `generation`',
         kind: 'clarification',
         pinned: true,
         createdAt: '2026-07-02T00:00:00Z',
@@ -482,7 +482,9 @@ describe('renderLibrary', () => {
     expect(html).toContain('trace');
     expect(html).toContain('id="notes"');
     expect(html).toContain('action="/library/note"');
-    expect(html).toContain('Selection not generation');
+    expect(html).toContain('paper-note-body');
+    expect(html).toContain('<strong>Selection</strong>');
+    expect(html).toContain('<code>generation</code>');
     expect(html).toContain('clarification');
     expect(html).toContain('pinned');
   });

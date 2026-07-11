@@ -188,6 +188,13 @@ function leadingMetaParagraph(body: string): { html: string; rest: string } | nu
   return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
 }
 
+/** User paper notes: full markdown (lists, emphasis, code, links). No frontmatter/masthead. */
+function renderNoteMarkdown(markdown: string): string {
+  const src = markdown.trim();
+  if (!src) return '';
+  return marked.parse(src, { async: false }) as string;
+}
+
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
   if (fm) {
@@ -428,7 +435,7 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
         `${n.pinned ? '<span class="note-pin-badge">pinned</span>' : ''}` +
         `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
       `</div>` +
-      `<p class="paper-note-body">${escapeHtml(n.body)}</p>` +
+      `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` +
       `<div class="paper-note-actions">` +
         `<form action="/library/note" method="post">` +
           `<input type="hidden" name="action" value="${pinAction}">` +
@@ -455,7 +462,7 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
       `<input type="hidden" name="action" value="create">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
       `<label class="note-body-label">New note` +
-        `<textarea name="body" rows="3" required placeholder="Clarification, caveat, open question…"></textarea>` +
+        `<textarea name="body" rows="3" required placeholder="Markdown ok — e.g. **selection** not generation"></textarea>` +
       `</label>` +
       `<div class="paper-note-form-row">` +
         `<label>Kind<select name="kind">${kindOptions}</select></label>` +

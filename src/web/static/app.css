@@ -1010,10 +1010,36 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 }
 .paper-note-body {
   margin:0 0 10px;
-  white-space:pre-wrap;
   color:var(--ink);
   font:14px/1.55 var(--sans);
 }
+.paper-note-body > :first-child { margin-top:0; }
+.paper-note-body > :last-child { margin-bottom:0; }
+.paper-note-body p { margin:0 0 .55em; }
+.paper-note-body ul, .paper-note-body ol { margin:.35em 0 .55em; padding-left:1.25em; }
+.paper-note-body li { margin:.15em 0; }
+.paper-note-body code {
+  font:12px/1.4 var(--mono);
+  background:var(--line-soft);
+  border-radius:4px;
+  padding:.1em .35em;
+}
+.paper-note-body pre {
+  margin:.45em 0 .65em;
+  padding:10px 12px;
+  overflow:auto;
+  border-radius:7px;
+  background:var(--line-soft);
+  border:1px solid var(--line);
+}
+.paper-note-body pre code { padding:0; background:transparent; }
+.paper-note-body blockquote {
+  margin:.45em 0;
+  padding:.15em 0 .15em 12px;
+  border-left:3px solid var(--line);
+  color:var(--ink-soft);
+}
+.paper-note-body a { font-weight:550; }
 .paper-note-actions {
   display:flex;
   gap:8px;
