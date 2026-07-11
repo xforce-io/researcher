@@ -69,6 +69,10 @@ class StubAdapter implements AgentRuntime {
         '## Relations',
         '',
         '- standalone [low]: test.',
+        '',
+        '## Takeaway',
+        '',
+        '- remember the mechanism first.',
       ].join('\n'),
       modifiedFiles: [],
       exitCode: 0,
@@ -117,6 +121,9 @@ describe('runLibraryRead', () => {
 
     expect(result.artifactPath).toBe('.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md');
     expect(adapter.lastPrompt).toContain('None. Read this source as a standalone Library artifact.');
+    expect(adapter.lastPrompt).toContain('Dual-track boundary');
+    expect(adapter.lastPrompt).toContain('Mechanism claims first');
+    expect(adapter.lastPrompt).toContain('## Takeaway');
     expect(adapter.lastPrompt).toContain('CACHED PAPER BODY');
     expect(adapter.lastPrompt).toContain('title: "Library Read Paper"');
     expect(adapter.lastPrompt).toContain('authors: ["A"]');
@@ -132,6 +139,7 @@ describe('runLibraryRead', () => {
     expect(body).toContain('kind: library-read');
     expect(body).toContain('title: "Library Read Paper"');
     expect(body).toContain('## Brief');
+    expect(body).toContain('## Takeaway');
     expect(body).toContain('- x');
     expect(adapter.lastMaxTokens).toBeGreaterThan(4096);
     expect(adapter.lastTimeoutMs).toBeGreaterThan(0);
@@ -218,7 +226,9 @@ describe('runLibraryRead', () => {
     });
 
     expect(adapter.lastPrompt).toContain('event sourcing');
+    expect(adapter.lastPrompt).toContain('Dual-track boundary');
     expect(adapter.lastPrompt).toContain('Key takeaways');
+    expect(adapter.lastPrompt).toContain('## Takeaway');
     expect(adapter.lastPrompt).not.toContain('## Eval');
     const body = readFileSync(join(root, result.artifactPath), 'utf8');
     expect(body).toContain('doc_type: "design-doc"');

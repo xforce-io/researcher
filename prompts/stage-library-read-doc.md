@@ -1,5 +1,14 @@
 # Researcher: Library document read
 
+## Dual-track boundary (read carefully)
+
+This is a **Library** deep-read of a non-paper technical document. Understand it
+**on its own terms**.
+
+- **Do** extract decisions, constraints, and portable takeaways.
+- **Do not** rewrite the document for a workspace thesis or pillar.
+- Optional topic context below, if present, is background only.
+
 ## Output language
 
 Write ALL prose output in **{{language}}** (`zh`=简体中文, `en`=English).
@@ -52,12 +61,9 @@ Use this exact body structure:
 ```markdown
 # <document title>
 
-> One-line Frame lede (problem → approach or decision).
+> One-line Frame lede (problem/old practice → decision or approach → one benefit).
 
 ## Brief
-
-A short reader-facing brief in 2–4 sentences: what this document is for, what it
-decides or specifies, and why it matters for a research thesis.
 
 ## Key takeaways
 
@@ -68,7 +74,27 @@ decides or specifies, and why it matters for a research thesis.
 ## Open questions
 
 ## Relations
+
+## Takeaway
 ```
+
+### Section quality bar
+
+**Frame** — one sentence: situation → what the doc decides/specifies → why that matters in plain terms.
+
+**Brief** — 2–4 sentences: what the document is for, what it decides or specifies, and why a careful reader should care **as documentation**, not as product roadmap advice.
+
+**Key takeaways** — the portable points someone would retell tomorrow; lead with the load-bearing decision.
+
+**Decisions / claims** — explicit choices and asserted facts, with anchors (section headings) when possible.
+
+**Constraints & assumptions** — limits the doc depends on or imposes.
+
+**Open questions** — unresolved issues the doc leaves open (not invented feature requests).
+
+**Relations** — links to other known docs/papers in literature terms only; no workspace topic coaching.
+
+**Takeaway** — 2–4 neutral bullets: what to copy, what to distrust, one-line memory hook.
 
 The artifact metadata is fixed by the runner:
 
