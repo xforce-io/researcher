@@ -533,6 +533,16 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   align-items:center;
   gap:8px;
 }
+.paper-doc-head h1 {
+  font-size:28px;
+  line-height:1.2;
+  letter-spacing:-.02em;
+}
+.paper-canonical {
+  margin:6px 0 0 !important;
+  color:var(--ink-faint) !important;
+  font-size:12px !important;
+}
 .paper-jump-notes {
   min-height:32px;
   padding:0 11px;
@@ -540,41 +550,27 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   text-decoration:none;
 }
 .paper-jump-notes:hover { text-decoration:none; }
-.read-artifact-head-right {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  justify-content:flex-end;
-  gap:10px;
-  min-width:0;
+.paper-detail-main > .reader.paper-doc {
+  min-height:320px;
 }
-.read-artifact-head .read-path {
-  max-width:min(420px, 46vw);
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+.paper-doc .read-artifact-head {
+  justify-content:flex-end;
+  margin:0 0 8px;
+  padding:0;
+  border:0;
+  min-height:0;
+}
+.paper-doc .read-path {
   color:var(--ink-faint);
   font-size:11px;
 }
-.read-compact-meta {
-  display:flex;
-  flex-wrap:wrap;
-  align-items:baseline;
-  gap:6px 8px;
-  margin:0 0 16px;
-  padding-bottom:12px;
+.paper-identity-fm {
+  margin:0 0 18px;
+  padding-bottom:14px;
   border-bottom:1px solid var(--line-soft);
-  color:var(--ink-soft);
-  font:13px/1.45 var(--sans);
 }
-.read-meta-sep { color:var(--ink-faint); user-select:none; }
-.read-meta-authors { color:var(--ink-soft); }
-.read-meta-link a { font-weight:550; }
-.read-meta-extra b {
-  font:650 11px var(--mono);
-  color:var(--ink-faint);
-  margin-right:4px;
-}
+.paper-identity-fm .tag-chip { margin:1px 3px 1px 0; }
+.read-empty { padding:4px 0 8px; }
 /* Jump target: keep Notes header clear of sticky browser chrome */
 #notes { scroll-margin-top: 18px; }
 #read { scroll-margin-top: 18px; }

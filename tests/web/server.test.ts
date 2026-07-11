@@ -124,8 +124,8 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(selected.status).toBe(200);
   expect(selected.url).toBe(base + '/library/p/paper_arxiv_2401_12345');
   const selectedHtml = await selected.text();
-  expect(selectedHtml).toContain('Paper detail');
-  expect(selectedHtml).toContain('paper-card detail');
+  expect(selectedHtml).toContain('paper-detail-main');
+  expect(selectedHtml).toContain('paper-identity-fm');
   expect(selectedHtml).toContain('Deep read');
   expect(selectedHtml).toContain('trace · linked');
 });
@@ -245,7 +245,8 @@ it('starts a library deep read and records read state', async () => {
 
   const completedDetail = await fetch(base + '/library/p/paper_arxiv_2401_12345');
   const completedHtml = await completedDetail.text();
-  expect(completedHtml).toContain('Read artifact');
+  expect(completedHtml).toContain('paper-doc');
+  expect(completedHtml).toContain('paper-identity-fm');
   expect(completedHtml).toContain('Mock read');
 });
 
@@ -301,7 +302,7 @@ it('serves canonical paper detail URLs', async () => {
   const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
-  expect(html).toContain('Paper detail');
+  expect(html).toContain('paper-doc-head');
   expect(html).toContain('Re-run read');
   expect(html).toContain('Link topic');
 });

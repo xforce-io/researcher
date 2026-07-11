@@ -461,9 +461,11 @@ describe('renderLibrary', () => {
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
     };
     const html = renderLibraryPaper(detail);
-    expect(html).toContain('Paper detail');
+    // Single document surface: title in page head, not a second list card.
+    expect(html).toContain('<h1>Reusable Paper Cards</h1>');
+    expect(html).not.toContain('Paper detail');
+    expect(html).not.toContain('paper-card detail');
     expect(html).toContain('/library');
-    expect(html).toContain('paper-card detail');
     expect(html).toContain('paper-detail-main');
     expect(html).toContain('paper-inspector');
     expect(html).toContain('action="/library/read"');
@@ -474,8 +476,6 @@ describe('renderLibrary', () => {
     expect(html).toContain('Link topic');
     expect(html).toContain('name="relation"');
     expect(html).not.toContain('Context<select');
-    expect(html).toContain('Read artifact');
-    expect(html).toContain('<h1>Library Read</h1>');
     expect(html).toContain('<h2>Findings</h2>');
     expect(html).toContain('Relations');
     expect(html).toContain('Mini map');
@@ -483,6 +483,8 @@ describe('renderLibrary', () => {
     expect(html).toContain('id="notes"');
     expect(html).toContain('href="#notes"');
     expect(html).toContain('Notes · 1');
+    // Notes jump only in the page head (not duplicated in the reader chrome).
+    expect(html.match(/href="#notes"/g)?.length).toBe(1);
     expect(html).toContain('action="/library/note"');
     expect(html).toContain('paper-note-body');
     expect(html).toContain('<strong>Selection</strong>');
@@ -491,7 +493,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('pinned');
   });
 
-  it('hides duplicate title/frontmatter on library read artifacts', () => {
+  it('uses one document surface with aligned identity meta', () => {
     const detail: LibraryPaperDetailView = {
       root: '/ws',
       paper: library.papers[0],
@@ -527,19 +529,24 @@ describe('renderLibrary', () => {
       integrations: [],
     };
     const html = renderLibraryPaper(detail);
-    // Identity lives on the paper card — artifact should not repeat title table.
+    // One H1 in the page head only.
+    expect(html.match(/<h1>Reusable Paper Cards<\/h1>/g)?.length).toBe(1);
     expect(html).not.toContain('class="note-title"');
-    expect(html).not.toContain('<h1>Reusable Paper Cards</h1>');
+    expect(html).not.toContain('paper-card');
     expect(html).not.toContain('<dt>paper_id</dt>');
     expect(html).not.toContain('<dt>read_id</dt>');
     expect(html).not.toContain('<dt>kind</dt>');
-    // Compact useful meta only.
-    expect(html).toContain('read-compact-meta');
+    // Aligned identity table (not loose prose meta).
+    expect(html).toContain('paper-identity-fm');
+    expect(html).toContain('<dt>authors</dt>');
     expect(html).toContain('A Author');
+    expect(html).toContain('<dt>arxiv</dt>');
+    expect(html).toContain('<dt>source</dt>');
+    expect(html).toContain('<dt>pdf</dt>');
+    expect(html).toContain('<dt>status</dt>');
     expect(html).toContain('https://arxiv.org/abs/2401.12345');
-    expect(html).toContain('>Frame lede.</');
+    expect(html).toContain('Frame lede.');
     expect(html).toContain('<h2>Claims</h2>');
-    expect(html).toContain('Notes');
     expect(html).toContain('href="#notes"');
   });
 
