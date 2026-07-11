@@ -48,7 +48,7 @@ milkie agent 运行时。所有持久化状态 ——
 - `add <arxiv-id | arxiv-url | http(s)-url>` —— 手动把一篇论文或网络来源端到端深读完
 - `run` —— 自动 tick：discover → triage →（挑一篇）深读 → synthesize → package
 - `methodology install / show / edit` —— 管理可移植的方法论包
-- `serve [path]` —— 在工作区超级仓上启动本地只读 web 控制台
+- `serve [path]` —— 在工作区超级仓上启动本地 web 控制台（Home / Library / Topics）
 
 尚未接入：focused-instruction 模式（手动覆盖 triage 决策）。
 
@@ -192,17 +192,31 @@ PR。Dormant（`active: false`）支柱完全不碰。某个支柱失败不会�
 
 ### `researcher serve [path]`
 
-在一个工作区超级仓（含 `researcher.workspace.yml` 的目录）上启动本地**只读** web
-控制台：列出每个主题，渲染其 thesis / landscape / report / 笔记，并允许你按主题
-触发 `researcher run` 并看实时日志。只绑定 `127.0.0.1`、无鉴权；v1 为只读加触发运行。
-
-`path` 必须指向**工作区超级仓**（含 `researcher.workspace.yml` 的目录），不是
-`researcher` 工具自身的源码仓 —— 后者没有清单文件，会直接报错。
+在工作区超级仓（含 `researcher.workspace.yml` 的目录）上启动本地 web 控制台。
+只绑定 `127.0.0.1`、无鉴权。
 
 ```bash
 researcher serve                 # 在当前超级仓上以 :4500 启动
 researcher serve ../research -p 8080
 ```
+
+主要界面（以 workspace 为中心）：
+
+| 路由 | 作用 |
+|---|---|
+| `/` | Workspace Home：健康度、Needs attention、topic 预览、Library 快照 |
+| `/topics` | Topic 卡片列表；进入 `/t/:slug` 看 thesis / landscape / report / 笔记，并可触发 per-topic `run` |
+| `/library` | 论文入库列表（筛选、Add paper） |
+| `/library/p/:id` | 论文详情：机器 deep-read 产物 + **纸本本地 Notes**（Markdown、钉选/删除）；Deep read / Link |
+
+**双轨（Library vs Topic）：** Library 精读与 paper notes 是中立、可复用的证据与注意力；
+Topic 侧仍是 thesis 驱动的综合。把论文 link 进 topic 是显式接合，notes 不会自动改写支柱。
+
+Notes 存在 `.researcher-workspace/library/notes.jsonl`，force 重跑机器精读不会清掉。
+详见 `docs/design/89-paper-local-notes.md`。
+
+`path` 必须指向**工作区超级仓**（含 `researcher.workspace.yml` 的目录），不是
+`researcher` 工具自身的源码仓 —— 后者没有清单文件，会直接报错。
 
 ## 命令
 
@@ -215,7 +229,7 @@ researcher serve ../research -p 8080
 | `researcher methodology install` | 把方法论文件装到 `~/.researcher/` |
 | `researcher methodology show` | 打印当前已装的方法论 |
 | `researcher methodology edit <name>` | 用 `$EDITOR` 打开某个方法论文件 |
-| `researcher serve [path]` | 在工作区超级仓上启动本地只读 web 控制台 |
+| `researcher serve [path]` | 本地 web 控制台：Home、Library（精读 + paper notes）、Topics + run |
 | `researcher version` | 打印版本 |
 
 ## 环境变量
