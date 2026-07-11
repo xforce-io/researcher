@@ -1,5 +1,14 @@
 # Researcher: Library paper read
 
+## Dual-track boundary (read carefully)
+
+This is a **Library** deep-read: understand the source **on its own terms**.
+
+- **Do** produce a portable, neutral evidence card (claim-first, critical, readable).
+- **Do not** rewrite the paper for a workspace thesis, pillar, or product roadmap.
+- **Do not** invent "what this means for our system" advice. Topic work happens later at link/integrate time.
+- Optional topic context below, if present, is background only — never let it override neutrality or invent topic-fit claims not grounded in the source.
+
 ## Output language
 
 Write ALL prose output in **{{language}}** (`zh`=简体中文, `en`=English).
@@ -42,7 +51,7 @@ Return only the Markdown artifact body. Do not write files, do not call tools,
 do not include frontmatter, and do not include a `FILES_MODIFIED` block. The
 runner owns file creation at `{{artifact_path}}` and will add frontmatter.
 
-Use this exact body structure:
+Use this exact body structure and section order:
 
 ```markdown
 # <paper title>
@@ -50,11 +59,6 @@ Use this exact body structure:
 > One-line Frame lede.
 
 ## Brief
-
-A short reader-facing brief in 2–4 sentences: what problem this paper tackles,
-what it builds or measures, what the central evidence says, and why the result
-matters. This is the Library page's orientation layer; keep details in the
-sections below.
 
 ## Claims
 
@@ -67,7 +71,70 @@ sections below.
 ## Weaknesses
 
 ## Relations
+
+## Takeaway
 ```
+
+### Section quality bar
+
+**Frame** (blockquote under H1) — one sentence only, hard cap. Pattern:
+
+`旧做法/问题 → 本文做法 → 一个立刻能懂的好处`
+
+- Include: concrete mechanism words a non-author can picture (e.g. "读打分 token 的概率分布算期望，而不是吐一个整数分").
+- Exclude: pure academic positioning with no mechanism ("提出新的 scaling 轴" alone).
+
+**Brief** — 2–4 sentences for a human skimming the Library page:
+
+1. problem / prior practice friction,
+2. what the paper builds or measures,
+3. the central evidence in plain language (one number is enough),
+4. why the result is interesting **as science**, not as product advice.
+
+Do not dump the abstract. Do not preview every section.
+
+**Claims** — load-bearing assertions as standalone facts, each with a section/table anchor when possible.
+
+Order matters:
+
+1. **Mechanism claims first** (what changes in the method and why that yields a better signal),
+2. **Scaling / ablations next**,
+3. **Benchmark scoreboard last**.
+
+Do not open Claims with a leaderboard line. Prefer the insight that would still matter if the SOTA numbers moved 2 points.
+
+**Assumptions** — conditions the paper treats as given; infer from setup when unstated. Skip field-wide boilerplate.
+
+**Method** — decision-relevant mechanism: inputs → core computation → outputs.
+
+When the paper improves a familiar baseline (e.g. discrete LM judge → continuous score), open with a **short plain contrast** (2–4 bullets or a tiny table: before vs after) **before** formulas. Then give the formalism. Explain non-obvious design choices (e.g. letter score tokens vs digits) in one clause each.
+
+**Eval** — what was measured, baselines, data, metrics. Prefer complete entries over vibes.
+
+**Weaknesses** — gaps **you** found; not author "Future Work" restated. Prefer:
+
+- missing baselines / unfair comparisons,
+- saturation or brittle scaling claims,
+- deployment constraints the authors soft-pedal,
+- eval confounds (model size, candidate pool, seed count).
+
+**Relations** — literature connections only (`builds-on` / `competes-with` / `extends` / `contradicts` / `orthogonal` / `supersedes`) with `[high|med|low]` and a one-sentence reason. Do **not** relate to workspace topics here.
+
+**Takeaway** — reader-only, 2–4 bullets, still neutral:
+
+- what is worth copying methodologically,
+- what to distrust or re-check,
+- one crisp "if you remember one thing" line.
+
+No thesis coaching. No "we should integrate this into topic X".
+
+### Anti-patterns for this stage
+
+- Frame that only names a research program without a mechanism picture.
+- Claims that are a flat SOTA list with the key insight buried mid-list.
+- Method that jumps to equations with zero before/after intuition.
+- Weaknesses that only echo the paper's Future Work.
+- Any section that recommends workspace/topic actions.
 
 The artifact metadata is fixed by the runner:
 
