@@ -481,12 +481,66 @@ describe('renderLibrary', () => {
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
     expect(html).toContain('id="notes"');
+    expect(html).toContain('href="#notes"');
+    expect(html).toContain('Notes · 1');
     expect(html).toContain('action="/library/note"');
     expect(html).toContain('paper-note-body');
     expect(html).toContain('<strong>Selection</strong>');
     expect(html).toContain('<code>generation</code>');
     expect(html).toContain('clarification');
     expect(html).toContain('pinned');
+  });
+
+  it('hides duplicate title/frontmatter on library read artifacts', () => {
+    const detail: LibraryPaperDetailView = {
+      root: '/ws',
+      paper: library.papers[0],
+      topics: library.topics,
+      reads: [],
+      notes: [],
+      latestReadArtifact: {
+        path: 'read.md',
+        markdown: [
+          '---',
+          'title: "Reusable Paper Cards"',
+          'authors: ["A Author"]',
+          'paper_id: "paper_arxiv_2401_12345"',
+          'source_kind: "arxiv"',
+          'source_id: "arxiv:2401.12345"',
+          'source_url: "https://arxiv.org/abs/2401.12345"',
+          'pdf_url: "https://arxiv.org/pdf/2401.12345"',
+          'read_id: "read_1"',
+          'kind: library-read',
+          'doc_type: "paper"',
+          '---',
+          '',
+          '# Reusable Paper Cards',
+          '',
+          '> Frame lede.',
+          '',
+          '## Claims',
+          '',
+          '- claim one',
+        ].join('\n'),
+      },
+      links: [],
+      integrations: [],
+    };
+    const html = renderLibraryPaper(detail);
+    // Identity lives on the paper card — artifact should not repeat title table.
+    expect(html).not.toContain('class="note-title"');
+    expect(html).not.toContain('<h1>Reusable Paper Cards</h1>');
+    expect(html).not.toContain('<dt>paper_id</dt>');
+    expect(html).not.toContain('<dt>read_id</dt>');
+    expect(html).not.toContain('<dt>kind</dt>');
+    // Compact useful meta only.
+    expect(html).toContain('read-compact-meta');
+    expect(html).toContain('A Author');
+    expect(html).toContain('https://arxiv.org/abs/2401.12345');
+    expect(html).toContain('>Frame lede.</');
+    expect(html).toContain('<h2>Claims</h2>');
+    expect(html).toContain('Notes');
+    expect(html).toContain('href="#notes"');
   });
 
   it('renders a recoverable interrupted state for restored reading records without active tasks', () => {

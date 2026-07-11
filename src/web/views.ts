@@ -213,6 +213,42 @@ export function renderDoc(markdown: string): string {
   return marked.parse(body, { async: false }) as string;
 }
 
+// Library paper page already shows identity (card + badge). Hide the duplicate
+// title/frontmatter table from the read artifact; keep a compact author/link line.
+const LIBRARY_READ_HIDDEN_FM = new Set([
+  'title', 'paper', 'paper_id', 'read_id', 'kind', 'doc_type', 'tags',
+  'source_kind', 'source_id',
+]);
+
+function renderLibraryReadDoc(markdown: string, paperTitle: string): string {
+  const { fm, body } = splitFrontmatter(markdown);
+  const title = unquote(fm?.paper ?? fm?.title ?? '') || paperTitle;
+  let displayBody = stripDuplicateLeadingH1(body, title);
+  // Also drop a leading H1 that only restates the paper card title.
+  displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
+
+  const compact: string[] = [];
+  if (fm) {
+    const authors = fm.authors ? fmValue('authors', fm.authors) : '';
+    if (authors) compact.push(`<span class="read-meta-authors">${authors}</span>`);
+    for (const key of ['source_url', 'pdf_url'] as const) {
+      if (!fm[key]) continue;
+      const link = fmValue(key, fm[key]);
+      if (link) compact.push(`<span class="read-meta-link">${escapeHtml(key.replace(/_url$/, ''))}: ${link}</span>`);
+    }
+    // Any non-identity fm keys still surface (rare custom fields).
+    for (const [k, raw] of Object.entries(fm)) {
+      if (LIBRARY_READ_HIDDEN_FM.has(k) || k === 'authors' || k.endsWith('_url')) continue;
+      const v = fmValue(k, raw);
+      if (v) compact.push(`<span class="read-meta-extra"><b>${escapeHtml(k)}</b> ${v}</span>`);
+    }
+  }
+  const meta = compact.length
+    ? `<div class="read-compact-meta">${compact.join('<span class="read-meta-sep">·</span>')}</div>`
+    : '';
+  return meta + (marked.parse(displayBody, { async: false }) as string);
+}
+
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
@@ -475,14 +511,29 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
 }
 
 export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
+  const noteCount = v.notes.length;
+  const notesJump =
+    `<a class="secondary paper-jump-notes" href="#notes">Notes${noteCount > 0 ? ` · ${noteCount}` : ''}</a>`;
   const readSurface = v.latestReadArtifact
-    ? `<section class="reader read-surface"><div class="read-artifact-head"><h2>Read artifact</h2><span class="mono">${escapeHtml(v.latestReadArtifact.path)}</span></div>${renderDoc(v.latestReadArtifact.markdown)}</section>`
-    : `<section class="detail-panel read-surface"><h2>Reads</h2><ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul></section>`;
+    ? `<section class="reader read-surface" id="read">` +
+        `<div class="read-artifact-head">` +
+          `<h2>Read artifact</h2>` +
+          `<div class="read-artifact-head-right">` +
+            `<span class="mono read-path">${escapeHtml(v.latestReadArtifact.path)}</span>` +
+            notesJump +
+          `</div>` +
+        `</div>` +
+        renderLibraryReadDoc(v.latestReadArtifact.markdown, v.paper.displayTitle) +
+      `</section>`
+    : `<section class="detail-panel read-surface" id="read"><h2>Reads</h2><ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul></section>`;
   const body = topbar(v.paper.id, 'library') +
     `<main class="paper-detail-shell">` +
       `<section class="paper-detail-main">` +
         `<a class="back-link" href="/library">Library</a>` +
-        `<div class="library-head"><div><h1>Paper detail</h1><p>${escapeHtml(v.paper.displayTitle)}</p></div>${renderStatusBadge(v.paper.readStatus)}</div>` +
+        `<div class="library-head">` +
+          `<div><h1>Paper detail</h1><p>${escapeHtml(v.paper.displayTitle)}</p></div>` +
+          `<div class="paper-head-actions">${notesJump}${renderStatusBadge(v.paper.readStatus)}</div>` +
+        `</div>` +
         `${renderPaperCard(v.paper, 'detail')}` +
         readSurface +
         renderPaperNotes(v) +

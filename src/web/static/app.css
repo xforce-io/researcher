@@ -527,6 +527,57 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 }
 .library-head h1 { margin:0; font-size:26px; line-height:1.2; letter-spacing:-.02em; }
 .library-head p { margin:4px 0 0; color:var(--ink-soft); font-size:14px; }
+.paper-head-actions {
+  display:flex;
+  flex:none;
+  align-items:center;
+  gap:8px;
+}
+.paper-jump-notes {
+  min-height:32px;
+  padding:0 11px;
+  font:650 12px var(--sans);
+  text-decoration:none;
+}
+.paper-jump-notes:hover { text-decoration:none; }
+.read-artifact-head-right {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  min-width:0;
+}
+.read-artifact-head .read-path {
+  max-width:min(420px, 46vw);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--ink-faint);
+  font-size:11px;
+}
+.read-compact-meta {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:6px 8px;
+  margin:0 0 16px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--line-soft);
+  color:var(--ink-soft);
+  font:13px/1.45 var(--sans);
+}
+.read-meta-sep { color:var(--ink-faint); user-select:none; }
+.read-meta-authors { color:var(--ink-soft); }
+.read-meta-link a { font-weight:550; }
+.read-meta-extra b {
+  font:650 11px var(--mono);
+  color:var(--ink-faint);
+  margin-right:4px;
+}
+/* Jump target: keep Notes header clear of sticky browser chrome */
+#notes { scroll-margin-top: 18px; }
+#read { scroll-margin-top: 18px; }
 .library-filters {
   display:inline-flex; gap:2px;
   margin-bottom:11px;
