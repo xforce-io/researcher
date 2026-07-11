@@ -247,24 +247,39 @@ A pillar failing does not abort the rest — errors are collected in the summary
 | `researcher methodology install` | Copy methodology files to `~/.researcher/` |
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
-| `researcher serve [path]` | Start a local web console over a workspace super-repo |
+| `researcher serve [path]` | Local web console: workspace home, Library (deep-read + paper notes), topics + run |
 | `researcher version` | Print version |
 
 ### `researcher serve [path]`
 
-Start a local read-only web console over a workspace super-repo (a directory with
-`researcher.workspace.yml`). Lists each topic, renders its thesis / landscape /
-report / notes, and lets you trigger `researcher run` per topic with live logs.
+Start a local web console over a workspace super-repo (a directory with
+`researcher.workspace.yml`). Binds `127.0.0.1` only; no auth.
 
 ```bash
 researcher serve                 # serves the current super-repo on :4500
 researcher serve ../research -p 8080
 ```
 
-Binds `127.0.0.1` only; no auth. v1 is read-only plus run-triggering. `path` must
-point at a [workspace super-repo](#workspace-mode-multi-pillar) (a directory holding
-`researcher.workspace.yml`) — not the `researcher` tool's own source checkout, which
-has no manifest and errors out.
+Surfaces (workspace-first):
+
+| Route | Role |
+|---|---|
+| `/` | Workspace Home — health, needs-attention, topic preview, library snapshot |
+| `/topics` | Topic card grid; open `/t/:slug` for thesis / landscape / report / notes and per-topic `run` with live logs |
+| `/library` | Paper intake list (filters, add paper) |
+| `/library/p/:id` | Paper detail — machine deep-read artifact + **paper-local human notes** (Markdown, pin/delete); deep-read / link actions |
+
+**Dual-track (Library vs Topic):** Library deep-reads and paper notes are neutral,
+portable evidence and attention. Topic work remains thesis-driven synthesis.
+Linking a paper into a topic is an explicit join step — notes on a paper do not
+automatically rewrite a pillar.
+
+Paper notes live in `.researcher-workspace/library/notes.jsonl` and survive force
+re-read of the machine artifact. See `docs/design/89-paper-local-notes.md`.
+
+`path` must point at a [workspace super-repo](#workspace-mode-multi-pillar) (a
+directory holding `researcher.workspace.yml`) — not the `researcher` tool's own
+source checkout, which has no manifest and errors out.
 
 ## Environment
 

@@ -170,6 +170,49 @@ async function handle(
     }
     return redirect(res, '/library');
   }
+  // POST /library/note — paper-local human notes (create / pin / unpin / delete)
+  if (req.method === 'POST' && path === '/library/note') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const action = form.get('action')?.trim() || 'create';
+    const paperId = form.get('paperId')?.trim() ?? '';
+    const noteId = form.get('noteId')?.trim() ?? '';
+    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
+    const lib = new PaperLibrary(root);
+    if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
+    const back = `/library/p/${encodeURIComponent(paperId)}#notes`;
+    try {
+      if (action === 'create') {
+        const text = form.get('body')?.trim() ?? '';
+        if (!text) return send(res, 400, 'text/plain', 'note body is required');
+        const kindRaw = form.get('kind')?.trim() || 'note';
+        const kind = parsePaperNoteKind(kindRaw);
+        const pinned = form.get('pinned') === '1' || form.get('pinned') === 'on';
+        lib.upsertNote({
+          id: `note_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+          paperId,
+          body: text,
+          kind,
+          pinned,
+        });
+      } else if (action === 'pin' || action === 'unpin') {
+        if (!noteId) return send(res, 400, 'text/plain', 'missing note id');
+        const existing = lib.getNote(noteId);
+        if (!existing || existing.paperId !== paperId) return send(res, 404, 'text/plain', 'unknown note');
+        lib.upsertNote({ ...existing, pinned: action === 'pin' });
+      } else if (action === 'delete') {
+        if (!noteId) return send(res, 400, 'text/plain', 'missing note id');
+        const existing = lib.getNote(noteId);
+        if (!existing || existing.paperId !== paperId) return send(res, 404, 'text/plain', 'unknown note');
+        lib.deleteNote(noteId);
+      } else {
+        return send(res, 400, 'text/plain', `unknown note action: ${action}`);
+      }
+    } catch (err) {
+      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
+    return redirect(res, back);
+  }
   // POST /library/link
   if (req.method === 'POST' && path === '/library/link') {
     const body = await readBody(req);
@@ -308,4 +351,11 @@ function libraryReadId(paperId: string): string {
 
 function hasCompletedRead(lib: PaperLibrary, root: string, paperId: string): boolean {
   return lib.listReads(paperId).some((r) => r.status === 'read' && r.artifactPath && existsSync(join(root, r.artifactPath)));
+}
+
+const PAPER_NOTE_KINDS = new Set(['note', 'clarification', 'caveat', 'idea', 'question']);
+
+function parsePaperNoteKind(raw: string): 'note' | 'clarification' | 'caveat' | 'idea' | 'question' {
+  if (PAPER_NOTE_KINDS.has(raw)) return raw as 'note' | 'clarification' | 'caveat' | 'idea' | 'question';
+  throw new Error(`unknown note kind: ${raw}`);
 }

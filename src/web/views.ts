@@ -188,6 +188,13 @@ function leadingMetaParagraph(body: string): { html: string; rest: string } | nu
   return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
 }
 
+/** User paper notes: full markdown (lists, emphasis, code, links). No frontmatter/masthead. */
+function renderNoteMarkdown(markdown: string): string {
+  const src = markdown.trim();
+  if (!src) return '';
+  return marked.parse(src, { async: false }) as string;
+}
+
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
   if (fm) {
@@ -204,6 +211,59 @@ export function renderDoc(markdown: string): string {
   const mast = mastheadBlockquote(body);
   if (mast) return mast.html + (marked.parse(mast.rest, { async: false }) as string);
   return marked.parse(body, { async: false }) as string;
+}
+
+/** Body of a Library read artifact: strip duplicate title; no system frontmatter table. */
+function renderLibraryReadBody(markdown: string, paperTitle: string): string {
+  const { fm, body } = splitFrontmatter(markdown);
+  const title = unquote(fm?.paper ?? fm?.title ?? '') || paperTitle;
+  let displayBody = stripDuplicateLeadingH1(body, title);
+  displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
+  return marked.parse(displayBody, { async: false }) as string;
+}
+
+/**
+ * Single identity block for the paper detail page (aligned .fm table).
+ * Human-useful fields only — not paper_id / read_id / kind / doc_type.
+ */
+function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
+  const fm = v.latestReadArtifact
+    ? splitFrontmatter(v.latestReadArtifact.markdown).fm
+    : null;
+  const rows: string[] = [];
+  const add = (key: string, value: string) => {
+    if (!value) return;
+    rows.push(`<div><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`);
+  };
+
+  if (fm?.authors) add('authors', fmValue('authors', fm.authors));
+
+  if (v.paper.canonicalId.startsWith('arxiv:')) {
+    const id = v.paper.canonicalId.slice('arxiv:'.length);
+    add(
+      'arxiv',
+      `<a href="https://arxiv.org/abs/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a>`,
+    );
+  } else if (v.paper.canonicalId) {
+    add('id', escapeHtml(v.paper.canonicalId));
+  }
+
+  if (fm?.source_url) add('source', fmValue('source_url', fm.source_url));
+  if (fm?.pdf_url) add('pdf', fmValue('pdf_url', fm.pdf_url));
+
+  add(
+    'tags',
+    v.paper.tags.length ? renderTagChips(v.paper.tags) : '<span class="muted">none</span>',
+  );
+  add(
+    'status',
+    escapeHtml(
+      `${v.paper.readStatus} · ${v.paper.linkedTopicCount} link${v.paper.linkedTopicCount === 1 ? '' : 's'} · ` +
+      `${v.paper.integratedTopicCount} integrated · ${fmtShortDate(v.paper.updatedAt)}`,
+    ),
+  );
+
+  return rows.length ? `<dl class="fm paper-identity-fm">${rows.join('')}</dl>` : '';
 }
 
 function page(title: string, body: string): string {
@@ -413,17 +473,112 @@ function basename(path: string): string {
   return path.split('/').at(-1) ?? path;
 }
 
+const PAPER_NOTE_KINDS = ['note', 'clarification', 'caveat', 'idea', 'question'] as const;
+
+function renderPaperNotes(v: LibraryPaperDetailView): string {
+  const kindOptions = PAPER_NOTE_KINDS.map((k) =>
+    `<option value="${k}"${k === 'note' ? ' selected' : ''}>${k}</option>`,
+  ).join('');
+  const items = v.notes.map((n) => {
+    const pinLabel = n.pinned ? 'Unpin' : 'Pin';
+    const pinAction = n.pinned ? 'unpin' : 'pin';
+    return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
+      `<div class="paper-note-head">` +
+        `<span class="note-kind">${escapeHtml(n.kind)}</span>` +
+        `${n.pinned ? '<span class="note-pin-badge">pinned</span>' : ''}` +
+        `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
+      `</div>` +
+      `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` +
+      `<div class="paper-note-actions">` +
+        `<form action="/library/note" method="post">` +
+          `<input type="hidden" name="action" value="${pinAction}">` +
+          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+          `<button class="secondary note-action-btn" type="submit">${pinLabel}</button>` +
+        `</form>` +
+        `<form action="/library/note" method="post" onsubmit="return confirm('Delete this note?');">` +
+          `<input type="hidden" name="action" value="delete">` +
+          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+          `<button class="danger note-action-btn" type="submit">Delete</button>` +
+        `</form>` +
+      `</div>` +
+    `</li>`;
+  }).join('');
+
+  return `<section class="detail-panel paper-notes-panel" id="notes">` +
+    `<div class="paper-notes-head">` +
+      `<h2>Notes</h2>` +
+      `<span class="muted">Your attention on this paper — survives re-read</span>` +
+    `</div>` +
+    `<form class="paper-note-form" action="/library/note" method="post">` +
+      `<input type="hidden" name="action" value="create">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<label class="note-body-label">New note` +
+        `<textarea name="body" rows="3" required placeholder="Markdown ok — e.g. **selection** not generation"></textarea>` +
+      `</label>` +
+      `<div class="paper-note-form-row">` +
+        `<label>Kind<select name="kind">${kindOptions}</select></label>` +
+        `<label class="note-pin-check"><input type="checkbox" name="pinned" value="1"> Pin</label>` +
+        `<button class="primary" type="submit">Add note</button>` +
+      `</div>` +
+    `</form>` +
+    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">No notes yet. Capture what you want to remember.</li>'}</ul>` +
+  `</section>`;
+}
+
 export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
-  const readSurface = v.latestReadArtifact
-    ? `<section class="reader read-surface"><div class="read-artifact-head"><h2>Read artifact</h2><span class="mono">${escapeHtml(v.latestReadArtifact.path)}</span></div>${renderDoc(v.latestReadArtifact.markdown)}</section>`
-    : `<section class="detail-panel read-surface"><h2>Reads</h2><ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul></section>`;
+  const noteCount = v.notes.length;
+  // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
+  const notesJump =
+    `<a class="primary paper-jump-notes" href="#notes">` +
+      `Notes${noteCount > 0 ? ` · ${noteCount}` : ''}` +
+    `</a>`;
+  const identity = renderPaperIdentityMeta(v);
+  const readBody = v.latestReadArtifact
+    ? renderLibraryReadBody(v.latestReadArtifact.markdown, v.paper.displayTitle)
+    : `<div class="read-empty">` +
+        `<p class="muted">No deep-read artifact yet.</p>` +
+        `<ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul>` +
+      `</div>`;
+  const pathHint = v.latestReadArtifact
+    ? `<span class="mono read-path" title="${escapeHtml(v.latestReadArtifact.path)}">${escapeHtml(basename(v.latestReadArtifact.path))}</span>`
+    : '';
+  const readSurface =
+    `<section class="reader read-surface paper-doc" id="read">` +
+      `<div class="read-artifact-head">` +
+        `<h2 class="sr-only">Deep read</h2>` +
+        pathHint +
+      `</div>` +
+      identity +
+      readBody +
+    `</section>`;
+  // Breadcrumb (wayfinding), not a second primary nav — Library is the parent list.
+  const crumb =
+    `<nav class="paper-crumb" aria-label="Breadcrumb">` +
+      `<a class="secondary paper-crumb-back" href="/library">` +
+        `<span class="paper-crumb-arrow" aria-hidden="true">←</span> Library` +
+      `</a>` +
+      `<span class="paper-crumb-sep" aria-hidden="true">/</span>` +
+      `<span class="paper-crumb-here">Paper</span>` +
+    `</nav>`;
   const body = topbar(v.paper.id, 'library') +
     `<main class="paper-detail-shell">` +
       `<section class="paper-detail-main">` +
-        `<a class="back-link" href="/library">Library</a>` +
-        `<div class="library-head"><div><h1>Paper detail</h1><p>${escapeHtml(v.paper.displayTitle)}</p></div>${renderStatusBadge(v.paper.readStatus)}</div>` +
-        `${renderPaperCard(v.paper, 'detail')}` +
+        crumb +
+        `<div class="library-head paper-doc-head">` +
+          `<div>` +
+            `<h1>${escapeHtml(v.paper.displayTitle)}</h1>` +
+            `<p class="mono paper-canonical">${escapeHtml(v.paper.canonicalId)}` +
+              `${v.paper.sourceLabel ? ` · ${escapeHtml(v.paper.sourceLabel)}` : ''}</p>` +
+          `</div>` +
+          `<div class="paper-head-actions">` +
+            notesJump +
+            renderStatusBadge(v.paper.readStatus) +
+          `</div>` +
+        `</div>` +
         readSurface +
+        renderPaperNotes(v) +
       `</section>` +
       `<aside class="paper-inspector">${renderPaperInspector(v, activeRead)}</aside>` +
     `</main>${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;

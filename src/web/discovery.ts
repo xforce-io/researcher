@@ -8,7 +8,7 @@ import { resolveProjectResearcherDir } from '../paths.js';
 import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 import { PaperLibrary } from '../library/store.js';
-import type { Paper, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
+import type { Paper, PaperNote, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
 
 export interface TopicCard {
   slug: string;
@@ -121,6 +121,7 @@ export interface LibraryPaperDetailView {
   paper: LibraryPaperSummary;
   topics: LibraryTopicRef[];
   reads: PaperRead[];
+  notes: PaperNote[];
   latestReadArtifact: { path: string; markdown: string } | null;
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
@@ -401,6 +402,7 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
     paper: summarizePaper(lib, paper),
     topics: libraryTopics(root),
     reads,
+    notes: lib.listNotes(paperId),
     latestReadArtifact: latestReadArtifact(root, reads),
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),

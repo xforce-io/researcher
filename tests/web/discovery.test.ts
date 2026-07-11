@@ -213,11 +213,25 @@ describe('loadLibrary', () => {
     expect(v.paper.displayTitle).toBe('Reusable Paper Cards');
     expect(v.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'feeds/ai-safety']);
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
+    expect(v.notes).toEqual([]);
     expect(v.latestReadArtifact).toEqual({
       path: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md',
       markdown: '# Library Read\n\n## Findings\n\n- Useful paper.',
     });
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
+  });
+
+  it('loads paper-local notes on the detail view', () => {
+    const lib = new PaperLibrary(root, { now: () => '2026-07-11T12:00:00Z' });
+    lib.upsertNote({
+      id: 'note_demo',
+      paperId: 'paper_arxiv_2401_12345',
+      body: 'human attention unit',
+      kind: 'note',
+      pinned: true,
+    });
+    const v = loadLibraryPaper(root, 'paper_arxiv_2401_12345')!;
+    expect(v.notes).toEqual([expect.objectContaining({ id: 'note_demo', body: 'human attention unit', pinned: true })]);
   });
 });

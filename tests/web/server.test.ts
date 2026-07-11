@@ -72,7 +72,9 @@ it('serves workspace home at /', async () => {
   const res = await fetch(base + '/');
   expect(res.status).toBe(200);
   const html = await res.text();
-  expect(html).toContain('Workspace Home');
+  // Home is a decision surface: workspace name hero + entry points (not the old "Workspace Home" label).
+  expect(html).toContain('workspace-home');
+  expect(html).toContain('Needs attention');
   expect(html).toContain('/topics');
   expect(html).toContain('/library');
   expect(html).not.toContain('<main class="grid">');
@@ -122,8 +124,8 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(selected.status).toBe(200);
   expect(selected.url).toBe(base + '/library/p/paper_arxiv_2401_12345');
   const selectedHtml = await selected.text();
-  expect(selectedHtml).toContain('Paper detail');
-  expect(selectedHtml).toContain('paper-card detail');
+  expect(selectedHtml).toContain('paper-detail-main');
+  expect(selectedHtml).toContain('paper-identity-fm');
   expect(selectedHtml).toContain('Deep read');
   expect(selectedHtml).toContain('trace · linked');
 });
@@ -154,6 +156,55 @@ it('deletes an unlinked library paper and refuses a linked one', async () => {
   expect(refuse.status).toBe(400);
   expect(await refuse.text()).toMatch(/linked/i);
   expect(new PaperLibrary(root).getPaper('paper_arxiv_2401_12345')).toBeTruthy();
+});
+
+it('creates, pins, and deletes paper-local notes on the detail page', async () => {
+  const paperId = 'paper_arxiv_2401_12345';
+  const create = await fetch(base + '/library/note', {
+    method: 'POST',
+    body: new URLSearchParams({
+      action: 'create',
+      paperId,
+      body: 'LM judge selects among candidates',
+      kind: 'clarification',
+      pinned: '1',
+    }),
+    redirect: 'manual',
+  });
+  expect(create.status).toBe(303);
+  expect(create.headers.get('location')).toBe(`/library/p/${paperId}#notes`);
+
+  let lib = new PaperLibrary(root);
+  let notes = lib.listNotes(paperId);
+  expect(notes).toHaveLength(1);
+  expect(notes[0]).toEqual(expect.objectContaining({
+    body: 'LM judge selects among candidates',
+    kind: 'clarification',
+    pinned: true,
+  }));
+  const noteId = notes[0].id;
+
+  const detail = await fetch(base + `/library/p/${paperId}`);
+  const html = await detail.text();
+  expect(html).toContain('LM judge selects among candidates');
+  expect(html).toContain('paper-notes-panel');
+
+  const unpin = await fetch(base + '/library/note', {
+    method: 'POST',
+    body: new URLSearchParams({ action: 'unpin', paperId, noteId }),
+    redirect: 'manual',
+  });
+  expect(unpin.status).toBe(303);
+  lib = new PaperLibrary(root);
+  expect(lib.getNote(noteId)?.pinned).toBe(false);
+
+  const del = await fetch(base + '/library/note', {
+    method: 'POST',
+    body: new URLSearchParams({ action: 'delete', paperId, noteId }),
+    redirect: 'manual',
+  });
+  expect(del.status).toBe(303);
+  expect(new PaperLibrary(root).listNotes(paperId)).toEqual([]);
 });
 
 it('starts a library deep read and records read state', async () => {
@@ -194,7 +245,8 @@ it('starts a library deep read and records read state', async () => {
 
   const completedDetail = await fetch(base + '/library/p/paper_arxiv_2401_12345');
   const completedHtml = await completedDetail.text();
-  expect(completedHtml).toContain('Read artifact');
+  expect(completedHtml).toContain('paper-doc');
+  expect(completedHtml).toContain('paper-identity-fm');
   expect(completedHtml).toContain('Mock read');
 });
 
@@ -250,7 +302,7 @@ it('serves canonical paper detail URLs', async () => {
   const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
-  expect(html).toContain('Paper detail');
+  expect(html).toContain('paper-doc-head');
   expect(html).toContain('Re-run read');
   expect(html).toContain('Link topic');
 });

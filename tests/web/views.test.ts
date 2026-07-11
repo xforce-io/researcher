@@ -356,6 +356,7 @@ describe('renderLibraryPaper delete affordance', () => {
       paper: basePaper,
       topics: [],
       reads: [],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],
@@ -371,6 +372,7 @@ describe('renderLibraryPaper delete affordance', () => {
       paper: { ...basePaper, linkedTopicCount: 1, integratedTopicCount: 0 },
       topics: [],
       reads: [],
+      notes: [],
       latestReadArtifact: null,
       links: [{
         paperId: basePaper.id,
@@ -445,14 +447,25 @@ describe('renderLibrary', () => {
       paper: library.papers[0],
       topics: library.topics,
       reads: [{ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: 'read.md', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [{
+        id: 'note_1',
+        paperId: 'paper_arxiv_2401_12345',
+        body: '**Selection** not `generation`',
+        kind: 'clarification',
+        pinned: true,
+        createdAt: '2026-07-02T00:00:00Z',
+        updatedAt: '2026-07-02T00:00:00Z',
+      }],
       latestReadArtifact: { path: 'read.md', markdown: '# Library Read\n\n## Findings\n\n- Useful paper.' },
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
     };
     const html = renderLibraryPaper(detail);
-    expect(html).toContain('Paper detail');
+    // Single document surface: title in page head, not a second list card.
+    expect(html).toContain('<h1>Reusable Paper Cards</h1>');
+    expect(html).not.toContain('Paper detail');
+    expect(html).not.toContain('paper-card detail');
     expect(html).toContain('/library');
-    expect(html).toContain('paper-card detail');
     expect(html).toContain('paper-detail-main');
     expect(html).toContain('paper-inspector');
     expect(html).toContain('action="/library/read"');
@@ -463,12 +476,82 @@ describe('renderLibrary', () => {
     expect(html).toContain('Link topic');
     expect(html).toContain('name="relation"');
     expect(html).not.toContain('Context<select');
-    expect(html).toContain('Read artifact');
-    expect(html).toContain('<h1>Library Read</h1>');
     expect(html).toContain('<h2>Findings</h2>');
     expect(html).toContain('Relations');
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
+    expect(html).toContain('id="notes"');
+    expect(html).toContain('href="#notes"');
+    expect(html).toContain('Notes · 1');
+    // Breadcrumb wayfinding + primary Notes CTA (project button language).
+    expect(html).toContain('paper-crumb');
+    expect(html).toContain('aria-label="Breadcrumb"');
+    expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#notes"/);
+    // Notes jump only in the page head (not duplicated in the reader chrome).
+    expect(html.match(/href="#notes"/g)?.length).toBe(1);
+    expect(html).toContain('action="/library/note"');
+    expect(html).toContain('paper-note-body');
+    expect(html).toContain('<strong>Selection</strong>');
+    expect(html).toContain('<code>generation</code>');
+    expect(html).toContain('clarification');
+    expect(html).toContain('pinned');
+  });
+
+  it('uses one document surface with aligned identity meta', () => {
+    const detail: LibraryPaperDetailView = {
+      root: '/ws',
+      paper: library.papers[0],
+      topics: library.topics,
+      reads: [],
+      notes: [],
+      latestReadArtifact: {
+        path: 'read.md',
+        markdown: [
+          '---',
+          'title: "Reusable Paper Cards"',
+          'authors: ["A Author"]',
+          'paper_id: "paper_arxiv_2401_12345"',
+          'source_kind: "arxiv"',
+          'source_id: "arxiv:2401.12345"',
+          'source_url: "https://arxiv.org/abs/2401.12345"',
+          'pdf_url: "https://arxiv.org/pdf/2401.12345"',
+          'read_id: "read_1"',
+          'kind: library-read',
+          'doc_type: "paper"',
+          '---',
+          '',
+          '# Reusable Paper Cards',
+          '',
+          '> Frame lede.',
+          '',
+          '## Claims',
+          '',
+          '- claim one',
+        ].join('\n'),
+      },
+      links: [],
+      integrations: [],
+    };
+    const html = renderLibraryPaper(detail);
+    // One H1 in the page head only.
+    expect(html.match(/<h1>Reusable Paper Cards<\/h1>/g)?.length).toBe(1);
+    expect(html).not.toContain('class="note-title"');
+    expect(html).not.toContain('paper-card');
+    expect(html).not.toContain('<dt>paper_id</dt>');
+    expect(html).not.toContain('<dt>read_id</dt>');
+    expect(html).not.toContain('<dt>kind</dt>');
+    // Aligned identity table (not loose prose meta).
+    expect(html).toContain('paper-identity-fm');
+    expect(html).toContain('<dt>authors</dt>');
+    expect(html).toContain('A Author');
+    expect(html).toContain('<dt>arxiv</dt>');
+    expect(html).toContain('<dt>source</dt>');
+    expect(html).toContain('<dt>pdf</dt>');
+    expect(html).toContain('<dt>status</dt>');
+    expect(html).toContain('https://arxiv.org/abs/2401.12345');
+    expect(html).toContain('Frame lede.');
+    expect(html).toContain('<h2>Claims</h2>');
+    expect(html).toContain('href="#notes"');
   });
 
   it('renders a recoverable interrupted state for restored reading records without active tasks', () => {
@@ -477,6 +560,7 @@ describe('renderLibrary', () => {
       paper: { ...library.papers[0], readStatus: 'reading' },
       topics: library.topics,
       reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],
@@ -499,6 +583,7 @@ describe('renderLibrary', () => {
       paper: { ...library.papers[0], readStatus: 'reading' },
       topics: library.topics,
       reads: [{ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      notes: [],
       latestReadArtifact: null,
       links: [],
       integrations: [],

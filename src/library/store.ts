@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { Paper, PaperRead, PaperSurfaceLink, TopicIntegration } from './model.js';
+import type { Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from './model.js';
 
 export const WORKSPACE_STATE_DIR = '.researcher-workspace';
 export const LIBRARY_DIR = `${WORKSPACE_STATE_DIR}/library`;
@@ -11,6 +11,7 @@ interface Clock {
 
 type PaperInput = Omit<Paper, 'createdAt' | 'updatedAt'> & Partial<Pick<Paper, 'createdAt' | 'updatedAt'>>;
 type ReadInput = Omit<PaperRead, 'createdAt' | 'updatedAt'> & Partial<Pick<PaperRead, 'createdAt' | 'updatedAt'>>;
+type NoteInput = Omit<PaperNote, 'createdAt' | 'updatedAt'> & Partial<Pick<PaperNote, 'createdAt' | 'updatedAt'>>;
 type LinkInput = Omit<PaperSurfaceLink, 'createdAt' | 'updatedAt'> & Partial<Pick<PaperSurfaceLink, 'createdAt' | 'updatedAt'>>;
 type IntegrationInput = TopicIntegration;
 
@@ -69,6 +70,44 @@ export class PaperLibrary {
     const reads = readJsonl<PaperRead>(this.path('reads.jsonl'));
     return (paperId ? reads.filter((r) => r.paperId === paperId) : reads)
       .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  upsertNote(input: NoteInput): PaperNote {
+    const existing = this.listNotes().find((n) => n.id === input.id);
+    const now = this.clock.now();
+    const body = input.body.trim();
+    if (!body) throw new Error('note body is required');
+    const note: PaperNote = {
+      ...input,
+      body,
+      pinned: input.pinned ?? existing?.pinned ?? false,
+      createdAt: existing?.createdAt ?? input.createdAt ?? now,
+      updatedAt: now,
+    };
+    writeJsonlUpsert(this.path('notes.jsonl'), note, (n) => n.id);
+    return note;
+  }
+
+  listNotes(paperId?: string): PaperNote[] {
+    const notes = readJsonl<PaperNote>(this.path('notes.jsonl'));
+    const filtered = paperId ? notes.filter((n) => n.paperId === paperId) : notes;
+    // Pinned first, then newest activity.
+    return filtered.sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt);
+      return byUpdated !== 0 ? byUpdated : a.id.localeCompare(b.id);
+    });
+  }
+
+  getNote(id: string): PaperNote | undefined {
+    return this.listNotes().find((n) => n.id === id);
+  }
+
+  deleteNote(id: string): { deleted: true; noteId: string } {
+    const existing = this.getNote(id);
+    if (!existing) throw new Error(`unknown note id: ${id}`);
+    writeJsonlFilter(this.path('notes.jsonl'), (n: PaperNote) => n.id !== id);
+    return { deleted: true, noteId: id };
   }
 
   upsertLink(input: LinkInput): PaperSurfaceLink {
@@ -148,6 +187,7 @@ export class PaperLibrary {
     const reads = this.listReads(id);
     writeJsonlFilter(this.path('papers.jsonl'), (p: Paper) => p.id !== id);
     writeJsonlFilter(this.path('reads.jsonl'), (r: PaperRead) => r.paperId !== id);
+    writeJsonlFilter(this.path('notes.jsonl'), (n: PaperNote) => n.paperId !== id);
     // links/integrations already empty for this paper; rewrite keeps other rows intact
     writeJsonlFilter(this.path('links.jsonl'), (l: PaperSurfaceLink) => l.paperId !== id);
     writeJsonlFilter(this.path('integrations.jsonl'), (i: TopicIntegration) => i.paperId !== id);

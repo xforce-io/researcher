@@ -41,6 +41,19 @@ export interface PaperRead {
   updatedAt: string;
 }
 
+/** Human attention layer on a Library paper (not the machine deep-read artifact). */
+export type PaperNoteKind = 'note' | 'clarification' | 'caveat' | 'idea' | 'question';
+
+export interface PaperNote {
+  id: string;
+  paperId: string;
+  body: string;
+  kind: PaperNoteKind;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type SurfaceType = 'topic' | 'tag-graph' | 'concept-map' | 'collection' | 'board';
 export type PaperRelation = 'candidate' | 'relevant' | 'integrated' | 'rejected' | 'archived';
 
