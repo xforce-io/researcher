@@ -483,6 +483,10 @@ describe('renderLibrary', () => {
     expect(html).toContain('id="notes"');
     expect(html).toContain('href="#notes"');
     expect(html).toContain('Notes · 1');
+    // Breadcrumb wayfinding + primary Notes CTA (project button language).
+    expect(html).toContain('paper-crumb');
+    expect(html).toContain('aria-label="Breadcrumb"');
+    expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#notes"/);
     // Notes jump only in the page head (not duplicated in the reader chrome).
     expect(html.match(/href="#notes"/g)?.length).toBe(1);
     expect(html).toContain('action="/library/note"');

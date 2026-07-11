@@ -527,11 +527,40 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 }
 .library-head h1 { margin:0; font-size:26px; line-height:1.2; letter-spacing:-.02em; }
 .library-head p { margin:4px 0 0; color:var(--ink-soft); font-size:14px; }
+.paper-crumb {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0 0 2px;
+  font:650 13px var(--sans);
+  color:var(--ink-soft);
+}
+.paper-crumb-back {
+  min-height:34px;
+  padding:0 13px;
+  font:650 13px var(--sans);
+  gap:6px;
+  text-decoration:none;
+}
+.paper-crumb-back:hover { text-decoration:none; }
+.paper-crumb-arrow {
+  font-size:14px;
+  line-height:1;
+  opacity:.85;
+}
+.paper-crumb-sep {
+  color:var(--ink-faint);
+  user-select:none;
+}
+.paper-crumb-here {
+  color:var(--ink-faint);
+  font:650 13px var(--sans);
+}
 .paper-head-actions {
   display:flex;
   flex:none;
   align-items:center;
-  gap:8px;
+  gap:10px;
 }
 .paper-doc-head h1 {
   font-size:28px;
@@ -543,13 +572,20 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   color:var(--ink-faint) !important;
   font-size:12px !important;
 }
-.paper-jump-notes {
-  min-height:32px;
-  padding:0 11px;
-  font:650 12px var(--sans);
+/* Match .primary sizing used by Add paper / Deep read / Add note */
+a.paper-jump-notes.primary {
+  min-height:34px;
+  padding:0 14px;
+  font:650 13px var(--sans);
   text-decoration:none;
+  white-space:nowrap;
 }
-.paper-jump-notes:hover { text-decoration:none; }
+a.paper-jump-notes.primary:hover { text-decoration:none; }
+.paper-head-actions .status-badge {
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+}
 .paper-detail-main > .reader.paper-doc {
   min-height:320px;
 }

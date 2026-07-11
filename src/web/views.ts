@@ -529,8 +529,11 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
 
 export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
   const noteCount = v.notes.length;
+  // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
-    `<a class="secondary paper-jump-notes" href="#notes">Notes${noteCount > 0 ? ` · ${noteCount}` : ''}</a>`;
+    `<a class="primary paper-jump-notes" href="#notes">` +
+      `Notes${noteCount > 0 ? ` · ${noteCount}` : ''}` +
+    `</a>`;
   const identity = renderPaperIdentityMeta(v);
   const readBody = v.latestReadArtifact
     ? renderLibraryReadBody(v.latestReadArtifact.markdown, v.paper.displayTitle)
@@ -550,17 +553,29 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
       identity +
       readBody +
     `</section>`;
+  // Breadcrumb (wayfinding), not a second primary nav — Library is the parent list.
+  const crumb =
+    `<nav class="paper-crumb" aria-label="Breadcrumb">` +
+      `<a class="secondary paper-crumb-back" href="/library">` +
+        `<span class="paper-crumb-arrow" aria-hidden="true">←</span> Library` +
+      `</a>` +
+      `<span class="paper-crumb-sep" aria-hidden="true">/</span>` +
+      `<span class="paper-crumb-here">Paper</span>` +
+    `</nav>`;
   const body = topbar(v.paper.id, 'library') +
     `<main class="paper-detail-shell">` +
       `<section class="paper-detail-main">` +
-        `<a class="back-link" href="/library">Library</a>` +
+        crumb +
         `<div class="library-head paper-doc-head">` +
           `<div>` +
             `<h1>${escapeHtml(v.paper.displayTitle)}</h1>` +
             `<p class="mono paper-canonical">${escapeHtml(v.paper.canonicalId)}` +
               `${v.paper.sourceLabel ? ` · ${escapeHtml(v.paper.sourceLabel)}` : ''}</p>` +
           `</div>` +
-          `<div class="paper-head-actions">${notesJump}${renderStatusBadge(v.paper.readStatus)}</div>` +
+          `<div class="paper-head-actions">` +
+            notesJump +
+            renderStatusBadge(v.paper.readStatus) +
+          `</div>` +
         `</div>` +
         readSurface +
         renderPaperNotes(v) +
