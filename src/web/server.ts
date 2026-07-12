@@ -103,13 +103,25 @@ async function handle(
     const form = new URLSearchParams(body);
     const topicPath = form.get('path')?.trim() ?? '';
     const oneline = form.get('oneline')?.trim() ?? '';
-    if (!topicPath) return send(res, 400, 'text/plain', 'missing topic path');
-    if (!oneline) return send(res, 400, 'text/plain', 'missing one-line');
+    const fail = (error: string) =>
+      send(
+        res,
+        400,
+        'text/html; charset=utf-8',
+        renderTopics(loadDashboard(root), {
+          path: topicPath,
+          oneline,
+          error,
+          open: true,
+        }),
+      );
+    if (!topicPath) return fail('topic path is required (e.g. decision or feeds/ai-safety)');
+    if (!oneline) return fail('one-line intent is required');
     try {
       const created = createWorkspaceTopic({ root, path: topicPath, oneline });
       return redirect(res, `/t/${created.slug}`);
     } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+      return fail(err instanceof Error ? err.message : String(err));
     }
   }
   // GET /library

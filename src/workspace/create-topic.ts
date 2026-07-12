@@ -27,23 +27,34 @@ const MAX_PATH_LEN = 64;
 
 export function normalizeTopicPath(raw: string): string {
   const path = raw.trim();
-  if (!path) throw new Error('invalid topic path');
+  if (!path) {
+    throw new Error('topic path is required (e.g. decision or feeds/ai-safety)');
+  }
   // Reject backslashes instead of rewriting them (path is a workspace-relative slug).
-  if (path.includes('\\')) throw new Error('invalid topic path');
+  if (path.includes('\\')) {
+    throw new Error('topic path cannot contain backslashes; use / for nested paths');
+  }
   if (path.startsWith('/') || path.includes('://') || path.includes('~')) {
-    throw new Error('invalid topic path');
+    throw new Error('topic path must be a relative folder name, not an absolute or URL path');
   }
   if (path.startsWith('./') || path.endsWith('/') || path.includes('//')) {
-    throw new Error('invalid topic path');
+    throw new Error('topic path must not start with ./ or contain empty segments');
   }
-  if (path.length > MAX_PATH_LEN) throw new Error('invalid topic path');
+  if (path.length > MAX_PATH_LEN) {
+    throw new Error(`topic path is too long (max ${MAX_PATH_LEN} characters)`);
+  }
   const segments = path.split('/');
   if (segments.length < 1 || segments.length > MAX_SEGMENTS) {
-    throw new Error('invalid topic path');
+    throw new Error(`topic path can have at most ${MAX_SEGMENTS} segments (e.g. feeds/ai-safety)`);
   }
   for (const seg of segments) {
-    if (seg === '.' || seg === '..' || !SEGMENT.test(seg)) {
-      throw new Error('invalid topic path');
+    if (seg === '.' || seg === '..') {
+      throw new Error('topic path cannot contain . or ..');
+    }
+    if (!SEGMENT.test(seg)) {
+      throw new Error(
+        'topic path must use ASCII letters, digits, ., _, - only (e.g. decision). Chinese or spaces are not allowed',
+      );
     }
   }
   return path;

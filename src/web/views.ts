@@ -962,20 +962,33 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
   return page(`${m.name} · researcher`, body);
 }
 
-function renderAddTopicModal(): string {
-  return `<div id="add-topic-modal" class="modal-backdrop" hidden>` +
+export interface AddTopicFormState {
+  path?: string;
+  oneline?: string;
+  error?: string;
+  /** When true, open the modal on page load (e.g. after a failed create). */
+  open?: boolean;
+}
+
+function renderAddTopicModal(state: AddTopicFormState = {}): string {
+  const openAttr = state.open || state.error ? '' : ' hidden';
+  const err = state.error
+    ? `<p class="form-error" role="alert">${escapeHtml(state.error)}</p>`
+    : '';
+  return `<div id="add-topic-modal" class="modal-backdrop"${openAttr}>` +
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-topic-title">` +
       `<div class="modal-head"><h2 id="add-topic-title">New topic</h2>` +
       `<button class="icon-button" type="button" data-close-add-topic aria-label="Close">x</button></div>` +
       `<form class="modal-form add-topic-form" action="/topics" method="post">` +
         `<label><span>Path</span>` +
-          `<input name="path" required placeholder="decision" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" autocomplete="off">` +
-          `<span class="field-hint">Folder name under the workspace (e.g. decision or feeds/ai-safety)</span>` +
+          `<input name="path" required placeholder="decision" value="${escapeHtml(state.path ?? '')}" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" title="ASCII letters, digits, ., _, -; optional nested like feeds/ai-safety" autocomplete="off">` +
+          `<span class="field-hint">ASCII folder name under the workspace (e.g. <code>decision</code> or <code>feeds/ai-safety</code>). Not Chinese.</span>` +
         `</label>` +
         `<label><span>One-line intent</span>` +
-          `<input name="oneline" required placeholder="What is this pillar about?" autocomplete="off">` +
+          `<input name="oneline" required placeholder="What is this pillar about?" value="${escapeHtml(state.oneline ?? '')}" autocomplete="off">` +
           `<span class="field-hint">One sentence: artifact, decision-maker, what's at stake</span>` +
         `</label>` +
+        err +
         `<p class="modal-hint">Creates a local topic directory, scaffolds <code>.researcher/</code>, and registers it in the workspace. No AI in this step.</p>` +
         `<button class="primary" type="submit">Create topic</button>` +
       `</form>` +
@@ -1008,7 +1021,7 @@ document.addEventListener('keydown', (e) => {
 });
 `;
 
-export function renderTopics(m: DashboardModel): string {
+export function renderTopics(m: DashboardModel, addTopic: AddTopicFormState = {}): string {
   const cards = m.topics.map((t) => {
     const tags: string[] = [];
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
@@ -1036,10 +1049,14 @@ export function renderTopics(m: DashboardModel): string {
       `<div class="card-head"><span class="card-title card-new-title"><span class="card-plus" aria-hidden="true">+</span>New topic</span></div>` +
       `<p class="card-oneline">Start a new research pillar</p>` +
     `</button>`;
+  const flash = addTopic.error && !addTopic.open
+    ? `<div class="page-flash error" role="alert">${escapeHtml(addTopic.error)}</div>`
+    : '';
   const body = topbar(m.root, 'topics') +
     `<main class="topics-page"><div class="page-head"><h1>Topics</h1><p>Topic workspaces declared by this super-repo.</p></div>` +
+    flash +
     `<div class="grid">${cards}${newCard}</div></main>` +
-    renderAddTopicModal() +
+    renderAddTopicModal(addTopic) +
     `<script>${ADD_TOPIC_JS}</script>`;
   return page('Topics · researcher', body);
 }

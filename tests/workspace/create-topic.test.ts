@@ -42,7 +42,7 @@ describe('normalizeTopicPath', () => {
     './x',
     'x/',
   ])('rejects %j', (raw) => {
-    expect(() => normalizeTopicPath(raw)).toThrow(/invalid topic path/);
+    expect(() => normalizeTopicPath(raw)).toThrow(/topic path/i);
   });
 });
 

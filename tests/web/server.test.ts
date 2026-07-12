@@ -214,7 +214,12 @@ it('rejects invalid topic create payloads', async () => {
     redirect: 'manual',
   });
   expect(badPath.status).toBe(400);
-  expect(await badPath.text()).toMatch(/invalid topic path/);
+  const badHtml = await badPath.text();
+  expect(badHtml).toMatch(/topic path/i);
+  expect(badHtml).toContain('add-topic-modal');
+  expect(badHtml).toContain('form-error');
+  // Must not dump a bare text/plain error page.
+  expect(badHtml).toContain('<!doctype html>');
 });
 
 it('serves the library page', async () => {

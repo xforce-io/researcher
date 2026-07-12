@@ -181,7 +181,14 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   display:flex; gap:8px; justify-content:flex-end; align-items:center;
   margin-top:4px; flex-wrap:wrap;
 }
-.form-error { color:#a4453d; font-size:13px; margin:0; }
+.form-error { color:#a4453d; font-size:13px; margin:0; line-height:1.4; }
+.page-flash {
+  margin:0 22px 12px; padding:10px 12px; border-radius:8px;
+  font-size:13.5px; line-height:1.4;
+}
+.page-flash.error {
+  background:#f8e8e6; border:1px solid #e8c4bf; color:#8a3a34;
+}
 .setup-review-h { margin:14px 0 6px; font-size:13px; color:var(--ink-soft); }
 .setup-preview {
   margin:0; max-height:220px; overflow:auto;
