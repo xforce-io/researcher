@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { load as parseYaml } from 'js-yaml';
+import { dump as dumpYaml, load as parseYaml } from 'js-yaml';
 import { z } from 'zod';
 
 export const WORKSPACE_MANIFEST = 'researcher.workspace.yml';
@@ -64,4 +64,29 @@ export function loadWorkspaceManifest(path: string): WorkspaceManifest {
 
 export function activeTopics(manifest: WorkspaceManifest): WorkspaceTopic[] {
   return manifest.topics.filter((t) => t.active);
+}
+
+/** Append a topic to the workspace manifest and write it back. */
+export function addTopicToManifest(
+  manifestPath: string,
+  topic: { path: string; active?: boolean },
+): WorkspaceManifest {
+  const manifest = loadWorkspaceManifest(manifestPath);
+  if (manifest.topics.some((t) => t.path === topic.path)) {
+    throw new WorkspaceManifestError(
+      `duplicate topic path "${topic.path}" in ${manifestPath}`,
+      manifestPath,
+    );
+  }
+  const next: WorkspaceManifest = {
+    version: 1,
+    topics: [...manifest.topics, { path: topic.path, active: topic.active ?? true }],
+  };
+  writeFileSync(
+    manifestPath,
+    dumpYaml(next, { lineWidth: 120, noRefs: true, sortKeys: false }),
+    'utf8',
+  );
+  // Re-load so callers always see schema-normalized data (e.g. active default).
+  return loadWorkspaceManifest(manifestPath);
 }

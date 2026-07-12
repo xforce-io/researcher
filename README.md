@@ -265,7 +265,7 @@ Surfaces (workspace-first):
 | Route | Role |
 |---|---|
 | `/` | Workspace Home — health, needs-attention, topic preview, library snapshot |
-| `/topics` | Topic card grid; open `/t/:slug` for thesis / landscape / report / notes and per-topic `run` with live logs |
+| `/topics` | Topic card grid + **New topic** (local scaffold + workspace register); open `/t/:slug` for thesis / landscape / report / notes and per-topic `run` with live logs |
 | `/library` | Paper intake list (filters, add paper) |
 | `/library/p/:id` | Paper detail — machine deep-read artifact + **paper-local human notes** (Markdown, pin/delete); deep-read / link actions |
 

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   loadWorkspaceManifest,
   activeTopics,
+  addTopicToManifest,
   hasWorkspaceManifest,
   resolveWorkspaceManifestPath,
   WorkspaceManifestError,
@@ -62,5 +63,21 @@ topics:
     const p = writeManifest(VALID);
     expect(hasWorkspaceManifest(join(p, '..'))).toBe(true);
     expect(hasWorkspaceManifest(mkdtempSync(join(tmpdir(), 'r-empty-')))).toBe(false);
+  });
+});
+
+describe('addTopicToManifest', () => {
+  it('appends an active topic and round-trips through load', () => {
+    const p = writeManifest(VALID);
+    const m = addTopicToManifest(p, { path: 'probe', active: true });
+    expect(m.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'ontology', 'probe']);
+    expect(m.topics.at(-1)).toEqual({ path: 'probe', active: true });
+    expect(loadWorkspaceManifest(p).topics.at(-1)).toEqual({ path: 'probe', active: true });
+  });
+
+  it('rejects a duplicate path without writing a second entry', () => {
+    const p = writeManifest(VALID);
+    expect(() => addTopicToManifest(p, { path: 'trace' })).toThrow(WorkspaceManifestError);
+    expect(loadWorkspaceManifest(p).topics).toHaveLength(3);
   });
 });

@@ -144,6 +144,36 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 }
 .tag.dormant { background:var(--line-soft); color:#8a8164; }
 .tag.missing { background:#f3dede; color:#a4453d; }
+.tag.setup { background:#efe6c8; color:#7a6230; }
+.card-new {
+  border-style:dashed;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  width:100%;
+}
+.card-new:hover {
+  border-color:var(--accent);
+  background:var(--surface);
+}
+.card-new-title { color:var(--ink-soft); }
+.card-plus {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:1.1em; height:1.1em; margin-right:2px;
+  font-weight:700; color:var(--accent);
+}
+.setup-banner {
+  margin:0; padding:10px 22px;
+  background:#f7f1dc; border-bottom:1px solid #e4d7a8;
+  color:#5c4a1f; font-size:13.5px; line-height:1.45;
+}
+.setup-banner code {
+  font-family:var(--mono); font-size:12px;
+  background:rgba(255,255,255,.55); padding:1px 5px; border-radius:3px;
+}
+.modal-hint { margin:0 0 8px; font-size:13px; }
 .card-oneline {
   margin:0 0 14px;
   color:var(--ink-soft); font-size:14px; line-height:1.55;

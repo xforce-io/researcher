@@ -167,7 +167,7 @@ describe('renderWorkspaceHome', () => {
       linked: 2, integrated: 1, unlinked: 1, toIntegrate: 1,
     },
     activeTopics: [
-      { slug: 'trace', path: 'trace', active: true, available: true, oneline: 'triage <x>',
+      { slug: 'trace', path: 'trace', active: true, available: true, needsSetup: false, oneline: 'triage <x>',
         noteCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
     ],
     attention: [
@@ -247,9 +247,11 @@ describe('renderTopics', () => {
   const m: DashboardModel = {
     root: '/ws',
     topics: [
-      { slug: 'trace', path: 'trace', active: true, available: true, oneline: 'triage <x>',
+      { slug: 'trace', path: 'trace', active: true, available: true, needsSetup: false, oneline: 'triage <x>',
         noteCount: 3, lastRun: '2026-06-20T10:00:00Z', decisionCounts: { 'deep-read': 1, skim: 2, reject: 0 } },
-      { slug: 'decision', path: 'decision', active: false, available: false, oneline: '',
+      { slug: 'decision', path: 'decision', active: false, available: false, needsSetup: false, oneline: '',
+        noteCount: 0, lastRun: null, decisionCounts: { 'deep-read': 0, skim: 0, reject: 0 } },
+      { slug: 'fresh', path: 'fresh', active: true, available: true, needsSetup: true, oneline: 'brand new',
         noteCount: 0, lastRun: null, decisionCounts: { 'deep-read': 0, skim: 0, reject: 0 } },
     ],
   };
@@ -272,11 +274,21 @@ describe('renderTopics', () => {
     expect(html).not.toContain('2026-06-20T10:00:00Z'); // never the raw ISO timestamp
     expect(html).not.toContain('papers');            // dropped the misleading PDF count
   });
+  it('always renders a New topic card and create modal', () => {
+    const html = renderTopics(m);
+    expect(html).toContain('New topic');
+    expect(html).toContain('card-new');
+    expect(html).toContain('data-open-add-topic');
+    expect(html).toContain('action="/topics"');
+    expect(html).toContain('name="path"');
+    expect(html).toContain('name="oneline"');
+    expect(html).toContain('needs setup');
+  });
 });
 
 describe('renderTopic', () => {
   const v: TopicView = {
-    slug: 'trace', path: 'trace', available: true, oneline: 'triage', language: 'zh',
+    slug: 'trace', path: 'trace', available: true, needsSetup: false, oneline: 'triage', language: 'zh',
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
@@ -623,7 +635,7 @@ describe('tocTitle (#45)', () => {
 
 describe('renderTopic panel layout (#45)', () => {
   const v: TopicView = {
-    slug: 'trace', path: 'trace', available: true, oneline: 'triage', language: 'zh',
+    slug: 'trace', path: 'trace', available: true, needsSetup: false, oneline: 'triage', language: 'zh',
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
@@ -655,9 +667,15 @@ describe('renderTopic panel layout (#45)', () => {
 
 describe('renderTopic run controls', () => {
   const baseView: TopicView = {
-    slug: 'trace', path: 'trace', available: true, oneline: 'o', language: 'zh',
+    slug: 'trace', path: 'trace', available: true, needsSetup: false, oneline: 'o', language: 'zh',
     sources: [], researchQuestions: [], docs: [], notes: [], papers: [], seen: [], watermark: null,
   };
+
+  it('shows a setup banner when needsSetup is true', () => {
+    const html = renderTopic({ ...baseView, needsSetup: true });
+    expect(html).toContain('Needs setup');
+    expect(html).toContain('researcher onboard');
+  });
 
   it('renders the run popover skeleton', () => {
     const html = renderTopic(baseView);
