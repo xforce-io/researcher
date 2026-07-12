@@ -83,13 +83,15 @@ describe('buildSetupAnswers', () => {
     { id: 'Q8', fieldId: 'design_anchor' },
   ];
 
-  it('requires oneline and skips empty optionals', () => {
+  it('requires oneline and auto-seeds RQ + keywords when optionals empty', () => {
     const answers = buildSetupAnswers({ oneline: '  Hello topic  ' }, questions);
     expect(answers.find((a) => a.questionId === 'Q1')).toEqual({
       questionId: 'Q1', fieldId: 'topic_oneline', kind: 'text', text: 'Hello topic',
     });
-    expect(answers.find((a) => a.questionId === 'Q2')?.kind).toBe('skipped');
-    expect(answers.find((a) => a.questionId === 'Q6')?.kind).toBe('skipped');
+    // Web setup auto-fills Q2/Q6 from oneline so the agent is not skip-only.
+    expect(answers.find((a) => a.questionId === 'Q2')?.kind).toBe('text');
+    expect(answers.find((a) => a.questionId === 'Q2')?.text).toMatch(/Hello topic/);
+    expect(answers.find((a) => a.questionId === 'Q6')?.kind).toBe('text');
     expect(answers.find((a) => a.questionId === 'Q8')?.kind).toBe('skipped');
   });
 

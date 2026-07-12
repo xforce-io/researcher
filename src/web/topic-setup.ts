@@ -65,10 +65,34 @@ function answerOrSkip(questionId: string, fieldId: string, text: string | undefi
   return { questionId, fieldId, kind: 'text', text: t };
 }
 
+/** Derive a couple of starter RQs so the agent is not left with only skipped fields. */
+export function defaultResearchQuestionsFromOneline(oneline: string): string {
+  const t = oneline.trim();
+  return [
+    `How is the state of the art currently defined for: ${t}?`,
+    `What mechanisms or evaluation criteria most constrain progress on: ${t}?`,
+  ].join('\n');
+}
+
+/** Pull ASCII-ish keyword phrases from free text for seed queries. */
+export function defaultSeedsFromOneline(oneline: string): string {
+  const words = oneline
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  const uniq = [...new Set(words)].slice(0, 6);
+  if (uniq.length >= 2) return uniq.join(' ');
+  // Fall back to the raw oneline so the agent still has a seed signal.
+  return oneline.trim();
+}
+
 /**
  * Map the Web setup form onto onboard question ids.
  * Q1 = oneline (required). Q8 = stake/design anchor. Q6 = seed keywords.
- * Everything else is skipped so rewrite preserves template defaults + TODO.
+ * When seeds/RQs are empty we auto-seed from oneline so the rewrite agent is not
+ * stuck with only SKIPPED fields (which previously caused endless deliberation
+ * and empty marker blocks).
  */
 export function buildSetupAnswers(
   form: TopicSetupForm,
@@ -83,6 +107,9 @@ export function buildSetupAnswers(
   const q1 = byField.get('topic_oneline') ?? byId.get('Q1');
   if (!q1) throw new Error('onboarding.md missing topic_oneline / Q1');
 
+  const seeds = form.seeds?.trim() || defaultSeedsFromOneline(oneline);
+  const rqs = defaultResearchQuestionsFromOneline(oneline);
+
   const answers: SerializedAnswer[] = [];
   for (const q of questions) {
     if (q.id === q1.id || q.fieldId === 'topic_oneline') {
@@ -94,15 +121,17 @@ export function buildSetupAnswers(
       continue;
     }
     if (q.fieldId === 'seed_keywords' || q.id === 'Q6') {
-      answers.push(answerOrSkip(q.id, q.fieldId, form.seeds));
+      answers.push({ questionId: q.id, fieldId: q.fieldId, kind: 'text', text: seeds });
       continue;
     }
-    // Optional language nudge: fold into topic_oneline context only if Q missing.
+    if (q.fieldId === 'research_questions' || q.id === 'Q2') {
+      answers.push({ questionId: q.id, fieldId: q.fieldId, kind: 'text', text: rqs });
+      continue;
+    }
     answers.push({ questionId: q.id, fieldId: q.fieldId, kind: 'skipped' });
   }
 
-  // If language was provided, append a short note onto oneline answer for rewrite context
-  // without inventing a new question id — agent sees it in Q1 text.
+  // Language preference rides on Q1 so rewrite sees it without a new field id.
   if (form.language?.trim()) {
     const lang = form.language.trim();
     const idx = answers.findIndex((a) => a.questionId === q1.id);
@@ -179,12 +208,14 @@ export async function generateTopicSetup(
       answers,
     };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     writeRunLog({
       repoRoot: input.topicDir,
       answers,
       prompt: `${systemPrompt}\n\n---\n\n${userPrompt}`,
-      response: err instanceof Error ? err.message : String(err),
-      result: { status: 'rewrite_failed', error: err instanceof Error ? err.message : String(err) },
+      // Keep the error message; raw model text (if any) is embedded by rewriteAnswers.
+      response: message,
+      result: { status: 'rewrite_failed', error: message },
     });
     throw err;
   }
