@@ -86,6 +86,48 @@ it('serves the topic list at /topics', async () => {
   const html = await res.text();
   expect(html).toContain('/t/trace');
   expect(html).toContain('Topics');
+  expect(html).toContain('New topic');
+  expect(html).toContain('action="/topics"');
+});
+
+it('creates a local topic through POST /topics', async () => {
+  const form = new URLSearchParams({
+    path: 'probe-web',
+    oneline: 'Web-created probe pillar',
+  });
+  const res = await fetch(base + '/topics', { method: 'POST', body: form, redirect: 'manual' });
+  expect(res.status).toBe(303);
+  expect(res.headers.get('location')).toBe('/t/probe-web');
+
+  const detail = await fetch(base + '/t/probe-web');
+  expect(detail.status).toBe(200);
+  const html = await detail.text();
+  expect(html).toContain('Web-created probe pillar');
+  expect(html).toContain('Needs setup');
+
+  const list = await fetch(base + '/topics');
+  expect(await list.text()).toContain('/t/probe-web');
+
+  const dupe = await fetch(base + '/topics', { method: 'POST', body: form, redirect: 'manual' });
+  expect(dupe.status).toBe(400);
+  expect(await dupe.text()).toMatch(/already exists/);
+});
+
+it('rejects invalid topic create payloads', async () => {
+  const missing = await fetch(base + '/topics', {
+    method: 'POST',
+    body: new URLSearchParams({ path: 'x', oneline: '' }),
+    redirect: 'manual',
+  });
+  expect(missing.status).toBe(400);
+
+  const badPath = await fetch(base + '/topics', {
+    method: 'POST',
+    body: new URLSearchParams({ path: '../escape', oneline: 'nope' }),
+    redirect: 'manual',
+  });
+  expect(badPath.status).toBe(400);
+  expect(await badPath.text()).toMatch(/invalid topic path/);
 });
 
 it('serves the library page', async () => {

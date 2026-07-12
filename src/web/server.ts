@@ -8,6 +8,7 @@ import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
+import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseRelation, parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink } from '../commands/library.js';
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
@@ -77,6 +78,21 @@ async function handle(
   // GET /topics
   if (req.method === 'GET' && path === '/topics') {
     return send(res, 200, 'text/html; charset=utf-8', renderTopics(loadDashboard(root)));
+  }
+  // POST /topics — create a local topic pillar + register in workspace manifest
+  if (req.method === 'POST' && path === '/topics') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const topicPath = form.get('path')?.trim() ?? '';
+    const oneline = form.get('oneline')?.trim() ?? '';
+    if (!topicPath) return send(res, 400, 'text/plain', 'missing topic path');
+    if (!oneline) return send(res, 400, 'text/plain', 'missing one-line');
+    try {
+      const created = createWorkspaceTopic({ root, path: topicPath, oneline });
+      return redirect(res, `/t/${created.slug}`);
+    } catch (err) {
+      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
   }
   // GET /library
   if (req.method === 'GET' && path === '/library') {

@@ -9,12 +9,15 @@ import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Paper, PaperNote, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
+import { isThesisTemplate } from '../onboard/all-templates-check.js';
 
 export interface TopicCard {
   slug: string;
   path: string;
   active: boolean;
   available: boolean;
+  /** Scaffolded but thesis still template, never run, no notes. */
+  needsSetup: boolean;
   oneline: string;
   noteCount: number;
   lastRun: string | null;
@@ -82,6 +85,7 @@ export interface TopicView {
   slug: string;
   path: string;
   available: boolean;
+  needsSetup: boolean;
   oneline: string;
   language: string;
   sources: SourceSummary[];
@@ -131,6 +135,12 @@ const slugOf = (p: string) => encodeURIComponent(p);
 
 function isAvailable(topicDir: string): boolean {
   return existsSync(topicDir) && existsSync(resolveProjectResearcherDir(topicDir));
+}
+
+function computeNeedsSetup(topicDir: string, available: boolean, notes: number, lastRun: string | null): boolean {
+  if (!available) return false;
+  if (notes > 0 || lastRun) return false;
+  return isThesisTemplate(topicDir);
 }
 
 function readSeen(topicDir: string): SeenEntry[] {
@@ -211,9 +221,11 @@ export function loadDashboard(root: string): DashboardModel {
       for (const e of readSeen(topicDir)) counts[e.decision]++;
       lastRun = readWatermark(join(rDir, 'state/watermark.json'))?.last_run_completed_at ?? null;
     }
+    const notes = noteCount(topicDir);
     return {
       slug: slugOf(t.path), path: t.path, active: t.active, available,
-      oneline, noteCount: noteCount(topicDir), lastRun, decisionCounts: counts,
+      needsSetup: computeNeedsSetup(topicDir, available, notes, lastRun),
+      oneline, noteCount: notes, lastRun, decisionCounts: counts,
     };
   });
   return { root, topics };
@@ -446,7 +458,8 @@ export function loadTopic(root: string, slug: string): TopicView | null {
   const available = isAvailable(topicDir);
   if (!available) {
     return {
-      slug: slugOf(topic.path), path: topic.path, available: false, oneline: '', language: '',
+      slug: slugOf(topic.path), path: topic.path, available: false, needsSetup: false,
+      oneline: '', language: '',
       sources: [], researchQuestions: [], docs: [], notes: [], papers: [], relatedPapers: [], seen: [], watermark: null,
     };
   }
@@ -467,14 +480,19 @@ export function loadTopic(root: string, slug: string): TopicView | null {
       return paper ? summarizePaper(lib, paper, l.relation) : null;
     })
     .filter((p): p is LibraryPaperSummary => p !== null);
+  const notes = listNotes(topicDir);
+  const watermark = readWatermark(join(rDir, 'state/watermark.json'));
+  const lastRun = watermark?.last_run_completed_at ?? null;
   return {
-    slug: slugOf(topic.path), path: topic.path, available: true, oneline, language,
+    slug: slugOf(topic.path), path: topic.path, available: true,
+    needsSetup: computeNeedsSetup(topicDir, true, notes.length, lastRun),
+    oneline, language,
     sources, researchQuestions: rqs,
     docs: buildDocs(topicDir),
-    notes: listNotes(topicDir),
+    notes,
     papers: listPdfs(topicDir),
     relatedPapers,
     seen: readSeen(topicDir),
-    watermark: readWatermark(join(rDir, 'state/watermark.json')),
+    watermark,
   };
 }

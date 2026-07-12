@@ -11,7 +11,7 @@ import { scaffoldTopicRepo, validateRepoRoot } from './init.js';
 import { MilkieAdapter } from '../adapter/milkie.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
-import { isAllTemplates } from '../onboard/all-templates-check.js';
+import { isOnboardable } from '../onboard/all-templates-check.js';
 import {
   rewriteAnswers,
   composeUserPrompt,
@@ -36,7 +36,8 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
 
   const dotR = resolveProjectResearcherDir(repoRoot);
   if (existsSync(dotR)) {
-    if (!isAllTemplates(repoRoot)) {
+    // Allow Web-created topics that only differ by meta.topic_oneline.
+    if (!isOnboardable(repoRoot)) {
       throw new Error(
         `${dotR} already contains user content; edit files manually or remove .researcher/ to re-onboard`
       );

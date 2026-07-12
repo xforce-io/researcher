@@ -962,11 +962,52 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
   return page(`${m.name} · researcher`, body);
 }
 
+function renderAddTopicModal(): string {
+  return `<div id="add-topic-modal" class="modal-backdrop" hidden>` +
+    `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-topic-title">` +
+      `<div class="modal-head"><h2 id="add-topic-title">New topic</h2>` +
+      `<button class="icon-button" type="button" data-close-add-topic aria-label="Close">x</button></div>` +
+      `<form class="add-topic-form" action="/topics" method="post">` +
+        `<label>Path<input name="path" required placeholder="decision" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" autocomplete="off"></label>` +
+        `<label>One-line intent<input name="oneline" required placeholder="What is this pillar about?" autocomplete="off"></label>` +
+        `<p class="muted modal-hint">Creates a local topic directory, scaffolds .researcher/, and registers it in the workspace.</p>` +
+        `<button class="primary" type="submit">Create topic</button>` +
+      `</form>` +
+    `</div>` +
+  `</div>`;
+}
+
+const ADD_TOPIC_JS = `
+const addTopicModal = document.getElementById('add-topic-modal');
+const openAddTopicButtons = Array.from(document.querySelectorAll('[data-open-add-topic]'));
+const closeAddTopic = document.querySelector('[data-close-add-topic]');
+
+function showAddTopic() {
+  if (!addTopicModal) return;
+  addTopicModal.hidden = false;
+  addTopicModal.querySelector('input[name="path"]')?.focus();
+}
+function hideAddTopic() {
+  if (!addTopicModal) return;
+  addTopicModal.hidden = true;
+  openAddTopicButtons[0]?.focus();
+}
+openAddTopicButtons.forEach((btn) => btn.addEventListener('click', showAddTopic));
+closeAddTopic?.addEventListener('click', hideAddTopic);
+addTopicModal?.addEventListener('click', (e) => {
+  if (e.target === addTopicModal) hideAddTopic();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && addTopicModal && !addTopicModal.hidden) hideAddTopic();
+});
+`;
+
 export function renderTopics(m: DashboardModel): string {
   const cards = m.topics.map((t) => {
     const tags: string[] = [];
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
     if (!t.available) tags.push('<span class="tag missing">unavailable</span>');
+    if (t.needsSetup) tags.push('<span class="tag setup">needs setup</span>');
     const title = t.available
       ? `<a class="card-title" href="/t/${t.slug}">` +
         `${t.active ? '<span class="dot"></span>' : ''}${escapeHtml(t.path)}</a>`
@@ -984,9 +1025,16 @@ export function renderTopics(m: DashboardModel): string {
       `<div class="card-head">${title} ${tags.join(' ')}</div>` +
       `${oneline}${foot}</div>`;
   }).join('');
+  const newCard =
+    `<button type="button" class="card card-new" data-open-add-topic>` +
+      `<div class="card-head"><span class="card-title card-new-title"><span class="card-plus" aria-hidden="true">+</span>New topic</span></div>` +
+      `<p class="card-oneline">Start a new research pillar</p>` +
+    `</button>`;
   const body = topbar(m.root, 'topics') +
     `<main class="topics-page"><div class="page-head"><h1>Topics</h1><p>Topic workspaces declared by this super-repo.</p></div>` +
-    `<div class="grid">${cards || '<p class="empty-state">No topics in manifest.</p>'}</div></main>`;
+    `<div class="grid">${cards}${newCard}</div></main>` +
+    renderAddTopicModal() +
+    `<script>${ADD_TOPIC_JS}</script>`;
   return page('Topics · researcher', body);
 }
 
@@ -1002,6 +1050,13 @@ export function renderTopic(
       `<main class="notice">Topic unavailable — submodule missing or no .researcher/.</main>`;
     return page(`${v.path} · unavailable`, body);
   }
+  const setupNotice = v.needsSetup
+    ? `<div class="setup-banner" role="status">` +
+        `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
+        `Run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code> ` +
+        `or edit <code>.researcher/thesis.md</code> and research questions.` +
+      `</div>`
+    : '';
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
@@ -1064,6 +1119,7 @@ export function renderTopic(
     `<h1 class="sr-only">Topic: ${escapeHtml(v.path)}</h1>` +
     `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
     `${runWrap}</header>` +
+    setupNotice +
     `<main class="three-col${related.length ? ' right-open' : ''}" id="cols" data-default-right-open="${related.length ? '1' : '0'}">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
         (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3>${noteGroups}` : '') +
