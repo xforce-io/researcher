@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
 import { fork } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RUN_IPC_ENV, type RunEvent } from '../pipeline/events.js';
 import type { Stage } from '../state/runs.js';
 
@@ -14,15 +17,19 @@ export type TaskJob = (
   onEvent: (ev: RunEvent) => void,
 ) => Promise<number>;
 
+export type TaskStatus = 'running' | 'done' | 'error';
+
 export interface RunTask {
   id: string;
   slug: string;
   lines: string[];
-  status: 'running' | 'done' | 'error';
+  status: TaskStatus;
   exitCode: number | null;
   startedAt: number;
   plan: Stage[] | null;
   stage: Stage | null;
+  /** Why the task ended, when not a normal exit (e.g. unknown task id). */
+  endReason?: 'unknown' | 'fork-error';
 }
 
 interface Listener {
@@ -35,17 +42,50 @@ let globalSeq = 0;
 const defaultIdSeq = () => `task-${++globalSeq}`;
 
 /**
+ * Resolve the researcher CLI entry for forking `run`.
+ * Prefer the compiled sibling of this module (`dist/cli.js`), not `process.argv[1]`
+ * (which breaks when serve is started via `node -e` or other non-cli hosts).
+ */
+export function resolveCliEntry(metaUrl: string = import.meta.url): string {
+  // dist/web/tasks.js → dist/cli.js ; src/web/tasks.ts under tsx → less common for serve
+  const here = dirname(fileURLToPath(metaUrl));
+  const candidates = [
+    join(here, '../cli.js'),
+    join(here, '../../dist/cli.js'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  // Last resort: argv (normal `node dist/cli.js serve` / npm bin)
+  if (process.argv[1] && existsSync(process.argv[1])) return process.argv[1];
+  return candidates[0];
+}
+
+/**
  * Default runner: fork this CLI's `run` as a child process. stdout+stderr are
  * piped and split into log lines; structured stage/plan events arrive over the
  * Node IPC channel (the child calls process.send) — kept off stdout so the two
  * never collide and need no ordering guarantee.
  */
-export function defaultRunner(cliEntry: string): Runner {
+export function defaultRunner(cliEntry: string = resolveCliEntry()): Runner {
   return (cwd, onLine, onEvent, workspaceRoot) =>
     new Promise<number>((resolve) => {
+      if (!cliEntry || !existsSync(cliEntry)) {
+        onLine(`runner error: CLI entry not found: ${cliEntry || '(empty)'}`);
+        onLine('hint: start serve via `researcher serve` / `node dist/cli.js serve`, not node -e');
+        resolve(1);
+        return;
+      }
       const env: NodeJS.ProcessEnv = { ...process.env, [RUN_IPC_ENV]: '1' };
       if (workspaceRoot) env.RESEARCHER_WORKSPACE_ROOT = workspaceRoot;
-      const child = fork(cliEntry, ['run'], { cwd, silent: true, env });
+      let child: ReturnType<typeof fork>;
+      try {
+        child = fork(cliEntry, ['run'], { cwd, silent: true, env });
+      } catch (err) {
+        onLine(`runner error: failed to fork: ${err instanceof Error ? err.message : String(err)}`);
+        resolve(1);
+        return;
+      }
       let buf = '';
       const onData = (chunk: Buffer) => {
         buf += chunk.toString();
@@ -59,7 +99,11 @@ export function defaultRunner(cliEntry: string): Runner {
       child.stderr?.on('data', onData);
       child.on('message', (msg) => onEvent(msg as RunEvent));
       child.on('exit', (code) => { if (buf.length) onLine(buf); resolve(code ?? 0); });
-      child.on('error', () => { if (buf.length) onLine(buf); resolve(1); });
+      child.on('error', (err) => {
+        if (buf.length) onLine(buf);
+        onLine(`runner error: ${err.message}`);
+        resolve(1);
+      });
     });
 }
 
@@ -72,7 +116,7 @@ export class TaskRegistry {
   private readonly listeners = new Map<string, Set<Listener>>();
 
   constructor(opts?: { runner?: Runner; bufferLines?: number; idSeq?: () => string }) {
-    this.runner = opts?.runner ?? defaultRunner(process.argv[1] ?? '');
+    this.runner = opts?.runner ?? defaultRunner();
     this.bufferLines = opts?.bufferLines ?? 2000;
     this.idSeq = opts?.idSeq ?? defaultIdSeq;
   }
@@ -131,6 +175,11 @@ export class TaskRegistry {
     return this.tasks.get(id);
   }
 
+  /**
+   * Subscribe to a task. Replays buffer / plan / stage.
+   * If the task id is unknown, immediately ends with status error + endReason unknown
+   * so SSE clients never hang in a false RUNNING state.
+   */
   subscribe(
     id: string,
     onLine: (line: string) => void,
@@ -138,10 +187,23 @@ export class TaskRegistry {
     onEnd: (t: RunTask) => void,
   ): () => void {
     const task = this.tasks.get(id);
-    if (!task) return () => {};
-    if (task.plan) onEvent({ type: 'plan', stages: task.plan });   // replay current
+    if (!task) {
+      onEnd({
+        id,
+        slug: '',
+        lines: [],
+        status: 'error',
+        exitCode: null,
+        startedAt: 0,
+        plan: null,
+        stage: null,
+        endReason: 'unknown',
+      });
+      return () => {};
+    }
+    if (task.plan) onEvent({ type: 'plan', stages: task.plan });
     if (task.stage) onEvent({ type: 'stage', name: task.stage });
-    for (const l of task.lines) onLine(l);                          // replay buffer
+    for (const l of task.lines) onLine(l);
     if (task.status !== 'running') { onEnd(task); return () => {}; }
     const listener: Listener = { onLine, onEvent, onEnd };
     this.listeners.get(id)!.add(listener);

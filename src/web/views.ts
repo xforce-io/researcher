@@ -1222,23 +1222,39 @@ function subscribe(taskId, t0) {
   runBtn.classList.add('is-running');
   statusEl.textContent = 'running'; statusEl.className = 'run-status running';
   startTimer(t0); setBtnLabel();
+  let errStreak = 0;
+  let settled = false;
+  const settle = (label, cls, msg) => {
+    if (settled) return;
+    settled = true;
+    try { es.close(); } catch {}
+    if (msg) append(msg);
+    finish(label, cls);
+  };
   const es = new EventSource('/t/' + slug + '/run/' + taskId + '/stream');
-  es.addEventListener('plan', (ev) => { plan = JSON.parse(ev.data).stages; renderStages(); setBtnLabel(); });
-  es.addEventListener('stage', (ev) => { current = JSON.parse(ev.data).name; renderStages(); setBtnLabel(); });
-  es.addEventListener('line', (ev) => append(JSON.parse(ev.data) + '\\n'));
+  es.addEventListener('plan', (ev) => { errStreak = 0; plan = JSON.parse(ev.data).stages; renderStages(); setBtnLabel(); });
+  es.addEventListener('stage', (ev) => { errStreak = 0; current = JSON.parse(ev.data).name; renderStages(); setBtnLabel(); });
+  es.addEventListener('line', (ev) => { errStreak = 0; append(JSON.parse(ev.data) + '\\n'); });
   es.addEventListener('end', (ev) => {
-    es.close();
     let data = {};
     try { data = JSON.parse(ev.data || '{}'); } catch {}
+    if (data.endReason === 'unknown') {
+      settle('gone', 'err', '\\n\\u2717 run task not found (serve may have restarted).\\n');
+      return;
+    }
     if (data.status === 'done' || data.exitCode === 0) {
-      append('\\n\\u2713 run finished.\\n');
-      finish('done', 'ok');
+      settle('done', 'ok', '\\n\\u2713 run finished.\\n');
     } else {
-      append('\\n\\u2717 run failed' + (data.exitCode == null ? '' : ' (exit ' + data.exitCode + ')') + '.\\n');
-      finish('error', 'err');
+      settle('error', 'err', '\\n\\u2717 run failed' + (data.exitCode == null ? '' : ' (exit ' + data.exitCode + ')') + '.\\n');
     }
   });
-  es.onerror = () => { if (es.readyState === EventSource.CLOSED) { append('\\n\\u2717 connection closed.\\n'); finish('disconnected', 'err'); } };
+  // EventSource auto-reconnects; stop after repeated errors so we never infinite-RUNNING.
+  es.onerror = () => {
+    errStreak++;
+    if (es.readyState === EventSource.CLOSED || errStreak >= 3) {
+      settle('disconnected', 'err', '\\n\\u2717 progress connection lost.\\n');
+    }
+  };
 }
 
 async function startRun() {
@@ -1252,7 +1268,7 @@ async function startRun() {
     if (res.status === 409) { append('A run is already in progress for this topic.\\n'); finish('busy', 'err'); return; }
     if (!res.ok) { append('Could not start run (HTTP ' + res.status + ').\\n'); finish('failed', 'err'); return; }
     const { taskId } = await res.json();
-    append('\\u25b6 run started — stages call the model and can be quiet for minutes.\\n   Safe to leave this open; the elapsed clock shows it is still alive.\\n\\n');
+    append('\\u25b6 run started — model stages can be quiet for a few minutes.\\n   Watch for stage changes or new log lines; the timer alone is not a heartbeat.\\n\\n');
     subscribe(taskId, Date.now());
   } catch (err) {
     append('\\n\\u2717 ' + (err && err.message ? err.message : err) + '\\n');

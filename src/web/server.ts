@@ -258,7 +258,13 @@ async function handle(
       (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
       (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
       (task) => {
-        res.write(`event: end\ndata: ${JSON.stringify({ status: task.status, exitCode: task.exitCode })}\n\n`);
+        res.write(
+          `event: end\ndata: ${JSON.stringify({
+            status: task.status,
+            exitCode: task.exitCode,
+            endReason: task.endReason,
+          })}\n\n`,
+        );
         res.end();
       },
     );
@@ -329,7 +335,13 @@ async function handle(
         (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
         (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
         (task) => {
-          res.write(`event: end\ndata: ${JSON.stringify({ status: task.status, exitCode: task.exitCode })}\n\n`);
+          res.write(
+            `event: end\ndata: ${JSON.stringify({
+              status: task.status,
+              exitCode: task.exitCode,
+              endReason: task.endReason,
+            })}\n\n`,
+          );
           res.end();
         },
       );
