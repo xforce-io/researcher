@@ -176,7 +176,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   background:rgba(255,255,255,.55); padding:1px 5px; border-radius:3px;
 }
 .modal-hint { margin:0 0 8px; font-size:13px; }
-.modal-wide { width:min(720px, 100%); max-width:720px; }
+.modal-wide { width:min(760px, 100%); max-width:760px; }
 .modal-actions {
   display:flex; gap:8px; justify-content:flex-end; align-items:center;
   margin-top:4px; flex-wrap:wrap;
@@ -189,12 +189,77 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .page-flash.error {
   background:#f8e8e6; border:1px solid #e8c4bf; color:#8a3a34;
 }
-.setup-review-h { margin:14px 0 6px; font-size:13px; color:var(--ink-soft); }
-.setup-preview {
-  margin:0; max-height:220px; overflow:auto;
-  padding:10px 12px; border:1px solid var(--line); border-radius:8px;
-  background:var(--paper); font:12px/1.45 var(--mono); white-space:pre-wrap;
+
+/* Complete setup review: scrollable body + sticky actions */
+.modal:has(.setup-review:not([hidden])) {
+  display:flex;
+  flex-direction:column;
+  max-height:min(88vh, 920px);
+  padding-bottom:14px;
+  overflow:hidden; /* scroll lives in .setup-review-scroll */
 }
+.setup-review {
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  flex:1 1 auto;
+  gap:0;
+}
+.setup-review-scroll {
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  padding-right:2px;
+}
+.setup-review-h {
+  margin:16px 0 8px;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.setup-review-h:first-of-type { margin-top:4px; }
+.setup-md {
+  margin:0;
+  max-height:none;
+  min-height:120px;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  overflow:visible;
+}
+.setup-md.reader {
+  padding:16px 18px;
+  font-size:14.5px;
+}
+.setup-md.reader h1 { font-size:22px; margin:0 0 12px; }
+.setup-md.reader h2 { font-size:17px; margin:22px 0 10px; }
+.setup-md.reader h3 { font-size:15px; margin:16px 0 8px; }
+.setup-md.reader p,
+.setup-md.reader li { line-height:1.65; }
+.setup-code {
+  margin:0 0 8px;
+  max-height:220px;
+  overflow:auto;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--paper);
+  font:12px/1.45 var(--mono);
+  white-space:pre-wrap;
+}
+.setup-review-actions {
+  flex:0 0 auto;
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--line-soft);
+  background:var(--surface);
+}
+/* legacy alias if any leftover markup */
+.setup-preview { max-height:220px; overflow:auto; }
 .card-oneline {
   margin:0 0 14px;
   color:var(--ink-soft); font-size:14px; line-height:1.55;
@@ -945,10 +1010,11 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   position:fixed;
   inset:0;
   display:grid;
-  place-items:start center;
-  padding:72px 18px 18px;
+  place-items:center;
+  padding:24px 18px;
   background:rgba(35, 33, 27, .28);
   z-index:80;
+  overflow:auto;
 }
 .modal-backdrop[hidden] { display:none; }
 .modal {
@@ -958,6 +1024,8 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   border-radius:10px;
   box-shadow:0 24px 60px -24px rgba(35,33,27,.55);
   padding:18px;
+  max-height:min(90vh, 960px);
+  overflow:auto;
 }
 .modal-head {
   display:flex;

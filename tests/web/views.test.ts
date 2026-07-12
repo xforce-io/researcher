@@ -677,6 +677,7 @@ describe('renderTopic run controls', () => {
     expect(html).toContain('Complete setup');
     expect(html).toContain('data-open-topic-setup');
     expect(html).toContain('topic-setup-modal');
+    expect(html).toContain('setup-md');
     expect(html).toContain('researcher onboard');
   });
 

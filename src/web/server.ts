@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
-import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderTopics, renderWorkspaceHome } from './views.js';
+import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
@@ -342,6 +342,8 @@ async function handle(
           JSON.stringify({
             projectYaml: draft.projectYaml,
             thesisMd: draft.thesisMd,
+            // Pre-rendered for the review pane (client has no marked).
+            thesisHtml: renderMarkdown(draft.thesisMd),
           }),
         );
       }

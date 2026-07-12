@@ -195,6 +195,11 @@ function renderNoteMarkdown(markdown: string): string {
   return marked.parse(src, { async: false }) as string;
 }
 
+/** Markdown → HTML for previews (thesis draft, docs). */
+export function renderMarkdown(markdown: string): string {
+  return marked.parse(markdown ?? '', { async: false }) as string;
+}
+
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
   if (fm) {
@@ -1218,14 +1223,16 @@ function renderTopicSetupModal(v: TopicView): string {
           `<button class="primary" type="button" id="topic-setup-generate">Generate draft</button>` +
         `</div>` +
       `</div>` +
-      `<div id="topic-setup-review-pane" hidden>` +
-        `<p class="muted modal-hint">Review the draft, then apply to this topic repo.</p>` +
-        `<h3 class="setup-review-h">Thesis</h3>` +
-        `<pre id="setup-thesis-preview" class="setup-preview"></pre>` +
-        `<h3 class="setup-review-h">project.yaml</h3>` +
-        `<pre id="setup-yaml-preview" class="setup-preview"></pre>` +
-        `<p id="topic-setup-apply-error" class="form-error" hidden></p>` +
-        `<div class="modal-actions">` +
+      `<div id="topic-setup-review-pane" class="setup-review" hidden>` +
+        `<div class="setup-review-scroll">` +
+          `<p class="modal-hint">Review the draft, then apply to this topic repo.</p>` +
+          `<h3 class="setup-review-h">Thesis</h3>` +
+          `<div id="setup-thesis-preview" class="setup-md reader" tabindex="0"></div>` +
+          `<h3 class="setup-review-h">project.yaml</h3>` +
+          `<pre id="setup-yaml-preview" class="setup-code"></pre>` +
+          `<p id="topic-setup-apply-error" class="form-error" hidden></p>` +
+        `</div>` +
+        `<div class="modal-actions setup-review-actions">` +
           `<button class="secondary" type="button" id="topic-setup-back">Back</button>` +
           `<button class="secondary" type="button" id="topic-setup-regen">Regenerate</button>` +
           `<button class="primary" type="button" id="topic-setup-apply">Apply</button>` +
@@ -1262,10 +1269,16 @@ const TOPIC_SETUP_JS = `
   }
   function showReview(d) {
     draft = d;
-    thesisPre.textContent = d.thesisMd || '';
+    // Prefer server-rendered HTML; fall back to escaped preformatted text.
+    if (d.thesisHtml) thesisPre.innerHTML = d.thesisHtml;
+    else thesisPre.textContent = d.thesisMd || '';
     yamlPre.textContent = d.projectYaml || '';
     formPane.hidden = true; reviewPane.hidden = false;
     if (applyErr) { applyErr.hidden = true; applyErr.textContent = ''; }
+    // Reset scroll so the top of the thesis is visible.
+    const sc = reviewPane.querySelector('.setup-review-scroll');
+    if (sc) sc.scrollTop = 0;
+    thesisPre.scrollTop = 0;
   }
   function formBody() {
     const fd = new URLSearchParams();

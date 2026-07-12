@@ -169,9 +169,10 @@ it('AI complete-setup generate + apply on a scaffolded topic', async () => {
       body: new URLSearchParams({ oneline: 'Setup target pillar', seeds: 'setup agent' }),
     });
     expect(gen.status).toBe(200);
-    const draft = await gen.json() as { projectYaml: string; thesisMd: string };
+    const draft = await gen.json() as { projectYaml: string; thesisMd: string; thesisHtml?: string };
     expect(draft.projectYaml).toContain('topic_oneline');
     expect(draft.thesisMd).toContain('Working thesis');
+    expect(draft.thesisHtml).toMatch(/<h[12][^>]*>.*Working thesis/i);
 
     const apply = await fetch(base + '/t/probe-setup/setup/apply', {
       method: 'POST',
