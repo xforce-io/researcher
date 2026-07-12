@@ -30,7 +30,16 @@ export async function rewriteAnswers(opts: RewriteOptions): Promise<RewriteResul
     timeoutMs: opts.timeoutMs ?? 5 * 60 * 1000,
   });
   if (result.exitCode !== 0) {
-    throw new Error(`agent runtime exit code ${result.exitCode}`);
+    const detail = (result.output || result.stderr || '').trim();
+    const short = detail
+      ? (detail.length > 600 ? `${detail.slice(0, 600)}…` : detail)
+      : `agent runtime exit code ${result.exitCode}`;
+    // Prefer milkie's own message; keep exit code as suffix for logs.
+    throw new Error(
+      detail
+        ? `${short} (exit ${result.exitCode})`
+        : `agent runtime exit code ${result.exitCode}`,
+    );
   }
   const parsed = parseResponse(result.output);
   return { ...parsed, rawOutput: result.output };

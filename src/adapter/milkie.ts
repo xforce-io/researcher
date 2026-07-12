@@ -45,13 +45,18 @@ export class MilkieAdapter implements AgentRuntime {
         },
       );
       const stdout = result.stdout ?? '';
+      const stderr = result.stderr ?? '';
       const output = extractMilkieOutput(stdout);
       const runId = extractMilkieRunId(stdout);
+      const exitCode = result.exitCode ?? 1;
+      // When milkie fails, prefer a human-readable CLI error from stdout/stderr
+      // over a bare "exit code N" at the call site.
+      const failureDetail = exitCode === 0 ? '' : extractMilkieErrorMessage(stdout, stderr);
       return {
-        output,
-        exitCode: result.exitCode ?? 1,
+        output: exitCode === 0 ? output : (failureDetail || output),
+        exitCode,
         modifiedFiles: parseFilesModified(output || stdout),
-        stderr: result.stderr ?? '',
+        stderr,
         finishReason: runId ? readMilkieFinishReason(opts.cwd, runId) : undefined,
       };
     } finally {
@@ -106,6 +111,29 @@ export function resolveMilkieBin(env: NodeJS.ProcessEnv = process.env): string {
   }
 
   return 'milkie';
+}
+
+function extractMilkieErrorMessage(stdout: string, stderr: string): string {
+  const combined = [stdout, stderr].filter(Boolean).join('\n').trim();
+  if (!combined) return '';
+  // milkie often prints a single JSON line: {"error":{"code":"…","message":"…"}}
+  for (const line of combined.split('\n').reverse()) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(t) as { error?: { message?: unknown; code?: unknown } };
+      const msg = parsed.error?.message;
+      if (typeof msg === 'string' && msg.trim()) {
+        const code = typeof parsed.error?.code === 'string' ? parsed.error.code : '';
+        return code ? `${code}: ${msg.trim()}` : msg.trim();
+      }
+    } catch {
+      // keep scanning
+    }
+  }
+  // Fall back to a short tail so UI errors stay readable.
+  const tail = combined.split('\n').filter(Boolean).slice(-6).join('\n');
+  return tail.length > 800 ? `${tail.slice(0, 800)}…` : tail;
 }
 
 function extractMilkieOutput(stdout: string): string {
