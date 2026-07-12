@@ -168,12 +168,32 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   margin:0; padding:10px 22px;
   background:#f7f1dc; border-bottom:1px solid #e4d7a8;
   color:#5c4a1f; font-size:13.5px; line-height:1.45;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
 }
+.setup-banner-text { flex:1 1 240px; }
 .setup-banner code {
   font-family:var(--mono); font-size:12px;
   background:rgba(255,255,255,.55); padding:1px 5px; border-radius:3px;
 }
 .modal-hint { margin:0 0 8px; font-size:13px; }
+.modal-wide { max-width:720px; width:min(720px, 94vw); }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+.form-error { color:#a4453d; font-size:13px; margin:8px 0 0; }
+.setup-review-h { margin:14px 0 6px; font-size:13px; color:var(--ink-soft); }
+.setup-preview {
+  margin:0; max-height:220px; overflow:auto;
+  padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+  background:var(--surface); font:12px/1.45 var(--mono); white-space:pre-wrap;
+}
+#topic-setup-form-pane label,
+#topic-setup-form-pane textarea {
+  display:block; width:100%;
+}
+#topic-setup-form-pane textarea {
+  margin-top:4px; margin-bottom:10px;
+  font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:6px;
+  resize:vertical;
+}
 .card-oneline {
   margin:0 0 14px;
   color:var(--ink-soft); font-size:14px; line-height:1.55;

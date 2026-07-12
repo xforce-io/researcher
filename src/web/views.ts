@@ -1052,11 +1052,14 @@ export function renderTopic(
   }
   const setupNotice = v.needsSetup
     ? `<div class="setup-banner" role="status">` +
-        `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
-        `Run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code> ` +
-        `or edit <code>.researcher/thesis.md</code> and research questions.` +
+        `<div class="setup-banner-text">` +
+          `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
+          `Generate an AI draft, or run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code>.` +
+        `</div>` +
+        `<button type="button" class="primary" data-open-topic-setup>Complete setup</button>` +
       `</div>`
     : '';
+  const setupModal = v.needsSetup ? renderTopicSetupModal(v) : '';
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
@@ -1137,9 +1140,132 @@ export function renderTopic(
         `<ul class="seen-list">${seenRows || '<li class="muted">—</li>'}</ul>` +
       `</aside>` +
     `</main>` +
-    `<script>${TOPIC_JS}</script>`;
+    setupModal +
+    `<script>${TOPIC_JS}${v.needsSetup ? TOPIC_SETUP_JS : ''}</script>`;
   return page(`${v.path} · researcher`, body);
 }
+
+function renderTopicSetupModal(v: TopicView): string {
+  return `<div id="topic-setup-modal" class="modal-backdrop" hidden>` +
+    `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="topic-setup-title">` +
+      `<div class="modal-head"><h2 id="topic-setup-title">Complete setup</h2>` +
+      `<button class="icon-button" type="button" data-close-topic-setup aria-label="Close">x</button></div>` +
+      `<div id="topic-setup-form-pane">` +
+        `<p class="muted modal-hint">AI will draft <code>thesis.md</code> and <code>project.yaml</code> from a short intent. Review before applying.</p>` +
+        `<label>One-line intent<input id="setup-oneline" name="oneline" required value="${escapeHtml(v.oneline)}" placeholder="What is this pillar about?"></label>` +
+        `<label>Stake / decision (optional)<textarea id="setup-stake" name="stake" rows="2" placeholder="Who decides, what is at stake, what artifact?"></textarea></label>` +
+        `<label>Seed keywords (optional)<input id="setup-seeds" name="seeds" placeholder="arxiv query phrases, comma or newline separated"></label>` +
+        `<label>Language<input id="setup-language" name="language" value="${escapeHtml(v.language || 'zh')}" placeholder="zh or en"></label>` +
+        `<p id="topic-setup-error" class="form-error" hidden></p>` +
+        `<div class="modal-actions">` +
+          `<button class="primary" type="button" id="topic-setup-generate">Generate draft</button>` +
+        `</div>` +
+      `</div>` +
+      `<div id="topic-setup-review-pane" hidden>` +
+        `<p class="muted modal-hint">Review the draft, then apply to this topic repo.</p>` +
+        `<h3 class="setup-review-h">Thesis</h3>` +
+        `<pre id="setup-thesis-preview" class="setup-preview"></pre>` +
+        `<h3 class="setup-review-h">project.yaml</h3>` +
+        `<pre id="setup-yaml-preview" class="setup-preview"></pre>` +
+        `<p id="topic-setup-apply-error" class="form-error" hidden></p>` +
+        `<div class="modal-actions">` +
+          `<button class="secondary" type="button" id="topic-setup-back">Back</button>` +
+          `<button class="secondary" type="button" id="topic-setup-regen">Regenerate</button>` +
+          `<button class="primary" type="button" id="topic-setup-apply">Apply</button>` +
+        `</div>` +
+      `</div>` +
+    `</div>` +
+  `</div>`;
+}
+
+const TOPIC_SETUP_JS = `
+(function () {
+  const modal = document.getElementById('topic-setup-modal');
+  if (!modal) return;
+  const openBtns = Array.from(document.querySelectorAll('[data-open-topic-setup]'));
+  const closeBtn = document.querySelector('[data-close-topic-setup]');
+  const formPane = document.getElementById('topic-setup-form-pane');
+  const reviewPane = document.getElementById('topic-setup-review-pane');
+  const errEl = document.getElementById('topic-setup-error');
+  const applyErr = document.getElementById('topic-setup-apply-error');
+  const genBtn = document.getElementById('topic-setup-generate');
+  const applyBtn = document.getElementById('topic-setup-apply');
+  const backBtn = document.getElementById('topic-setup-back');
+  const regenBtn = document.getElementById('topic-setup-regen');
+  const thesisPre = document.getElementById('setup-thesis-preview');
+  const yamlPre = document.getElementById('setup-yaml-preview');
+  let draft = null;
+  const topicSlug = document.getElementById('run-btn')?.dataset.slug || '';
+
+  function show() { modal.hidden = false; document.getElementById('setup-oneline')?.focus(); }
+  function hide() { modal.hidden = true; showForm(); }
+  function showForm() {
+    formPane.hidden = false; reviewPane.hidden = true; draft = null;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+  }
+  function showReview(d) {
+    draft = d;
+    thesisPre.textContent = d.thesisMd || '';
+    yamlPre.textContent = d.projectYaml || '';
+    formPane.hidden = true; reviewPane.hidden = false;
+    if (applyErr) { applyErr.hidden = true; applyErr.textContent = ''; }
+  }
+  function formBody() {
+    const fd = new URLSearchParams();
+    fd.set('oneline', document.getElementById('setup-oneline')?.value?.trim() || '');
+    fd.set('stake', document.getElementById('setup-stake')?.value?.trim() || '');
+    fd.set('seeds', document.getElementById('setup-seeds')?.value?.trim() || '');
+    fd.set('language', document.getElementById('setup-language')?.value?.trim() || '');
+    return fd;
+  }
+  async function generate() {
+    const fd = formBody();
+    if (!fd.get('oneline')) {
+      errEl.hidden = false; errEl.textContent = 'One-line intent is required.';
+      return;
+    }
+    genBtn.disabled = true; genBtn.textContent = 'Generating…';
+    errEl.hidden = true; errEl.textContent = '';
+    try {
+      const res = await fetch('/t/' + topicSlug + '/setup/generate', { method: 'POST', body: fd });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+      showReview(JSON.parse(text));
+    } catch (e) {
+      errEl.hidden = false; errEl.textContent = e.message || String(e);
+    } finally {
+      genBtn.disabled = false; genBtn.textContent = 'Generate draft';
+    }
+  }
+  async function apply() {
+    if (!draft) return;
+    applyBtn.disabled = true; applyBtn.textContent = 'Applying…';
+    applyErr.hidden = true;
+    try {
+      const fd = new URLSearchParams();
+      fd.set('oneline', document.getElementById('setup-oneline')?.value?.trim() || '');
+      fd.set('projectYaml', draft.projectYaml);
+      fd.set('thesisMd', draft.thesisMd);
+      const res = await fetch('/t/' + topicSlug + '/setup/apply', { method: 'POST', body: fd, redirect: 'follow' });
+      if (!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
+      window.location.href = '/t/' + topicSlug;
+    } catch (e) {
+      applyErr.hidden = false; applyErr.textContent = e.message || String(e);
+      applyBtn.disabled = false; applyBtn.textContent = 'Apply';
+    }
+  }
+  openBtns.forEach((b) => b.addEventListener('click', show));
+  closeBtn?.addEventListener('click', hide);
+  modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) hide();
+  });
+  genBtn?.addEventListener('click', generate);
+  regenBtn?.addEventListener('click', () => { showForm(); generate(); });
+  backBtn?.addEventListener('click', showForm);
+  applyBtn?.addEventListener('click', apply);
+})();
+`;
 
 const TOPIC_JS = `
 const slug = document.getElementById('run-btn')?.dataset.slug;
