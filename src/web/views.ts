@@ -980,13 +980,14 @@ function renderAddTopicModal(state: AddTopicFormState = {}): string {
       `<div class="modal-head"><h2 id="add-topic-title">New topic</h2>` +
       `<button class="icon-button" type="button" data-close-add-topic aria-label="Close">x</button></div>` +
       `<form class="modal-form add-topic-form" action="/topics" method="post">` +
-        `<label><span>Path</span>` +
-          `<input name="path" required placeholder="decision" value="${escapeHtml(state.path ?? '')}" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" title="ASCII letters, digits, ., _, -; optional nested like feeds/ai-safety" autocomplete="off">` +
-          `<span class="field-hint">ASCII folder name under the workspace (e.g. <code>decision</code> or <code>feeds/ai-safety</code>). Not Chinese.</span>` +
+        `<label><span>Folder name</span>` +
+          `<input name="path" required placeholder="world-model" value="${escapeHtml(state.path ?? '')}" autocomplete="off" data-slug-input>` +
+          `<span class="field-hint">Directory id under the workspace. Spaces become hyphens (<code>world model</code> → <code>world-model</code>). Chinese belongs in One-line below.</span>` +
+          `<span class="field-hint slug-preview" data-slug-preview hidden></span>` +
         `</label>` +
         `<label><span>One-line intent</span>` +
-          `<input name="oneline" required placeholder="What is this pillar about?" value="${escapeHtml(state.oneline ?? '')}" autocomplete="off">` +
-          `<span class="field-hint">One sentence: artifact, decision-maker, what's at stake</span>` +
+          `<input name="oneline" required placeholder="World model 领域研究进展…" value="${escapeHtml(state.oneline ?? '')}" autocomplete="off">` +
+          `<span class="field-hint">Any language. One sentence: what this pillar is about.</span>` +
         `</label>` +
         err +
         `<p class="modal-hint">Creates a local topic directory, scaffolds <code>.researcher/</code>, and registers it in the workspace. No AI in this step.</p>` +
@@ -1005,20 +1006,45 @@ function showAddTopic() {
   if (!addTopicModal) return;
   addTopicModal.hidden = false;
   addTopicModal.querySelector('input[name="path"]')?.focus();
+  updateSlugPreview();
 }
 function hideAddTopic() {
   if (!addTopicModal) return;
   addTopicModal.hidden = true;
   openAddTopicButtons[0]?.focus();
 }
+function slugifySeg(s) {
+  return String(s || '').trim().toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+}
+function updateSlugPreview() {
+  const input = addTopicModal?.querySelector('[data-slug-input]');
+  const preview = addTopicModal?.querySelector('[data-slug-preview]');
+  if (!input || !preview) return;
+  const raw = input.value.trim();
+  if (!raw) { preview.hidden = true; preview.textContent = ''; return; }
+  const slug = raw.replace(/\/+$/,'').split('/').map(slugifySeg).filter(Boolean).join('/');
+  if (slug && slug !== raw) {
+    preview.hidden = false;
+    preview.textContent = 'Will create folder: ' + slug;
+  } else {
+    preview.hidden = true;
+    preview.textContent = '';
+  }
+}
 openAddTopicButtons.forEach((btn) => btn.addEventListener('click', showAddTopic));
 closeAddTopic?.addEventListener('click', hideAddTopic);
 addTopicModal?.addEventListener('click', (e) => {
   if (e.target === addTopicModal) hideAddTopic();
 });
+addTopicModal?.querySelector('[data-slug-input]')?.addEventListener('input', updateSlugPreview);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && addTopicModal && !addTopicModal.hidden) hideAddTopic();
 });
+if (addTopicModal && !addTopicModal.hidden) updateSlugPreview();
 `;
 
 export function renderTopics(m: DashboardModel, addTopic: AddTopicFormState = {}): string {

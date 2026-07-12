@@ -215,7 +215,7 @@ it('rejects invalid topic create payloads', async () => {
   });
   expect(badPath.status).toBe(400);
   const badHtml = await badPath.text();
-  expect(badHtml).toMatch(/topic path/i);
+  expect(badHtml).toMatch(/folder name|topic path|\.\./i);
   expect(badHtml).toContain('add-topic-modal');
   expect(badHtml).toContain('form-error');
   // Must not dump a bare text/plain error page.

@@ -115,8 +115,8 @@ async function handle(
           open: true,
         }),
       );
-    if (!topicPath) return fail('topic path is required (e.g. decision or feeds/ai-safety)');
-    if (!oneline) return fail('one-line intent is required');
+    if (!topicPath) return fail('folder name is required (e.g. world-model or feeds/ai-safety)');
+    if (!oneline) return fail('one-line intent is required — any language is fine');
     try {
       const created = createWorkspaceTopic({ root, path: topicPath, oneline });
       return redirect(res, `/t/${created.slug}`);

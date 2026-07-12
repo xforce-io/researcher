@@ -27,6 +27,13 @@ describe('normalizeTopicPath', () => {
     expect(normalizeTopicPath('  a.b_c-1  ')).toBe('a.b_c-1');
   });
 
+  it('slugifies spaces and case (human-friendly folder labels)', () => {
+    expect(normalizeTopicPath('world model')).toBe('world-model');
+    expect(normalizeTopicPath('World Model')).toBe('world-model');
+    expect(normalizeTopicPath('feeds/AI Safety')).toBe('feeds/ai-safety');
+    expect(normalizeTopicPath('a b')).toBe('a-b');
+  });
+
   it.each([
     '',
     '.',
@@ -35,14 +42,13 @@ describe('normalizeTopicPath', () => {
     '/abs',
     'a//b',
     'a/b/c/d',
-    'a b',
     'a\\b',
     '~/.ssh',
     'http://x',
     './x',
-    'x/',
+    '决策',
   ])('rejects %j', (raw) => {
-    expect(() => normalizeTopicPath(raw)).toThrow(/topic path/i);
+    expect(() => normalizeTopicPath(raw)).toThrow(/folder name/i);
   });
 });
 
