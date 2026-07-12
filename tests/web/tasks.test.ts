@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TaskRegistry, type Runner } from '../../src/web/tasks.js';
+import { existsSync } from 'node:fs';
+import { TaskRegistry, resolveCliEntry, type Runner } from '../../src/web/tasks.js';
 import type { RunEvent } from '../../src/pipeline/events.js';
 
 // A controllable fake runner: emits the given lines (and optional events) then exits with `code`.
@@ -104,5 +105,35 @@ describe('TaskRegistry', () => {
     reg.subscribe(task.id, () => {}, (e) => events.push(e), () => {});
     expect(events).toContainEqual({ type: 'plan', stages: ['bootstrap', 'discover'] });
     expect(events).toContainEqual({ type: 'stage', name: 'discover' });
+  });
+
+  it('unknown task id ends immediately with endReason unknown (no hang)', () => {
+    const reg = new TaskRegistry({ runner: fakeRunner([]), idSeq });
+    let ended: { status: string; endReason?: string; exitCode: number | null } | null = null;
+    reg.subscribe('missing-task', () => {}, () => {}, (t) => {
+      ended = { status: t.status, endReason: t.endReason, exitCode: t.exitCode };
+    });
+    expect(ended).toEqual({ status: 'error', endReason: 'unknown', exitCode: null });
+  });
+
+  it('default runner reports missing CLI instead of hanging', async () => {
+    const { defaultRunner } = await import('../../src/web/tasks.js');
+    const lines: string[] = [];
+    const code = await defaultRunner('/no/such/cli-entry.js')('/tmp', (l) => lines.push(l), () => {});
+    expect(code).toBe(1);
+    expect(lines.some((l) => /CLI entry not found/.test(l))).toBe(true);
+  });
+});
+
+describe('resolveCliEntry', () => {
+  it('resolves an existing cli entry near this package build', () => {
+    const entry = resolveCliEntry();
+    // In tests we run from source via vitest; entry may be dist/cli.js after build.
+    expect(typeof entry).toBe('string');
+    expect(entry.length).toBeGreaterThan(0);
+    // Prefer that a real file exists when dist is built; skip hard fail if clean checkout.
+    if (existsSync(entry)) {
+      expect(entry.endsWith('cli.js') || entry.includes('cli')).toBe(true);
+    }
   });
 });

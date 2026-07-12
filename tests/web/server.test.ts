@@ -384,6 +384,15 @@ it('starts a run and streams via SSE', async () => {
   expect(text).toContain('"exitCode":0');
 });
 
+it('unknown run task stream ends immediately (no false RUNNING hang)', async () => {
+  const sse = await fetch(base + '/t/trace/run/missing-task-id/stream');
+  expect(sse.status).toBe(200);
+  const text = await sse.text();
+  expect(text).toContain('event: end');
+  expect(text).toContain('"endReason":"unknown"');
+  expect(text).toContain('"status":"error"');
+});
+
 it('serves css', async () => {
   const res = await fetch(base + '/static/app.css');
   expect(res.status).toBe(200);
