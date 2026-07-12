@@ -332,10 +332,10 @@ function renderAddPaperModal(topicPaths: string[]): string {
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
       `<button class="icon-button" type="button" data-close-add-paper aria-label="Close">x</button></div>` +
-      `<form class="add-paper-form" action="/library/add" method="post">` +
-        `<label>Paper source<input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
-        `<label>Tags<input name="tags" placeholder="survey, benchmark"></label>` +
-        `<label>Topic context<select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
+      `<form class="modal-form add-paper-form" action="/library/add" method="post">` +
+        `<label><span>Paper source</span><input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
+        `<label><span>Tags</span><input name="tags" placeholder="survey, benchmark"></label>` +
+        `<label><span>Topic context</span><select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
         `<button class="primary" type="submit">Add paper</button>` +
       `</form>` +
     `</div>` +
@@ -967,10 +967,16 @@ function renderAddTopicModal(): string {
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-topic-title">` +
       `<div class="modal-head"><h2 id="add-topic-title">New topic</h2>` +
       `<button class="icon-button" type="button" data-close-add-topic aria-label="Close">x</button></div>` +
-      `<form class="add-topic-form" action="/topics" method="post">` +
-        `<label>Path<input name="path" required placeholder="decision" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" autocomplete="off"></label>` +
-        `<label>One-line intent<input name="oneline" required placeholder="What is this pillar about?" autocomplete="off"></label>` +
-        `<p class="muted modal-hint">Creates a local topic directory, scaffolds .researcher/, and registers it in the workspace.</p>` +
+      `<form class="modal-form add-topic-form" action="/topics" method="post">` +
+        `<label><span>Path</span>` +
+          `<input name="path" required placeholder="decision" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" autocomplete="off">` +
+          `<span class="field-hint">Folder name under the workspace (e.g. decision or feeds/ai-safety)</span>` +
+        `</label>` +
+        `<label><span>One-line intent</span>` +
+          `<input name="oneline" required placeholder="What is this pillar about?" autocomplete="off">` +
+          `<span class="field-hint">One sentence: artifact, decision-maker, what's at stake</span>` +
+        `</label>` +
+        `<p class="modal-hint">Creates a local topic directory, scaffolds <code>.researcher/</code>, and registers it in the workspace. No AI in this step.</p>` +
         `<button class="primary" type="submit">Create topic</button>` +
       `</form>` +
     `</div>` +
@@ -1150,12 +1156,20 @@ function renderTopicSetupModal(v: TopicView): string {
     `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="topic-setup-title">` +
       `<div class="modal-head"><h2 id="topic-setup-title">Complete setup</h2>` +
       `<button class="icon-button" type="button" data-close-topic-setup aria-label="Close">x</button></div>` +
-      `<div id="topic-setup-form-pane">` +
-        `<p class="muted modal-hint">AI will draft <code>thesis.md</code> and <code>project.yaml</code> from a short intent. Review before applying.</p>` +
-        `<label>One-line intent<input id="setup-oneline" name="oneline" required value="${escapeHtml(v.oneline)}" placeholder="What is this pillar about?"></label>` +
-        `<label>Stake / decision (optional)<textarea id="setup-stake" name="stake" rows="2" placeholder="Who decides, what is at stake, what artifact?"></textarea></label>` +
-        `<label>Seed keywords (optional)<input id="setup-seeds" name="seeds" placeholder="arxiv query phrases, comma or newline separated"></label>` +
-        `<label>Language<input id="setup-language" name="language" value="${escapeHtml(v.language || 'zh')}" placeholder="zh or en"></label>` +
+      `<div id="topic-setup-form-pane" class="modal-form">` +
+        `<p class="modal-hint">AI drafts <code>thesis.md</code> and <code>project.yaml</code> from a short intent. You review before anything is written.</p>` +
+        `<label><span>One-line intent</span>` +
+          `<input id="setup-oneline" name="oneline" required value="${escapeHtml(v.oneline)}" placeholder="What is this pillar about?">` +
+        `</label>` +
+        `<label><span>Stake / decision <span class="muted">(optional)</span></span>` +
+          `<textarea id="setup-stake" name="stake" rows="2" placeholder="Who decides, what is at stake, what artifact?"></textarea>` +
+        `</label>` +
+        `<label><span>Seed keywords <span class="muted">(optional)</span></span>` +
+          `<input id="setup-seeds" name="seeds" placeholder="arxiv query phrases">` +
+        `</label>` +
+        `<label><span>Language</span>` +
+          `<input id="setup-language" name="language" value="${escapeHtml(v.language || 'zh')}" placeholder="zh or en">` +
+        `</label>` +
         `<p id="topic-setup-error" class="form-error" hidden></p>` +
         `<div class="modal-actions">` +
           `<button class="primary" type="button" id="topic-setup-generate">Generate draft</button>` +
