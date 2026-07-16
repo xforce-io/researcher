@@ -2,7 +2,16 @@ import { marked } from 'marked';
 import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
 import { displayLibraryReadMarkdown } from './library-read-sections.js';
+import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
+
+/** marked → HTML with XSS hardening for untrusted note/report/read bodies (#77). */
+function markedHtml(markdown: string): string {
+  return sanitizeHtml(marked.parse(markdown ?? '', { async: false }) as string);
+}
+function markedInline(markdown: string): string {
+  return sanitizeHtml(marked.parseInline(markdown ?? '', { async: false }) as string);
+}
 
 function renderMath(src: string, displayMode: boolean): string {
   return katex.renderToString(src, {
@@ -160,9 +169,9 @@ function mastheadBlockquote(body: string): { html: string; rest: string } | null
   }
   if (rows.length < 2) return null;
   const dl = `<dl class="fm">` + rows.map((r) =>
-    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${markedInline(r.v)}</dd></div>`,
   ).join('') + `</dl>`;
-  return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
+  return { html: markedHtml(m[1]) + dl, rest: body.slice(m[0].length) };
 }
 
 function leadingMetaParagraph(body: string): { html: string; rest: string } | null {
@@ -184,21 +193,21 @@ function leadingMetaParagraph(body: string): { html: string; rest: string } | nu
   }
   if (rows.length < 2) return null;
   const dl = `<dl class="fm compact">` + rows.map((r) =>
-    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${marked.parseInline(r.v, { async: false })}</dd></div>`,
+    `<div${metaRowClass(r.k, r.v)}><dt>${escapeHtml(r.k)}</dt><dd>${markedInline(r.v)}</dd></div>`,
   ).join('') + `</dl>`;
-  return { html: (marked.parse(m[1], { async: false }) as string) + dl, rest: body.slice(m[0].length) };
+  return { html: markedHtml(m[1]) + dl, rest: body.slice(m[0].length) };
 }
 
 /** User paper notes: full markdown (lists, emphasis, code, links). No frontmatter/masthead. */
 function renderNoteMarkdown(markdown: string): string {
   const src = markdown.trim();
   if (!src) return '';
-  return marked.parse(src, { async: false }) as string;
+  return markedHtml(src);
 }
 
 /** Markdown → HTML for previews (thesis draft, docs). */
 export function renderMarkdown(markdown: string): string {
-  return marked.parse(markdown ?? '', { async: false }) as string;
+  return markedHtml(markdown ?? '');
 }
 
 export function renderDoc(markdown: string): string {
@@ -210,13 +219,13 @@ export function renderDoc(markdown: string): string {
     const head = noteMasthead(fm);
     if (mast) {
       const mastHtml = head ? mast.html.replace(/^<h1[^>]*>[\s\S]*?<\/h1>\n?/, '') : mast.html;
-      return head + mastHtml + (marked.parse(mast.rest, { async: false }) as string);
+      return head + mastHtml + markedHtml(mast.rest);
     }
-    return head + (marked.parse(displayBody, { async: false }) as string);
+    return head + markedHtml(displayBody);
   }
   const mast = mastheadBlockquote(body);
-  if (mast) return mast.html + (marked.parse(mast.rest, { async: false }) as string);
-  return marked.parse(body, { async: false }) as string;
+  if (mast) return mast.html + markedHtml(mast.rest);
+  return markedHtml(body);
 }
 
 /** Body of a Library read artifact: strip duplicate title; no system frontmatter table. */
@@ -227,7 +236,7 @@ function renderLibraryReadBody(markdown: string, paperTitle: string): string {
   displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
   // Historical ## Brief shares the Essence first-screen slot (#98).
   displayBody = displayLibraryReadMarkdown(displayBody);
-  return marked.parse(displayBody, { async: false }) as string;
+  return markedHtml(displayBody);
 }
 
 /**

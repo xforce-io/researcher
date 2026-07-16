@@ -23,6 +23,7 @@ import { classifyContradictions } from '../pipeline/contradictions.js';
 import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
 import type { LibraryReadRunner } from '../web/library-read.js';
+import { resolveRunSourceMode } from './run-source-mode.js';
 
 /** Resolve a configured inbox_dir, expanding a leading ~. */
 function resolveInboxDir(p: string | undefined): string | null {
@@ -78,9 +79,12 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       return;
     }
 
-    // Feed mode: an x-inbox source side-mounts a second pipeline that consumes
-    // the repo-external inbox queue. The arxiv/url discover→read path is untouched.
-    const feedSource = ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox');
+    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
+    // silently skip paper discovery because an x-inbox source is present.
+    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
+    const feedSource = mode === 'feed'
+      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
+      : undefined;
     if (feedSource) {
       const inboxDir = resolveInboxDir(feedSource.inbox_dir);
       if (!inboxDir) {

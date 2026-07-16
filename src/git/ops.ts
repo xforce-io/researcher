@@ -52,6 +52,11 @@ export async function stashDrop(o: { cwd: string }): Promise<void> {
   await execa('git', ['stash', 'drop'], { cwd: o.cwd });
 }
 
+/** Restore the most recent stash onto the working tree (may leave conflicts). */
+export async function stashPop(o: { cwd: string }): Promise<void> {
+  await execa('git', ['stash', 'pop'], { cwd: o.cwd });
+}
+
 /** Best-effort fast-forward pull from origin/<branch>. Silently no-ops when local-only / offline / no remote. */
 export async function pullFastForward(o: { cwd: string; branch: string; remote: boolean }): Promise<void> {
   if (!o.remote) return;
