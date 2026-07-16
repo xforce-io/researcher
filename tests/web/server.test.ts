@@ -63,6 +63,39 @@ beforeAll(async () => {
         title: 'Metadata Title From Read',
       };
     },
+    setupRuntime: {
+      id: 'mock-setup',
+      async invoke() {
+        const yaml = [
+          'meta:',
+          '  topic_oneline: "Web-created probe pillar"',
+          '  language: zh',
+          'research_questions:',
+          '  - { id: RQ1, text: "How does setup work?" }',
+          'inclusion_criteria: []',
+          'exclusion_criteria: []',
+          'sources:',
+          '  - { kind: arxiv, queries: [setup] }',
+          'cadence:',
+          '  default_interval_days: 7',
+          '  backoff_after_empty_runs: 3',
+        ].join('\n');
+        const thesis = '# Thesis\n\n## Working thesis\n\nSetup works when AI drafts are applied.\n';
+        return {
+          exitCode: 0,
+          modifiedFiles: [],
+          output: [
+            '<<<PROJECT_YAML>>>',
+            yaml,
+            '<<<END_PROJECT_YAML>>>',
+            '',
+            '<<<THESIS_MD>>>',
+            thesis,
+            '<<<END_THESIS_MD>>>',
+          ].join('\n'),
+        };
+      },
+    },
   });
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -104,6 +137,8 @@ it('creates a local topic through POST /topics', async () => {
   const html = await detail.text();
   expect(html).toContain('Web-created probe pillar');
   expect(html).toContain('Needs setup');
+  expect(html).toContain('Complete setup');
+  expect(html).toContain('/setup/generate');
 
   const list = await fetch(base + '/topics');
   expect(await list.text()).toContain('/t/probe-web');
@@ -111,6 +146,59 @@ it('creates a local topic through POST /topics', async () => {
   const dupe = await fetch(base + '/topics', { method: 'POST', body: form, redirect: 'manual' });
   expect(dupe.status).toBe(400);
   expect(await dupe.text()).toMatch(/already exists/);
+});
+
+it('AI complete-setup generate + apply on a scaffolded topic', async () => {
+  // Ensure onboarding methodology is available for generateTopicSetup.
+  const { resolvePackageRoot } = await import('../../src/paths.js');
+  const methHome = mkdtempSync(join(tmpdir(), 'r-srv-meth-'));
+  mkdirSync(join(methHome, 'methodology'), { recursive: true });
+  writeFileSync(
+    join(methHome, 'methodology/onboarding.md'),
+    readFileSync(join(resolvePackageRoot(), 'methodology/onboarding.md')),
+  );
+  const prevHome = process.env.RESEARCHER_HOME;
+  process.env.RESEARCHER_HOME = methHome;
+  try {
+    // probe-web created by previous test; if order changes, create again.
+    const ensure = new URLSearchParams({ path: 'probe-setup', oneline: 'Setup target pillar' });
+    await fetch(base + '/topics', { method: 'POST', body: ensure, redirect: 'manual' });
+
+    const gen = await fetch(base + '/t/probe-setup/setup/generate', {
+      method: 'POST',
+      body: new URLSearchParams({ oneline: 'Setup target pillar', seeds: 'setup agent' }),
+    });
+    expect(gen.status).toBe(200);
+    const draft = await gen.json() as { projectYaml: string; thesisMd: string; thesisHtml?: string };
+    expect(draft.projectYaml).toContain('topic_oneline');
+    expect(draft.thesisMd).toContain('Working thesis');
+    expect(draft.thesisHtml).toMatch(/<h[12][^>]*>.*Working thesis/i);
+
+    const apply = await fetch(base + '/t/probe-setup/setup/apply', {
+      method: 'POST',
+      body: new URLSearchParams({
+        oneline: 'Setup target pillar',
+        projectYaml: draft.projectYaml,
+        thesisMd: draft.thesisMd,
+      }),
+      redirect: 'manual',
+    });
+    expect(apply.status).toBe(303);
+
+    const page = await fetch(base + '/t/probe-setup');
+    const html = await page.text();
+    expect(html).not.toContain('data-open-topic-setup');
+    expect(html).not.toContain('Needs setup');
+
+    const again = await fetch(base + '/t/probe-setup/setup/generate', {
+      method: 'POST',
+      body: new URLSearchParams({ oneline: 'Setup target pillar' }),
+    });
+    expect(again.status).toBe(409);
+  } finally {
+    if (prevHome === undefined) delete process.env.RESEARCHER_HOME;
+    else process.env.RESEARCHER_HOME = prevHome;
+  }
 });
 
 it('rejects invalid topic create payloads', async () => {
@@ -127,7 +215,12 @@ it('rejects invalid topic create payloads', async () => {
     redirect: 'manual',
   });
   expect(badPath.status).toBe(400);
-  expect(await badPath.text()).toMatch(/invalid topic path/);
+  const badHtml = await badPath.text();
+  expect(badHtml).toMatch(/folder name|topic path|\.\./i);
+  expect(badHtml).toContain('add-topic-modal');
+  expect(badHtml).toContain('form-error');
+  // Must not dump a bare text/plain error page.
+  expect(badHtml).toContain('<!doctype html>');
 });
 
 it('serves the library page', async () => {

@@ -3,10 +3,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
-import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderTopics, renderWorkspaceHome } from './views.js';
+import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
+import {
+  applyTopicSetup,
+  generateTopicSetup,
+  type TopicSetupForm,
+} from './topic-setup.js';
+import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseRelation, parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink } from '../commands/library.js';
@@ -19,6 +25,8 @@ export interface ServeOptions {
   port: number;
   registry?: TaskRegistry;
   libraryReadRunner?: LibraryReadRunner;
+  /** Test-only / override: agent used for Complete setup generate. */
+  setupRuntime?: AgentRuntime;
 }
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
@@ -50,7 +58,7 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   }
 
   const server = createServer((req, res) => {
-    handle(req, res, opts.root, registry, libraryReadRunner).catch((err) => {
+    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
     });
   });
@@ -61,12 +69,22 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   return { port, close: () => new Promise((r) => server.close(() => r())) };
 }
 
+function parseSetupForm(form: URLSearchParams): TopicSetupForm {
+  return {
+    oneline: form.get('oneline')?.trim() ?? '',
+    stake: form.get('stake')?.trim() || undefined,
+    seeds: form.get('seeds')?.trim() || undefined,
+    language: form.get('language')?.trim() || undefined,
+  };
+}
+
 async function handle(
   req: IncomingMessage,
   res: ServerResponse,
   root: string,
   registry: TaskRegistry,
   libraryReadRunner: LibraryReadRunner,
+  setupRuntime?: AgentRuntime,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const path = url.pathname;
@@ -85,13 +103,25 @@ async function handle(
     const form = new URLSearchParams(body);
     const topicPath = form.get('path')?.trim() ?? '';
     const oneline = form.get('oneline')?.trim() ?? '';
-    if (!topicPath) return send(res, 400, 'text/plain', 'missing topic path');
-    if (!oneline) return send(res, 400, 'text/plain', 'missing one-line');
+    const fail = (error: string) =>
+      send(
+        res,
+        400,
+        'text/html; charset=utf-8',
+        renderTopics(loadDashboard(root), {
+          path: topicPath,
+          oneline,
+          error,
+          open: true,
+        }),
+      );
+    if (!topicPath) return fail('folder name is required (e.g. world-model or feeds/ai-safety)');
+    if (!oneline) return fail('one-line intent is required — any language is fine');
     try {
       const created = createWorkspaceTopic({ root, path: topicPath, oneline });
       return redirect(res, `/t/${created.slug}`);
     } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+      return fail(err instanceof Error ? err.message : String(err));
     }
   }
   // GET /library
@@ -285,6 +315,49 @@ async function handle(
     const f = join(STATIC_DIR, 'app.css');
     if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
     return send(res, 200, 'text/css; charset=utf-8', readFileSync(f));
+  }
+
+  // POST /t/:slug/setup/generate|apply — AI Complete setup (before generic /t routes)
+  const setupM = path.match(/^\/t\/([^/]+)\/setup\/(generate|apply)$/);
+  if (req.method === 'POST' && setupM) {
+    const slug = setupM[1];
+    const action = setupM[2];
+    const topicDir = resolveTopicDir(root, slug);
+    if (!topicDir) return send(res, 404, 'text/plain', 'unknown topic');
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    try {
+      if (action === 'generate') {
+        const setupForm = parseSetupForm(form);
+        if (!setupForm.oneline) return send(res, 400, 'text/plain', 'missing one-line');
+        const draft = await generateTopicSetup({
+          topicDir,
+          form: setupForm,
+          runtime: setupRuntime,
+        });
+        return send(
+          res,
+          200,
+          'application/json; charset=utf-8',
+          JSON.stringify({
+            projectYaml: draft.projectYaml,
+            thesisMd: draft.thesisMd,
+            // Pre-rendered for the review pane (client has no marked).
+            thesisHtml: renderMarkdown(draft.thesisMd),
+          }),
+        );
+      }
+      // apply
+      const projectYaml = form.get('projectYaml') ?? '';
+      const thesisMd = form.get('thesisMd') ?? '';
+      const oneline = form.get('oneline')?.trim() ?? '';
+      await applyTopicSetup({ topicDir, projectYaml, thesisMd, oneline });
+      return redirect(res, `/t/${slug}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = /already set up|non-template/i.test(msg) ? 409 : 400;
+      return send(res, status, 'text/plain', msg);
+    }
   }
 
   const m = path.match(/^\/t\/([^/]+)(\/doc|\/paper|\/run(?:\/([^/]+)\/stream)?)?$/);

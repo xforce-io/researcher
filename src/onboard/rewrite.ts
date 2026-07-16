@@ -28,12 +28,36 @@ export async function rewriteAnswers(opts: RewriteOptions): Promise<RewriteResul
     systemPrompt,
     userPrompt,
     timeoutMs: opts.timeoutMs ?? 5 * 60 * 1000,
+    // Onboarding drafts are long; low caps often truncate before marker blocks.
+    maxTokens: 8192,
   });
   if (result.exitCode !== 0) {
-    throw new Error(`agent runtime exit code ${result.exitCode}`);
+    const detail = (result.output || result.stderr || '').trim();
+    const short = detail
+      ? (detail.length > 600 ? `${detail.slice(0, 600)}…` : detail)
+      : `agent runtime exit code ${result.exitCode}`;
+    throw new Error(
+      detail
+        ? `${short} (exit ${result.exitCode})`
+        : `agent runtime exit code ${result.exitCode}`,
+    );
   }
-  const parsed = parseResponse(result.output);
-  return { ...parsed, rawOutput: result.output };
+  try {
+    const parsed = parseResponse(result.output);
+    return { ...parsed, rawOutput: result.output };
+  } catch (err) {
+    const raw = (result.output || '').trim();
+    const finish = result.finishReason ? ` finishReason=${result.finishReason}` : '';
+    if (!raw) {
+      throw new Error(
+        `rewrite response empty${finish} — model likely hit the output limit while reasoning. ` +
+          'Try Generate again, or add Stake / Seed keywords so the draft has more to work with.',
+      );
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    const snippet = raw.length > 280 ? `${raw.slice(0, 140)}…${raw.slice(-140)}` : raw;
+    throw new Error(`${msg}${finish}. Model output snippet: ${snippet}`);
+  }
 }
 
 export function composeSystemPrompt(methodologyBody: string): string {
@@ -42,11 +66,15 @@ export function composeSystemPrompt(methodologyBody: string): string {
     "Rewrite the user's rough answers into the topic's project.yaml and thesis.md.",
     'Follow the style guide below verbatim. Preserve user intent. Do not invent facts.',
     '',
-    'IMPORTANT: Before drafting the output, explore the working directory.',
-    'Read any design documents, specs, roadmaps, or prior notes you find — especially',
-    'files in references/, docs/, or any .md files at the repo root. Use what you find',
-    'to write a substantive thesis grounded in the actual project context, not just the',
-    'user\'s brief answers. If the project has no such files, rely only on the answers.',
+    'OUTPUT CONTRACT (non-negotiable):',
+    '- Your final message MUST contain exactly two blocks with these literal markers:',
+    '  <<<PROJECT_YAML>>> … <<<END_PROJECT_YAML>>> then <<<THESIS_MD>>> … <<<END_THESIS_MD>>>',
+    '- Put the markers in the final assistant text (not only in hidden reasoning).',
+    '- Do not write long preambles, debates, or process notes in the final answer — emit the blocks.',
+    '- If most questions were skipped: preserve template defaults + TODO comments; still emit BOTH full files.',
+    '',
+    'Directory exploration: only if references/, docs/, or root design .md files exist.',
+    'If the topic is a fresh scaffold with no design docs, skip exploration and draft immediately from answers.',
     '',
     '--- METHODOLOGY: ONBOARDING.MD ---',
     methodologyBody,
@@ -87,7 +115,8 @@ export function composeUserPrompt(opts: RewriteOptions): string {
   lines.push('```');
   lines.push('');
   lines.push('# Output format');
-  lines.push('Emit exactly two blocks, in this order, with these literal markers:');
+  lines.push('Emit exactly two blocks, in this order, with these literal markers.');
+  lines.push('Start the final answer with <<<PROJECT_YAML>>> on its own line — no intro paragraph.');
   lines.push('');
   lines.push('<<<PROJECT_YAML>>>');
   lines.push('...rewritten project.yaml content (must be valid YAML)...');
@@ -96,6 +125,8 @@ export function composeUserPrompt(opts: RewriteOptions): string {
   lines.push('<<<THESIS_MD>>>');
   lines.push('...rewritten thesis.md content...');
   lines.push('<<<END_THESIS_MD>>>');
+  lines.push('');
+  lines.push('Again: final answer = only those two blocks (plus optional brief trailing note).');
   return lines.join('\n');
 }
 

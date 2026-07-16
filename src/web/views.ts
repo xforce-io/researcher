@@ -195,6 +195,11 @@ function renderNoteMarkdown(markdown: string): string {
   return marked.parse(src, { async: false }) as string;
 }
 
+/** Markdown → HTML for previews (thesis draft, docs). */
+export function renderMarkdown(markdown: string): string {
+  return marked.parse(markdown ?? '', { async: false }) as string;
+}
+
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
   if (fm) {
@@ -332,10 +337,10 @@ function renderAddPaperModal(topicPaths: string[]): string {
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
       `<button class="icon-button" type="button" data-close-add-paper aria-label="Close">x</button></div>` +
-      `<form class="add-paper-form" action="/library/add" method="post">` +
-        `<label>Paper source<input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
-        `<label>Tags<input name="tags" placeholder="survey, benchmark"></label>` +
-        `<label>Topic context<select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
+      `<form class="modal-form add-paper-form" action="/library/add" method="post">` +
+        `<label><span>Paper source</span><input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
+        `<label><span>Tags</span><input name="tags" placeholder="survey, benchmark"></label>` +
+        `<label><span>Topic context</span><select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
         `<button class="primary" type="submit">Add paper</button>` +
       `</form>` +
     `</div>` +
@@ -962,15 +967,35 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
   return page(`${m.name} · researcher`, body);
 }
 
-function renderAddTopicModal(): string {
-  return `<div id="add-topic-modal" class="modal-backdrop" hidden>` +
+export interface AddTopicFormState {
+  path?: string;
+  oneline?: string;
+  error?: string;
+  /** When true, open the modal on page load (e.g. after a failed create). */
+  open?: boolean;
+}
+
+function renderAddTopicModal(state: AddTopicFormState = {}): string {
+  const openAttr = state.open || state.error ? '' : ' hidden';
+  const err = state.error
+    ? `<p class="form-error" role="alert">${escapeHtml(state.error)}</p>`
+    : '';
+  return `<div id="add-topic-modal" class="modal-backdrop"${openAttr}>` +
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-topic-title">` +
       `<div class="modal-head"><h2 id="add-topic-title">New topic</h2>` +
       `<button class="icon-button" type="button" data-close-add-topic aria-label="Close">x</button></div>` +
-      `<form class="add-topic-form" action="/topics" method="post">` +
-        `<label>Path<input name="path" required placeholder="decision" pattern="[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){0,2}" autocomplete="off"></label>` +
-        `<label>One-line intent<input name="oneline" required placeholder="What is this pillar about?" autocomplete="off"></label>` +
-        `<p class="muted modal-hint">Creates a local topic directory, scaffolds .researcher/, and registers it in the workspace.</p>` +
+      `<form class="modal-form add-topic-form" action="/topics" method="post">` +
+        `<label><span>Folder name</span>` +
+          `<input name="path" required placeholder="world-model" value="${escapeHtml(state.path ?? '')}" autocomplete="off" data-slug-input>` +
+          `<span class="field-hint">Directory id under the workspace. Spaces become hyphens (<code>world model</code> → <code>world-model</code>). Chinese belongs in One-line below.</span>` +
+          `<span class="field-hint slug-preview" data-slug-preview hidden></span>` +
+        `</label>` +
+        `<label><span>One-line intent</span>` +
+          `<input name="oneline" required placeholder="World model 领域研究进展…" value="${escapeHtml(state.oneline ?? '')}" autocomplete="off">` +
+          `<span class="field-hint">Any language. One sentence: what this pillar is about.</span>` +
+        `</label>` +
+        err +
+        `<p class="modal-hint">Creates a local topic directory, scaffolds <code>.researcher/</code>, and registers it in the workspace. No AI in this step.</p>` +
         `<button class="primary" type="submit">Create topic</button>` +
       `</form>` +
     `</div>` +
@@ -986,23 +1011,48 @@ function showAddTopic() {
   if (!addTopicModal) return;
   addTopicModal.hidden = false;
   addTopicModal.querySelector('input[name="path"]')?.focus();
+  updateSlugPreview();
 }
 function hideAddTopic() {
   if (!addTopicModal) return;
   addTopicModal.hidden = true;
   openAddTopicButtons[0]?.focus();
 }
+function slugifySeg(s) {
+  return String(s || '').trim().toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+}
+function updateSlugPreview() {
+  const input = addTopicModal?.querySelector('[data-slug-input]');
+  const preview = addTopicModal?.querySelector('[data-slug-preview]');
+  if (!input || !preview) return;
+  const raw = input.value.trim();
+  if (!raw) { preview.hidden = true; preview.textContent = ''; return; }
+  const slug = raw.replace(/\/+$/,'').split('/').map(slugifySeg).filter(Boolean).join('/');
+  if (slug && slug !== raw) {
+    preview.hidden = false;
+    preview.textContent = 'Will create folder: ' + slug;
+  } else {
+    preview.hidden = true;
+    preview.textContent = '';
+  }
+}
 openAddTopicButtons.forEach((btn) => btn.addEventListener('click', showAddTopic));
 closeAddTopic?.addEventListener('click', hideAddTopic);
 addTopicModal?.addEventListener('click', (e) => {
   if (e.target === addTopicModal) hideAddTopic();
 });
+addTopicModal?.querySelector('[data-slug-input]')?.addEventListener('input', updateSlugPreview);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && addTopicModal && !addTopicModal.hidden) hideAddTopic();
 });
+if (addTopicModal && !addTopicModal.hidden) updateSlugPreview();
 `;
 
-export function renderTopics(m: DashboardModel): string {
+export function renderTopics(m: DashboardModel, addTopic: AddTopicFormState = {}): string {
   const cards = m.topics.map((t) => {
     const tags: string[] = [];
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
@@ -1030,10 +1080,14 @@ export function renderTopics(m: DashboardModel): string {
       `<div class="card-head"><span class="card-title card-new-title"><span class="card-plus" aria-hidden="true">+</span>New topic</span></div>` +
       `<p class="card-oneline">Start a new research pillar</p>` +
     `</button>`;
+  const flash = addTopic.error && !addTopic.open
+    ? `<div class="page-flash error" role="alert">${escapeHtml(addTopic.error)}</div>`
+    : '';
   const body = topbar(m.root, 'topics') +
     `<main class="topics-page"><div class="page-head"><h1>Topics</h1><p>Topic workspaces declared by this super-repo.</p></div>` +
+    flash +
     `<div class="grid">${cards}${newCard}</div></main>` +
-    renderAddTopicModal() +
+    renderAddTopicModal(addTopic) +
     `<script>${ADD_TOPIC_JS}</script>`;
   return page('Topics · researcher', body);
 }
@@ -1052,11 +1106,14 @@ export function renderTopic(
   }
   const setupNotice = v.needsSetup
     ? `<div class="setup-banner" role="status">` +
-        `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
-        `Run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code> ` +
-        `or edit <code>.researcher/thesis.md</code> and research questions.` +
+        `<div class="setup-banner-text">` +
+          `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
+          `Generate an AI draft, or run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code>.` +
+        `</div>` +
+        `<button type="button" class="primary" data-open-topic-setup>Complete setup</button>` +
       `</div>`
     : '';
+  const setupModal = v.needsSetup ? renderTopicSetupModal(v) : '';
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
@@ -1137,9 +1194,148 @@ export function renderTopic(
         `<ul class="seen-list">${seenRows || '<li class="muted">—</li>'}</ul>` +
       `</aside>` +
     `</main>` +
-    `<script>${TOPIC_JS}</script>`;
+    setupModal +
+    `<script>${TOPIC_JS}${v.needsSetup ? TOPIC_SETUP_JS : ''}</script>`;
   return page(`${v.path} · researcher`, body);
 }
+
+function renderTopicSetupModal(v: TopicView): string {
+  return `<div id="topic-setup-modal" class="modal-backdrop" hidden>` +
+    `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="topic-setup-title">` +
+      `<div class="modal-head"><h2 id="topic-setup-title">Complete setup</h2>` +
+      `<button class="icon-button" type="button" data-close-topic-setup aria-label="Close">x</button></div>` +
+      `<div id="topic-setup-form-pane" class="modal-form">` +
+        `<p class="modal-hint">AI drafts <code>thesis.md</code> and <code>project.yaml</code> from a short intent. You review before anything is written.</p>` +
+        `<label><span>One-line intent</span>` +
+          `<input id="setup-oneline" name="oneline" required value="${escapeHtml(v.oneline)}" placeholder="What is this pillar about?">` +
+        `</label>` +
+        `<label><span>Stake / decision <span class="muted">(optional)</span></span>` +
+          `<textarea id="setup-stake" name="stake" rows="2" placeholder="Who decides, what is at stake, what artifact?"></textarea>` +
+        `</label>` +
+        `<label><span>Seed keywords <span class="muted">(optional)</span></span>` +
+          `<input id="setup-seeds" name="seeds" placeholder="arxiv query phrases">` +
+        `</label>` +
+        `<label><span>Language</span>` +
+          `<input id="setup-language" name="language" value="${escapeHtml(v.language || 'zh')}" placeholder="zh or en">` +
+        `</label>` +
+        `<p id="topic-setup-error" class="form-error" hidden></p>` +
+        `<div class="modal-actions">` +
+          `<button class="primary" type="button" id="topic-setup-generate">Generate draft</button>` +
+        `</div>` +
+      `</div>` +
+      `<div id="topic-setup-review-pane" class="setup-review" hidden>` +
+        `<div class="setup-review-scroll">` +
+          `<p class="modal-hint">Review the draft, then apply to this topic repo.</p>` +
+          `<h3 class="setup-review-h">Thesis</h3>` +
+          `<div id="setup-thesis-preview" class="setup-md reader" tabindex="0"></div>` +
+          `<h3 class="setup-review-h">project.yaml</h3>` +
+          `<pre id="setup-yaml-preview" class="setup-code"></pre>` +
+          `<p id="topic-setup-apply-error" class="form-error" hidden></p>` +
+        `</div>` +
+        `<div class="modal-actions setup-review-actions">` +
+          `<button class="secondary" type="button" id="topic-setup-back">Back</button>` +
+          `<button class="secondary" type="button" id="topic-setup-regen">Regenerate</button>` +
+          `<button class="primary" type="button" id="topic-setup-apply">Apply</button>` +
+        `</div>` +
+      `</div>` +
+    `</div>` +
+  `</div>`;
+}
+
+const TOPIC_SETUP_JS = `
+(function () {
+  const modal = document.getElementById('topic-setup-modal');
+  if (!modal) return;
+  const openBtns = Array.from(document.querySelectorAll('[data-open-topic-setup]'));
+  const closeBtn = document.querySelector('[data-close-topic-setup]');
+  const formPane = document.getElementById('topic-setup-form-pane');
+  const reviewPane = document.getElementById('topic-setup-review-pane');
+  const errEl = document.getElementById('topic-setup-error');
+  const applyErr = document.getElementById('topic-setup-apply-error');
+  const genBtn = document.getElementById('topic-setup-generate');
+  const applyBtn = document.getElementById('topic-setup-apply');
+  const backBtn = document.getElementById('topic-setup-back');
+  const regenBtn = document.getElementById('topic-setup-regen');
+  const thesisPre = document.getElementById('setup-thesis-preview');
+  const yamlPre = document.getElementById('setup-yaml-preview');
+  let draft = null;
+  const topicSlug = document.getElementById('run-btn')?.dataset.slug || '';
+
+  function show() { modal.hidden = false; document.getElementById('setup-oneline')?.focus(); }
+  function hide() { modal.hidden = true; showForm(); }
+  function showForm() {
+    formPane.hidden = false; reviewPane.hidden = true; draft = null;
+    if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+  }
+  function showReview(d) {
+    draft = d;
+    // Prefer server-rendered HTML; fall back to escaped preformatted text.
+    if (d.thesisHtml) thesisPre.innerHTML = d.thesisHtml;
+    else thesisPre.textContent = d.thesisMd || '';
+    yamlPre.textContent = d.projectYaml || '';
+    formPane.hidden = true; reviewPane.hidden = false;
+    if (applyErr) { applyErr.hidden = true; applyErr.textContent = ''; }
+    // Reset scroll so the top of the thesis is visible.
+    const sc = reviewPane.querySelector('.setup-review-scroll');
+    if (sc) sc.scrollTop = 0;
+    thesisPre.scrollTop = 0;
+  }
+  function formBody() {
+    const fd = new URLSearchParams();
+    fd.set('oneline', document.getElementById('setup-oneline')?.value?.trim() || '');
+    fd.set('stake', document.getElementById('setup-stake')?.value?.trim() || '');
+    fd.set('seeds', document.getElementById('setup-seeds')?.value?.trim() || '');
+    fd.set('language', document.getElementById('setup-language')?.value?.trim() || '');
+    return fd;
+  }
+  async function generate() {
+    const fd = formBody();
+    if (!fd.get('oneline')) {
+      errEl.hidden = false; errEl.textContent = 'One-line intent is required.';
+      return;
+    }
+    genBtn.disabled = true; genBtn.textContent = 'Generating…';
+    errEl.hidden = true; errEl.textContent = '';
+    try {
+      const res = await fetch('/t/' + topicSlug + '/setup/generate', { method: 'POST', body: fd });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+      showReview(JSON.parse(text));
+    } catch (e) {
+      errEl.hidden = false; errEl.textContent = e.message || String(e);
+    } finally {
+      genBtn.disabled = false; genBtn.textContent = 'Generate draft';
+    }
+  }
+  async function apply() {
+    if (!draft) return;
+    applyBtn.disabled = true; applyBtn.textContent = 'Applying…';
+    applyErr.hidden = true;
+    try {
+      const fd = new URLSearchParams();
+      fd.set('oneline', document.getElementById('setup-oneline')?.value?.trim() || '');
+      fd.set('projectYaml', draft.projectYaml);
+      fd.set('thesisMd', draft.thesisMd);
+      const res = await fetch('/t/' + topicSlug + '/setup/apply', { method: 'POST', body: fd, redirect: 'follow' });
+      if (!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
+      window.location.href = '/t/' + topicSlug;
+    } catch (e) {
+      applyErr.hidden = false; applyErr.textContent = e.message || String(e);
+      applyBtn.disabled = false; applyBtn.textContent = 'Apply';
+    }
+  }
+  openBtns.forEach((b) => b.addEventListener('click', show));
+  closeBtn?.addEventListener('click', hide);
+  modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) hide();
+  });
+  genBtn?.addEventListener('click', generate);
+  regenBtn?.addEventListener('click', () => { showForm(); generate(); });
+  backBtn?.addEventListener('click', showForm);
+  applyBtn?.addEventListener('click', apply);
+})();
+`;
 
 const TOPIC_JS = `
 const slug = document.getElementById('run-btn')?.dataset.slug;

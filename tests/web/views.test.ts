@@ -674,6 +674,10 @@ describe('renderTopic run controls', () => {
   it('shows a setup banner when needsSetup is true', () => {
     const html = renderTopic({ ...baseView, needsSetup: true });
     expect(html).toContain('Needs setup');
+    expect(html).toContain('Complete setup');
+    expect(html).toContain('data-open-topic-setup');
+    expect(html).toContain('topic-setup-modal');
+    expect(html).toContain('setup-md');
     expect(html).toContain('researcher onboard');
   });
 

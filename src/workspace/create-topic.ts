@@ -25,26 +25,61 @@ const SEGMENT = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const MAX_SEGMENTS = 3;
 const MAX_PATH_LEN = 64;
 
+/**
+ * Turn a human-typed folder label into a safe relative path slug.
+ * "world model" → "world-model"; "feeds/AI Safety" → "feeds/ai-safety".
+ * Chinese/natural language belongs in one-line intent, not the folder id —
+ * if a segment has no ASCII left after slugify, we error with that guidance.
+ */
+export function slugifyPathSegment(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-') // spaces → hyphens; keep underscores
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+}
+
 export function normalizeTopicPath(raw: string): string {
-  const path = raw.trim();
-  if (!path) throw new Error('invalid topic path');
-  // Reject backslashes instead of rewriting them (path is a workspace-relative slug).
-  if (path.includes('\\')) throw new Error('invalid topic path');
-  if (path.startsWith('/') || path.includes('://') || path.includes('~')) {
-    throw new Error('invalid topic path');
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('folder name is required (e.g. world-model or feeds/ai-safety)');
   }
-  if (path.startsWith('./') || path.endsWith('/') || path.includes('//')) {
-    throw new Error('invalid topic path');
+  // Reject backslashes instead of rewriting them.
+  if (trimmed.includes('\\')) {
+    throw new Error('folder name cannot contain backslashes; use / for nested paths');
   }
-  if (path.length > MAX_PATH_LEN) throw new Error('invalid topic path');
-  const segments = path.split('/');
-  if (segments.length < 1 || segments.length > MAX_SEGMENTS) {
-    throw new Error('invalid topic path');
+  if (trimmed.startsWith('/') || trimmed.includes('://') || trimmed.includes('~')) {
+    throw new Error('folder name must be relative (not an absolute path or URL)');
   }
-  for (const seg of segments) {
-    if (seg === '.' || seg === '..' || !SEGMENT.test(seg)) {
-      throw new Error('invalid topic path');
+  if (trimmed.startsWith('./') || trimmed.includes('//')) {
+    throw new Error('folder name must not start with ./ or contain empty segments');
+  }
+
+  const rawSegments = trimmed.replace(/\/+$/, '').split('/');
+  if (rawSegments.length < 1 || rawSegments.length > MAX_SEGMENTS) {
+    throw new Error(`folder name can have at most ${MAX_SEGMENTS} segments (e.g. feeds/ai-safety)`);
+  }
+
+  const segments: string[] = [];
+  for (const rawSeg of rawSegments) {
+    if (rawSeg === '.' || rawSeg === '..') {
+      throw new Error('folder name cannot contain . or ..');
     }
+    const seg = slugifyPathSegment(rawSeg);
+    if (!seg || !SEGMENT.test(seg)) {
+      throw new Error(
+        'folder name needs English letters or digits (e.g. world-model). ' +
+          'Put Chinese or full sentences in One-line intent — spaces here become hyphens automatically',
+      );
+    }
+    segments.push(seg);
+  }
+
+  const path = segments.join('/');
+  if (path.length > MAX_PATH_LEN) {
+    throw new Error(`folder name is too long (max ${MAX_PATH_LEN} characters)`);
   }
   return path;
 }

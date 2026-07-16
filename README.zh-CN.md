@@ -205,7 +205,7 @@ researcher serve ../research -p 8080
 | 路由 | 作用 |
 |---|---|
 | `/` | Workspace Home：健康度、Needs attention、topic 预览、Library 快照 |
-| `/topics` | Topic 卡片列表 + **New topic**（本地 scaffold 并登记到 workspace）；进入 `/t/:slug` 看 thesis / landscape / report / 笔记，并可触发 per-topic `run` |
+| `/topics` | Topic 卡片列表 + **New topic**（本地 scaffold 并登记到 workspace）；进入 `/t/:slug` 看 thesis / landscape / report / 笔记，**Complete setup**（AI 草案），并可触发 per-topic `run` |
 | `/library` | 论文入库列表（筛选、Add paper） |
 | `/library/p/:id` | 论文详情：机器 deep-read 产物 + **纸本本地 Notes**（Markdown、钉选/删除）；Deep read / Link |
 
