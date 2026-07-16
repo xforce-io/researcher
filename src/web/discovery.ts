@@ -10,6 +10,14 @@ import type { Zone } from '../state/zone.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Paper, PaperNote, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
 import { isThesisTemplate } from '../onboard/all-templates-check.js';
+import {
+  extractReadSuggestExcerpt,
+  suggestTopicLinks,
+  type TopicLinkSuggestion,
+  type TopicSuggestProfile,
+} from './topic-link-suggest.js';
+
+export type { TopicLinkSuggestion } from './topic-link-suggest.js';
 
 export interface TopicCard {
   slug: string;
@@ -129,6 +137,8 @@ export interface LibraryPaperDetailView {
   latestReadArtifact: { path: string; markdown: string } | null;
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
+  /** Heuristic suggestions for Topic link panel (#97). Empty ⇒ no Suggest UI. */
+  topicSuggestions: TopicLinkSuggestion[];
 }
 
 const slugOf = (p: string) => encodeURIComponent(p);
@@ -409,16 +419,78 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   const paper = lib.getPaper(paperId);
   if (!paper) return null;
   const reads = lib.listReads(paperId);
+  const notes = lib.listNotes(paperId);
+  const topics = libraryTopics(root);
+  const artifact = latestReadArtifact(root, reads);
+  const topicSuggestions = computeTopicSuggestions({
+    root,
+    paper,
+    notes,
+    topics,
+    latestReadMarkdown: artifact?.markdown ?? null,
+  });
   return {
     root,
     paper: summarizePaper(lib, paper),
-    topics: libraryTopics(root),
+    topics,
     reads,
-    notes: lib.listNotes(paperId),
-    latestReadArtifact: latestReadArtifact(root, reads),
+    notes,
+    latestReadArtifact: artifact,
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),
+    topicSuggestions,
   };
+}
+
+function computeTopicSuggestions(opts: {
+  root: string;
+  paper: Paper;
+  notes: PaperNote[];
+  topics: LibraryTopicRef[];
+  latestReadMarkdown: string | null;
+}): TopicLinkSuggestion[] {
+  const profiles: TopicSuggestProfile[] = opts.topics
+    .filter((t) => t.available)
+    .map((t) => loadTopicSuggestProfile(opts.root, t.path));
+  // Pinned notes first for stronger signal.
+  const noteBodies = [...opts.notes]
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+    .map((n) => n.body);
+  return suggestTopicLinks(
+    {
+      title: opts.paper.title ?? paperDisplayTitle(opts.paper),
+      tags: opts.paper.tags,
+      notes: noteBodies,
+      readExcerpt: opts.latestReadMarkdown
+        ? extractReadSuggestExcerpt(opts.latestReadMarkdown)
+        : undefined,
+    },
+    profiles,
+  );
+}
+
+function loadTopicSuggestProfile(root: string, topicPath: string): TopicSuggestProfile {
+  const topicDir = join(root, topicPath);
+  const rDir = resolveProjectResearcherDir(topicDir);
+  let oneline = '';
+  let thesisExcerpt = '';
+  let charterExcerpt = '';
+  try {
+    oneline = loadProjectYaml(join(rDir, 'project.yaml')).meta.topic_oneline ?? '';
+  } catch { /* optional */ }
+  try {
+    const thesisPath = join(rDir, 'thesis.md');
+    if (existsSync(thesisPath)) {
+      thesisExcerpt = readFileSync(thesisPath, 'utf8').slice(0, 8_000);
+    }
+  } catch { /* optional */ }
+  try {
+    const charterPath = join(rDir, 'charter.md');
+    if (existsSync(charterPath)) {
+      charterExcerpt = readFileSync(charterPath, 'utf8').slice(0, 4_000);
+    }
+  } catch { /* optional */ }
+  return { topicId: topicPath, oneline, thesisExcerpt, charterExcerpt };
 }
 
 function latestReadArtifact(root: string, reads: PaperRead[]): LibraryPaperDetailView['latestReadArtifact'] {

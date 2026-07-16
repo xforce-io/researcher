@@ -207,7 +207,7 @@ researcher serve ../research -p 8080
 | `/` | Workspace Home：健康度、Needs attention、topic 预览、Library 快照 |
 | `/topics` | Topic 卡片列表 + **New topic**（本地 scaffold 并登记到 workspace）；进入 `/t/:slug` 看 thesis / landscape / report / 笔记，**Complete setup**（AI 草案），并可触发 per-topic `run` |
 | `/library` | 论文入库列表（筛选、Add paper） |
-| `/library/p/:id` | 论文详情：机器 deep-read 产物 + **纸本本地 Notes**（Markdown、钉选/删除）；Deep read / Link |
+| `/library/p/:id` | 论文详情：机器 deep-read 产物 + **纸本本地 Notes**（Markdown、钉选/删除）；Deep read / **Topic link**（启发式 Suggest 只填表单；仅 **Link topic** 写盘） |
 
 **双轨（Library vs Topic）：** Library 精读与 paper notes 是中立、可复用的证据与注意力；
 Topic 侧仍是 thesis 驱动的综合。把论文 link 进 topic 是显式接合，notes 不会自动改写支柱。

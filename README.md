@@ -267,7 +267,7 @@ Surfaces (workspace-first):
 | `/` | Workspace Home — health, needs-attention, topic preview, library snapshot |
 | `/topics` | Topic card grid + **New topic** (local scaffold + workspace register); open `/t/:slug` for thesis / landscape / report / notes, **Complete setup** (AI draft), and per-topic `run` with live logs |
 | `/library` | Paper intake list (filters, add paper) |
-| `/library/p/:id` | Paper detail — machine deep-read artifact + **paper-local human notes** (Markdown, pin/delete); deep-read / link actions |
+| `/library/p/:id` | Paper detail — machine deep-read artifact + **paper-local human notes** (Markdown, pin/delete); deep-read / **Topic link** (heuristic Suggest fills the form; only **Link topic** writes) |
 
 **Dual-track (Library vs Topic):** Library deep-reads and paper notes are neutral,
 portable evidence and attention. Topic work remains thesis-driven synthesis.

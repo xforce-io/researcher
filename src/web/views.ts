@@ -439,6 +439,38 @@ function renderDeepReadAction(
   return renderDeepReadForm(paperId, isRerun ? 'Re-run read' : 'Deep read', isRerun);
 }
 
+function shouldShowTopicSuggest(v: LibraryPaperDetailView): boolean {
+  const suggestions = v.topicSuggestions ?? [];
+  if (suggestions.length === 0) return false;
+  // Multi-link or any integration: facts dominate; hide Suggest.
+  if (v.paper.linkedTopicCount >= 2) return false;
+  if (v.integrations.length > 0 || v.paper.integratedTopicCount > 0) return false;
+  return true;
+}
+
+function renderTopicSuggestList(v: LibraryPaperDetailView): string {
+  if (!shouldShowTopicSuggest(v)) return '';
+  const suggestions = v.topicSuggestions ?? [];
+  const weak = v.paper.linkedTopicCount === 1;
+  const heading = weak ? 'Also consider' : 'Suggest';
+  const items = suggestions.map((s) =>
+    `<button type="button" class="topic-suggest-item" ` +
+      `data-suggest-topic="${escapeHtml(s.topicId)}" ` +
+      `data-relation="${escapeHtml(s.defaultRelation)}" ` +
+      `data-rationale="${escapeHtml(s.rationaleDraft)}">` +
+      `<span class="topic-suggest-id mono">${escapeHtml(s.topicId)}</span>` +
+      `<span class="topic-suggest-score mono" title="heuristic score">${s.score.toFixed(0)}</span>` +
+      `<span class="topic-suggest-why muted">${escapeHtml(s.reason)}</span>` +
+    `</button>`,
+  ).join('');
+  return `<div class="topic-suggest${weak ? ' is-weak' : ''}" data-topic-suggest>` +
+    `<div class="topic-suggest-head"><span>${heading}</span>` +
+      `<span class="muted topic-suggest-hint">fills form only</span></div>` +
+    `<div class="topic-suggest-list" role="list">${items}</div>` +
+  `</div>` +
+  `<div class="topic-suggest-sep muted">or pick yourself</div>`;
+}
+
 function renderLinkTopicAction(v: LibraryPaperDetailView): string {
   const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
   const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
@@ -454,14 +486,46 @@ function renderLinkTopicAction(v: LibraryPaperDetailView): string {
   const relationOptions = ['candidate', 'relevant', 'integrated', 'rejected', 'archived']
     .map((r) => `<option value="${r}"${preferredLink?.relation === r ? ' selected' : ''}>${r}</option>`)
     .join('');
-  return `<form class="deep-read-form" action="/library/link" method="post">` +
-    `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-    `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
-    `<label>Relation<select name="relation">${relationOptions}</select></label>` +
-    `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}"></label>` +
-    `<button class="secondary" type="submit">Link topic</button>` +
-  `</form>`;
+  const suggest = renderTopicSuggestList(v);
+  const form =
+    `<form id="topic-link-form" class="deep-read-form" action="/library/link" method="post">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
+      `<label>Relation<select name="relation">${relationOptions}</select></label>` +
+      `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}"></label>` +
+      `<button class="secondary" type="submit">Link topic</button>` +
+    `</form>`;
+  const script = suggest ? `<script>${TOPIC_SUGGEST_JS}</script>` : '';
+  return suggest + form + script;
 }
+
+/** Marker TOPIC_SUGGEST_JS: fill form only — never POST /library/link. */
+const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
+(function () {
+  var form = document.getElementById('topic-link-form');
+  var root = document.querySelector('[data-topic-suggest]');
+  if (!form || !root) return;
+  var topicSel = form.querySelector('select[name="topic"]');
+  var relSel = form.querySelector('select[name="relation"]');
+  var ratInput = form.querySelector('input[name="rationale"]');
+  root.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-suggest-topic]') : null;
+    if (!btn || !root.contains(btn)) return;
+    ev.preventDefault();
+    var topic = btn.getAttribute('data-suggest-topic') || '';
+    var rel = btn.getAttribute('data-relation') || 'candidate';
+    var rat = btn.getAttribute('data-rationale') || '';
+    if (topicSel) {
+      topicSel.value = topic;
+      topicSel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (relSel) relSel.value = rel;
+    if (ratInput) ratInput.value = rat;
+    root.querySelectorAll('.topic-suggest-item').forEach(function (el) {
+      el.classList.toggle('is-selected', el === btn);
+    });
+  });
+})();`;
 
 function renderReads(reads: LibraryPaperDetailView['reads']): string {
   return reads.map((r) => {
@@ -589,7 +653,8 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
         renderPaperNotes(v) +
       `</section>` +
       `<aside class="paper-inspector">${renderPaperInspector(v, activeRead)}</aside>` +
-    `</main>${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
+    `</main>` +
+    `${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
   return page(`${v.paper.displayTitle} · researcher`, body);
 }
 
