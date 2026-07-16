@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { runInit } from '../../src/commands/init.js';
 import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { packageStage } from '../../src/pipeline/package.js';
+import * as gitops from '../../src/git/ops.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 
@@ -20,6 +21,9 @@ class StubAdapter implements AgentRuntime {
 
 describe('package stage', () => {
   let proj: string;
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   beforeEach(async () => {
     proj = mkdtempSync(join(tmpdir(), 'r-pkg-'));
     execaSync('git', ['init', '-b', 'main'], { cwd: proj });
@@ -249,5 +253,38 @@ describe('package stage', () => {
     expect(committedFiles).not.toContain('notes/active/01_stub.md');
     // The new note for this run is also committed.
     expect(committedFiles).toContain('notes/active/02_new.md');
+  });
+
+  it('recovers branch + stash content when createBranch fails mid-dance (#77)', async () => {
+    // Precious uncommitted workshop content that would only live in the stash after package starts.
+    const precious = '# Stub\n\nPRECIOUS_AGENT_NOTE_CONTENT_DO_NOT_LOSE\n';
+    writeFileSync(join(proj, 'notes/active/01_stub.md'), precious);
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00077' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
+    ctx.newNoteContent = precious;
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+
+    const baseBefore = execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim();
+    const spy = vi.spyOn(gitops, 'createBranch').mockRejectedValueOnce(new Error('simulated createBranch failure'));
+
+    await expect(packageStage(ctx)).rejects.toThrow(/simulated createBranch failure/);
+
+    spy.mockRestore();
+
+    // Back on the original branch (not stranded on main mid-dance).
+    const branchAfter = execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim();
+    expect(branchAfter).toBe(baseBefore);
+
+    // Stash was popped, not dropped — note content is on disk again.
+    expect(readFileSync(join(proj, 'notes/active/01_stub.md'), 'utf8')).toContain('PRECIOUS_AGENT_NOTE_CONTENT_DO_NOT_LOSE');
+
+    // No orphaned researcher stash left that a bare drop would have destroyed.
+    const stashList = execaSync('git', ['stash', 'list'], { cwd: proj }).stdout;
+    expect(stashList).not.toMatch(/researcher-pkg-/);
   });
 });

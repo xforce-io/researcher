@@ -118,16 +118,30 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    → restore snapshots. Working tree stays on the new branch so the next `researcher add`
   //    invocation reads the cumulative seen.jsonl (otherwise main's seen.jsonl would be stale
   //    until the PR merges, breaking dedup for back-to-back runs of the same paper).
+  //    #77: never stashDrop until the branch dance succeeds; on failure restore base + stash pop.
   const baseBranch = await gitops.getCurrentBranch({ cwd: ctx.projectRoot });
   // Branch name = the note filename (without .md). Readable PR titles when the
   // user opens a PR via the GitHub UI; collisions are blocked by seen.jsonl.
   const branch = `researcher/${newNoteFilename.replace(/\.md$/, '')}`;
   const stashMsg = `researcher-pkg-${ctx.runDir.id}`;
-  const stashed = await gitops.stash({ cwd: ctx.projectRoot, message: stashMsg });
-  await gitops.checkout({ cwd: ctx.projectRoot, branch: 'main' });
-  await gitops.pullFastForward({ cwd: ctx.projectRoot, branch: 'main', remote: ctx.pushRemote });
-  await gitops.createBranch({ cwd: ctx.projectRoot, branch });
-  if (stashed) await gitops.stashDrop({ cwd: ctx.projectRoot });
+  let stashed = false;
+  try {
+    stashed = await gitops.stash({ cwd: ctx.projectRoot, message: stashMsg });
+    await gitops.checkout({ cwd: ctx.projectRoot, branch: 'main' });
+    await gitops.pullFastForward({ cwd: ctx.projectRoot, branch: 'main', remote: ctx.pushRemote });
+    await gitops.createBranch({ cwd: ctx.projectRoot, branch });
+    if (stashed) {
+      await gitops.stashDrop({ cwd: ctx.projectRoot });
+      stashed = false;
+    }
+  } catch (err) {
+    await recoverPackageBranchDance({
+      cwd: ctx.projectRoot,
+      baseBranch,
+      stashed,
+    });
+    throw err;
+  }
 
   // 4a. remove note files that exist on main's tree but were relocated this run.
   //     listIntegratedNotes reads the current working tree (now on main's state), so it sees the old paths.
@@ -216,4 +230,31 @@ function listFilesRecursive(absDir: string, relDir: string): string[] {
     else if (st.isFile()) out.push(rel);
   }
   return out;
+}
+
+/**
+ * After a failed branch dance: return to the pre-package branch and restore the stash
+ * if we still hold one. Best-effort — rethrows nothing; caller rethrows the original error.
+ * Exported for tests that inject mid-dance failures.
+ */
+export async function recoverPackageBranchDance(o: {
+  cwd: string;
+  baseBranch: string;
+  stashed: boolean;
+}): Promise<void> {
+  try {
+    const cur = await gitops.getCurrentBranch({ cwd: o.cwd });
+    if (cur !== o.baseBranch) {
+      await gitops.checkout({ cwd: o.cwd, branch: o.baseBranch });
+    }
+  } catch {
+    /* best-effort */
+  }
+  if (o.stashed) {
+    try {
+      await gitops.stashPop({ cwd: o.cwd });
+    } catch {
+      /* leave stash for the user rather than drop */
+    }
+  }
 }
