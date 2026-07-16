@@ -63,7 +63,7 @@ Use this exact body structure:
 
 > One-line Frame lede (problem/old practice → decision or approach → one benefit).
 
-## Brief
+## Essence
 
 ## Key takeaways
 
@@ -82,7 +82,14 @@ Use this exact body structure:
 
 **Frame** — one sentence: situation → what the doc decides/specifies → why that matters in plain terms.
 
-**Brief** — 2–4 sentences: what the document is for, what it decides or specifies, and why a careful reader should care **as documentation**, not as product roadmap advice.
+**Essence** — shortest graspable explanation of the document (~half screen). Structure with four lead-ins (output language):
+
+1. **问题** — what situation the doc addresses.
+2. **做法** — what it decides or specifies (mechanism / policy in plain terms).
+3. **证据** — the load-bearing decision or constraint that makes it real (quote or concrete rule when possible).
+4. **边界** — what it does *not* settle / hard limits.
+
+Do **not** emit `## Brief`. No product-roadmap coaching for a workspace thesis.
 
 **Key takeaways** — the portable points someone would retell tomorrow; lead with the load-bearing decision.
 
