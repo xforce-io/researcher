@@ -220,6 +220,7 @@ describe('loadLibrary', () => {
     });
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
+    expect(Array.isArray(v.topicSuggestions)).toBe(true);
   });
 
   it('loads paper-local notes on the detail view', () => {

@@ -372,6 +372,7 @@ describe('renderLibraryPaper delete affordance', () => {
       latestReadArtifact: null,
       links: [],
       integrations: [],
+      topicSuggestions: [],
     });
     expect(html).toContain('action="/library/delete"');
     expect(html).toContain('Delete from Library');
@@ -395,6 +396,7 @@ describe('renderLibraryPaper delete affordance', () => {
         updatedAt: '2026-07-09T00:00:00Z',
       }],
       integrations: [],
+      topicSuggestions: [],
     });
     expect(html).not.toContain('action="/library/delete"');
     expect(html).toContain('cannot be deleted');
@@ -471,6 +473,7 @@ describe('renderLibrary', () => {
       latestReadArtifact: { path: 'read.md', markdown: '# Library Read\n\n## Findings\n\n- Useful paper.' },
       links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
+      topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail);
     // Single document surface: title in page head, not a second list card.
@@ -543,6 +546,7 @@ describe('renderLibrary', () => {
       },
       links: [],
       integrations: [],
+      topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail);
     // One H1 in the page head only.
@@ -576,6 +580,7 @@ describe('renderLibrary', () => {
       latestReadArtifact: null,
       links: [],
       integrations: [],
+      topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail);
     expect(html).toContain('Read interrupted');
@@ -599,6 +604,7 @@ describe('renderLibrary', () => {
       latestReadArtifact: null,
       links: [],
       integrations: [],
+      topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail, { taskId: 'task-9', startedAt: 1719000000000 });
     expect(html).toContain('Reading and parsing');

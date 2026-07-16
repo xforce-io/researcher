@@ -90,6 +90,7 @@ describe('renderLibraryPaper Brief fallback', () => {
     topics: [],
     links: [],
     integrations: [],
+      topicSuggestions: [],
     notes: [],
     reads: [{
       id: 'read_1',
