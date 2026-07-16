@@ -274,6 +274,10 @@ portable evidence and attention. Topic work remains thesis-driven synthesis.
 Linking a paper into a topic is an explicit join step — notes on a paper do not
 automatically rewrite a pillar.
 
+Library deep-read first screen is **`## Essence`** (问题 / 做法 / 证据 / 边界) —
+not a compressed abstract-style Brief. Older artifacts that still have `## Brief`
+render in the same slot. See `docs/design/98-essence-replaces-brief.md`.
+
 Paper notes live in `.researcher-workspace/library/notes.jsonl` and survive force
 re-read of the machine artifact. See `docs/design/89-paper-local-notes.md`.
 

@@ -42,9 +42,9 @@ class StubAdapter implements AgentRuntime {
         '',
         '> Frame.',
         '',
-        '## Brief',
+        '## Essence',
         '',
-        'This is the brief.',
+        '**问题** friction. **做法** mechanism. **证据** one number. **边界** dependency.',
         '',
         '## Claims',
         '',
@@ -138,15 +138,18 @@ describe('runLibraryRead', () => {
     const body = readFileSync(artifact, 'utf8');
     expect(body).toContain('kind: library-read');
     expect(body).toContain('title: "Library Read Paper"');
-    expect(body).toContain('## Brief');
+    expect(body).toContain('## Essence');
+    expect(body).not.toContain('## Brief');
     expect(body).toContain('## Takeaway');
     expect(body).toContain('- x');
     expect(adapter.lastMaxTokens).toBeGreaterThan(4096);
     expect(adapter.lastTimeoutMs).toBeGreaterThan(0);
     expect(adapter.lastPrompt).toContain('Return only the Markdown artifact body');
+    expect(adapter.lastPrompt).toContain('## Essence');
+    expect(adapter.lastPrompt).toMatch(/\*\*Essence\*\*/);
     expect(adapter.lastPrompt).not.toContain('run_command');
     expect(adapter.lastPrompt).not.toContain('FILES_MODIFIED:\n');
-    expect(adapter.lastPrompt.indexOf('## Brief')).toBeLessThan(adapter.lastPrompt.indexOf('## Claims'));
+    expect(adapter.lastPrompt.indexOf('## Essence')).toBeLessThan(adapter.lastPrompt.indexOf('## Claims'));
     expect(existsSync(join(root, '.milkie/agents.json'))).toBe(true);
     expect(existsSync(join(root, 'agents/researcher.md'))).toBe(true);
   });
@@ -256,7 +259,7 @@ describe('runLibraryRead', () => {
       async invoke(): Promise<InvokeResult> {
         await new Promise((r) => setTimeout(r, 60));
         return {
-          output: '# Library Read Paper\n\n> Frame.\n\n## Brief\n\nok\n\n## Claims\n\n- x\n\n## Assumptions\n\n- y\n\n## Method\n\n- z\n\n## Eval\n\n- e\n\n## Weaknesses\n\n- w\n\n## Relations\n\n- standalone [low]: test.\n',
+          output: '# Library Read Paper\n\n> Frame.\n\n## Essence\n\nok\n\n## Claims\n\n- x\n\n## Assumptions\n\n- y\n\n## Method\n\n- z\n\n## Eval\n\n- e\n\n## Weaknesses\n\n- w\n\n## Relations\n\n- standalone [low]: test.\n',
           modifiedFiles: [],
           exitCode: 0,
         };

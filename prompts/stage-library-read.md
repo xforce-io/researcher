@@ -58,7 +58,7 @@ Use this exact body structure and section order:
 
 > One-line Frame lede.
 
-## Brief
+## Essence
 
 ## Claims
 
@@ -84,14 +84,16 @@ Use this exact body structure and section order:
 - Include: concrete mechanism words a non-author can picture (e.g. "读打分 token 的概率分布算期望，而不是吐一个整数分").
 - Exclude: pure academic positioning with no mechanism ("提出新的 scaling 轴" alone).
 
-**Brief** — 2–4 sentences for a human skimming the Library page:
+**Essence** — the only first-screen explanation a skimming reader must grasp (~half screen / ~120–250 Chinese words or equivalent). Prefer short structured blocks over abstract prose. Use bold lead-ins for the four blocks (labels may be written in the output language):
 
-1. problem / prior practice friction,
-2. what the paper builds or measures,
-3. the central evidence in plain language (one number is enough),
-4. why the result is interesting **as science**, not as product advice.
+1. **问题** — prior practice friction (1–2 sentences).
+2. **做法** — the mechanism in plain language; allow a mini process flow or before/after contrast (still thesis-neutral).
+3. **证据** — **one** central number and what it shows (not a leaderboard dump).
+4. **边界** — one sentence: what not to misread this as / hard dependency (e.g. needs logprobs).
 
-Do not dump the abstract. Do not preview every section.
+Encourage (still neutral): open with a common misconception when useful ("not X — Y"); make the mechanism picturable.
+
+Do not dump the abstract. Do not preview every later section. Do not give workspace/topic product advice. Do **not** emit a `## Brief` section — Essence fully replaces Brief.
 
 **Claims** — load-bearing assertions as standalone facts, each with a section/table anchor when possible.
 
@@ -124,13 +126,15 @@ When the paper improves a familiar baseline (e.g. discrete LM judge → continuo
 
 - what is worth copying methodologically,
 - what to distrust or re-check,
-- one crisp "if you remember one thing" line.
+- one crisp "if you remember one thing" line (may echo Essence's core line; do **not** rewrite the whole Essence).
 
 No thesis coaching. No "we should integrate this into topic X".
 
 ### Anti-patterns for this stage
 
 - Frame that only names a research program without a mechanism picture.
+- Essence written as a compressed abstract without 问题/做法/证据/边界.
+- Emitting `## Brief` instead of (or in addition to) `## Essence`.
 - Claims that are a flat SOTA list with the key insight buried mid-list.
 - Method that jumps to equations with zero before/after intuition.
 - Weaknesses that only echo the paper's Future Work.

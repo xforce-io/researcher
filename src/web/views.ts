@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
+import { displayLibraryReadMarkdown } from './library-read-sections.js';
 import type { Zone } from '../state/zone.js';
 
 function renderMath(src: string, displayMode: boolean): string {
@@ -224,6 +225,8 @@ function renderLibraryReadBody(markdown: string, paperTitle: string): string {
   const title = unquote(fm?.paper ?? fm?.title ?? '') || paperTitle;
   let displayBody = stripDuplicateLeadingH1(body, title);
   displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
+  // Historical ## Brief shares the Essence first-screen slot (#98).
+  displayBody = displayLibraryReadMarkdown(displayBody);
   return marked.parse(displayBody, { async: false }) as string;
 }
 
