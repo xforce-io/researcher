@@ -465,10 +465,10 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
   ).join('');
   return `<div class="topic-suggest${weak ? ' is-weak' : ''}" data-topic-suggest>` +
     `<div class="topic-suggest-head"><span>${heading}</span>` +
-      `<span class="muted topic-suggest-hint">fills form only</span></div>` +
+      `<span class="muted topic-suggest-hint">pick → edit below → Link</span></div>` +
     `<div class="topic-suggest-list" role="list">${items}</div>` +
-  `</div>` +
-  `<div class="topic-suggest-sep muted">or pick yourself</div>`;
+    `<p class="topic-suggest-status muted" data-suggest-status hidden></p>` +
+  `</div>`;
 }
 
 function renderLinkTopicAction(v: LibraryPaperDetailView): string {
@@ -487,16 +487,22 @@ function renderLinkTopicAction(v: LibraryPaperDetailView): string {
     .map((r) => `<option value="${r}"${preferredLink?.relation === r ? ' selected' : ''}>${r}</option>`)
     .join('');
   const suggest = renderTopicSuggestList(v);
+  // One panel: suggest (optional) + fields + primary confirm at the same level.
   const form =
-    `<form id="topic-link-form" class="deep-read-form" action="/library/link" method="post">` +
+    `<form id="topic-link-form" class="topic-link-form" action="/library/link" method="post">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-      `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
-      `<label>Relation<select name="relation">${relationOptions}</select></label>` +
-      `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}"></label>` +
-      `<button class="secondary" type="submit">Link topic</button>` +
+      (suggest
+        ? `<div class="topic-link-manual-head muted">Details <span class="topic-link-manual-or">or pick topic yourself</span></div>`
+        : '') +
+      `<div class="topic-link-fields">` +
+        `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
+        `<label>Relation<select name="relation">${relationOptions}</select></label>` +
+        `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}" placeholder="why this topic"></label>` +
+      `</div>` +
+      `<button class="primary topic-link-submit" type="submit">Link topic</button>` +
     `</form>`;
   const script = suggest ? `<script>${TOPIC_SUGGEST_JS}</script>` : '';
-  return suggest + form + script;
+  return `<div class="topic-link-panel">${suggest}${form}</div>${script}`;
 }
 
 /** Marker TOPIC_SUGGEST_JS: fill form only — never POST /library/link. */
@@ -508,6 +514,8 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
   var topicSel = form.querySelector('select[name="topic"]');
   var relSel = form.querySelector('select[name="relation"]');
   var ratInput = form.querySelector('input[name="rationale"]');
+  var status = root.querySelector('[data-suggest-status]');
+  var submit = form.querySelector('.topic-link-submit');
   root.addEventListener('click', function (ev) {
     var btn = ev.target && ev.target.closest ? ev.target.closest('[data-suggest-topic]') : null;
     if (!btn || !root.contains(btn)) return;
@@ -524,6 +532,12 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
     root.querySelectorAll('.topic-suggest-item').forEach(function (el) {
       el.classList.toggle('is-selected', el === btn);
     });
+    form.classList.add('has-suggest-pick');
+    if (status) {
+      status.hidden = false;
+      status.textContent = 'Selected ' + topic + ' — review details, then press Link topic.';
+    }
+    if (submit) submit.focus({ preventScroll: true });
   });
 })();`;
 

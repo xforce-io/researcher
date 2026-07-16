@@ -154,26 +154,32 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
     },
   ];
 
-  it('renders Suggest list + manual form when suggestions exist (unlinked)', () => {
+  it('renders one panel: Suggest + fields + primary Link at same level', () => {
     const html = renderLibraryPaper(base({ topicSuggestions: suggestions }));
+    expect(html).toContain('class="topic-link-panel"');
     expect(html).toContain('class="topic-suggest"');
     expect(html).toContain('data-suggest-topic="decision"');
     expect(html).toContain('selection gate / verifier');
-    expect(html).toContain('or pick yourself');
+    expect(html).toContain('pick → edit below → Link');
     expect(html).toContain('action="/library/link"');
     expect(html).toContain('name="topic"');
-    expect(html).toContain('Link topic');
-    // No one-click primary Link on suggestion rows
-    expect(html).not.toMatch(/data-suggest-topic="[^"]*"[^>]*>[\s\S]*?<button[^>]*class="primary"/);
+    // Confirm is primary, panel-level — not a secondary buried control
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
+    // Suggest rows are type=button only (not form submit)
+    expect(html).toMatch(/type="button" class="topic-suggest-item"/);
+    expect(html).not.toMatch(/class="topic-suggest-item"[^>]*type="submit"/);
+    expect(html).not.toMatch(/type="submit"[^>]*class="topic-suggest-item"/);
     expect(html).toContain('TOPIC_SUGGEST_JS');
+    // Status line for post-pick guidance
+    expect(html).toContain('data-suggest-status');
   });
 
-  it('hides Suggest shell when suggestions empty', () => {
+  it('hides Suggest shell when suggestions empty; form still has primary Link', () => {
     const html = renderLibraryPaper(base({ topicSuggestions: [] }));
     expect(html).not.toContain('class="topic-suggest"');
-    expect(html).not.toContain('or pick yourself');
+    expect(html).not.toContain('pick → edit below → Link');
     expect(html).toContain('action="/library/link"');
-    expect(html).toContain('Link topic');
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
   });
 
   it('weakens Suggest label when already linked once', () => {

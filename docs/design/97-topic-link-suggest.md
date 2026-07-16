@@ -6,10 +6,11 @@ Issue: https://github.com/xforce-io/researcher/issues/97
 
 Library paper detail **Topic link** panel:
 
-1. **Suggest** (heuristic) — top-k ≤3 topics with short why; click **only fills** the form.
-2. **Manual form** — topic / relation / rationale; sole **Link topic** submit → `POST /library/link`.
-3. Empty suggestions → no Suggest chrome (manual only).
-4. Multi-link or integrated → hide Suggest; single link → weak “Also consider”.
+1. **One panel** (`.topic-link-panel`): Suggest (optional) + editable fields + **primary Link topic** at the same level.
+2. **Suggest** — top-k ≤3; click **only fills** fields (not a write). Status: “Selected X — press Link topic.”
+3. **Link topic** — sole submit (`primary`, full width) → `POST /library/link`.
+4. Empty suggestions → no Suggest chrome; form + primary Link remain.
+5. Multi-link or integrated → hide Suggest; single link → weak “Also consider”.
 
 Score is never written to `links.jsonl`.
 
