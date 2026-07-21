@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# researcher 本地 Web Console 启停（本仓约定入口）
+#
+# 用法:
+#   ./scripts/serve start|stop|status|logs|restart
+#
+# 环境变量（可选）:
+#   RESEARCHER_SERVE_ROOT   workspace 超级仓（含 researcher.workspace.yml）
+#   RESEARCHER_SERVE_PORT   端口，默认 4500
+#   RESEARCHER_BIN          可执行文件，默认 PATH 上的 researcher
+set -euo pipefail
+
+NAME=researcher
+DEFAULT_PORT=4500
+DEFAULT_ROOT="${HOME}/dev/github/research-harness"
+PORT="${RESEARCHER_SERVE_PORT:-$DEFAULT_PORT}"
+ROOT="${RESEARCHER_SERVE_ROOT:-$DEFAULT_ROOT}"
+BIN="${RESEARCHER_BIN:-researcher}"
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/${NAME}-serve"
+PID_FILE="$STATE_DIR/${NAME}.pid"
+LOG_FILE="$STATE_DIR/${NAME}.log"
+mkdir -p "$STATE_DIR"
+
+_is_alive() { [[ -n "${1:-}" ]] && kill -0 "$1" 2>/dev/null; }
+
+_listener_pid() {
+  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 { print $2; exit }'
+}
+
+_matches() {
+  local pid="$1" cmd
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  echo "$cmd" | grep -Eq 'researcher serve|cli\.js serve'
+}
+
+_resolve_pid() {
+  local pid=""
+  if [[ -f "$PID_FILE" ]]; then
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if _is_alive "$pid" && _matches "$pid"; then
+      printf '%s' "$pid"
+      return 0
+    fi
+    rm -f "$PID_FILE"
+  fi
+  pid="$(_listener_pid || true)"
+  if [[ -n "$pid" ]] && _matches "$pid"; then
+    printf '%s' "$pid"
+    return 0
+  fi
+  return 1
+}
+
+cmd_start() {
+  local pid
+  if pid="$(_resolve_pid 2>/dev/null)"; then
+    printf '✓ %s already running (pid=%s)  http://127.0.0.1:%s/\n' "$NAME" "$pid" "$PORT"
+    return 0
+  fi
+  if [[ ! -d "$ROOT" ]]; then
+    echo "error: workspace root not found: $ROOT" >&2
+    echo "  set RESEARCHER_SERVE_ROOT" >&2
+    return 1
+  fi
+  if [[ ! -f "$ROOT/researcher.workspace.yml" ]]; then
+    echo "error: $ROOT has no researcher.workspace.yml (need a workspace super-repo)" >&2
+    return 1
+  fi
+  if ! command -v "$BIN" >/dev/null 2>&1; then
+    echo "error: '$BIN' not on PATH (build+link researcher, or set RESEARCHER_BIN)" >&2
+    return 1
+  fi
+  local foreign
+  foreign="$(_listener_pid || true)"
+  if [[ -n "$foreign" ]]; then
+    echo "error: port $PORT in use by pid=$foreign (not $NAME)" >&2
+    ps -p "$foreign" -o args= 2>/dev/null || true
+    return 1
+  fi
+  nohup "$BIN" serve "$ROOT" -p "$PORT" >>"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
+  sleep 0.3
+  pid="$(cat "$PID_FILE")"
+  if ! _is_alive "$pid"; then
+    echo "error: failed to start — see $LOG_FILE" >&2
+    tail -n 20 "$LOG_FILE" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    return 1
+  fi
+  # prefer the actual listener pid if different from shell wrapper
+  local lp
+  lp="$(_listener_pid || true)"
+  if [[ -n "$lp" ]]; then
+    echo "$lp" >"$PID_FILE"
+    pid="$lp"
+  fi
+  printf '✓ %s started (pid=%s)  http://127.0.0.1:%s/\n' "$NAME" "$pid" "$PORT"
+  printf '  root: %s\n' "$ROOT"
+  printf '  log:  %s\n' "$LOG_FILE"
+}
+
+cmd_stop() {
+  local pid
+  if ! pid="$(_resolve_pid 2>/dev/null)"; then
+    echo "· $NAME not running"
+    rm -f "$PID_FILE"
+    return 0
+  fi
+  kill "$pid" 2>/dev/null || true
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    _is_alive "$pid" || break
+    sleep 0.15
+  done
+  _is_alive "$pid" && kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  printf '✓ %s stopped (was pid=%s)\n' "$NAME" "$pid"
+}
+
+cmd_status() {
+  local pid
+  if pid="$(_resolve_pid 2>/dev/null)"; then
+    printf '%s  running  pid=%s  port=%s  http://127.0.0.1:%s/\n' "$NAME" "$pid" "$PORT" "$PORT"
+  else
+    printf '%s  stopped  port=%s\n' "$NAME" "$PORT"
+  fi
+  printf '  root: %s\n' "$ROOT"
+  printf '  log:  %s\n' "$LOG_FILE"
+}
+
+cmd_logs() {
+  local n="${1:-40}"
+  if [[ ! -f "$LOG_FILE" ]]; then
+    echo "no log yet: $LOG_FILE"
+    echo "  (created on ./scripts/serve start)"
+    return 0
+  fi
+  echo "── $LOG_FILE (last $n lines) ──"
+  tail -n "$n" "$LOG_FILE"
+}
+
+cmd_restart() {
+  cmd_stop || true
+  cmd_start
+}
+
+usage() {
+  cat <<EOF
+$NAME web console control (repo-local)
+
+  $(basename "$0") start|stop|status|logs|restart
+
+  RESEARCHER_SERVE_ROOT  (default: $DEFAULT_ROOT)
+  RESEARCHER_SERVE_PORT  (default: $DEFAULT_PORT)
+  log: $LOG_FILE
+EOF
+}
+
+main() {
+  local cmd="${1:-status}"
+  shift || true
+  case "$cmd" in
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    logs)    cmd_logs "${1:-40}" ;;
+    restart) cmd_restart ;;
+    -h|--help|help) usage ;;
+    *) echo "unknown: $cmd" >&2; usage >&2; exit 1 ;;
+  esac
+}
+
+main "$@"
