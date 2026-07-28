@@ -70,6 +70,9 @@ export function composeSystemPrompt(methodologyBody: string): string {
     '- Your final message MUST contain exactly two blocks with these literal markers:',
     '  <<<PROJECT_YAML>>> … <<<END_PROJECT_YAML>>> then <<<THESIS_MD>>> … <<<END_THESIS_MD>>>',
     '- Put the markers in the final assistant text (not only in hidden reasoning).',
+    '- Inside each block: raw file body only. Do NOT wrap in markdown code fences',
+    '  (no ```yaml / ```markdown / ```). The first line after <<<PROJECT_YAML>>> must be',
+    '  valid YAML (usually a comment or a key like `meta:`), never a fence.',
     '- Do not write long preambles, debates, or process notes in the final answer — emit the blocks.',
     '- If most questions were skipped: preserve template defaults + TODO comments; still emit BOTH full files.',
     '',
@@ -119,15 +122,27 @@ export function composeUserPrompt(opts: RewriteOptions): string {
   lines.push('Start the final answer with <<<PROJECT_YAML>>> on its own line — no intro paragraph.');
   lines.push('');
   lines.push('<<<PROJECT_YAML>>>');
-  lines.push('...rewritten project.yaml content (must be valid YAML)...');
+  lines.push('...rewritten project.yaml content (must be valid YAML, NO ``` fences)...');
   lines.push('<<<END_PROJECT_YAML>>>');
   lines.push('');
   lines.push('<<<THESIS_MD>>>');
-  lines.push('...rewritten thesis.md content...');
+  lines.push('...rewritten thesis.md content (NO ``` fences)...');
   lines.push('<<<END_THESIS_MD>>>');
   lines.push('');
   lines.push('Again: final answer = only those two blocks (plus optional brief trailing note).');
+  lines.push('The templates above are shown in fences only for readability in this prompt;');
+  lines.push('your output blocks must be unfenced raw file contents.');
   return lines.join('\n');
+}
+
+/**
+ * Models often wrap marker bodies in ```yaml / ```markdown fences (copying the
+ * prompt's display style). Strip a single outer fence so YAML/MD parse sees the body.
+ */
+export function stripOuterMarkdownFence(body: string): string {
+  const t = body.trim();
+  const m = /^```(?:[a-zA-Z0-9_+-]*)?\r?\n([\s\S]*?)\r?\n```\s*$/.exec(t);
+  return m ? m[1] : body;
 }
 
 export function parseResponse(output: string): { projectYaml: string; thesisMd: string } {
@@ -135,8 +150,8 @@ export function parseResponse(output: string): { projectYaml: string; thesisMd: 
   if (!yamlMatch) throw new Error('rewrite response: missing PROJECT_YAML block');
   const mdMatch = /<<<THESIS_MD>>>\r?\n([\s\S]*?)\r?\n<<<END_THESIS_MD>>>/.exec(output);
   if (!mdMatch) throw new Error('rewrite response: missing THESIS_MD block');
-  const projectYaml = yamlMatch[1];
-  const thesisMd = mdMatch[1];
+  const projectYaml = stripOuterMarkdownFence(yamlMatch[1]);
+  const thesisMd = stripOuterMarkdownFence(mdMatch[1]);
   try {
     const parsed = parseYaml(projectYaml);
     if (parsed === null || parsed === undefined || typeof parsed !== 'object') {

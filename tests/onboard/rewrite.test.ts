@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { rewriteAnswers } from '../../src/onboard/rewrite.js';
+import { parseResponse, rewriteAnswers, stripOuterMarkdownFence } from '../../src/onboard/rewrite.js';
 import type { Onboarding } from '../../src/onboard/schema.js';
 import type { AgentRuntime, InvokeResult } from '../../src/adapter/interface.js';
 import type { SerializedAnswer } from '../../src/onboard/state.js';
@@ -142,5 +142,58 @@ describe('rewriteAnswers', () => {
         templateProjectYaml: '', templateThesisMd: '',
       })
     ).rejects.toThrow(/empty|non-object|blank/);
+  });
+
+  it('accepts marker bodies wrapped in markdown code fences (common model habit)', async () => {
+    // Live failure mode (agentic-model-training Complete setup): model echoed
+    // prompt display style and put ```yaml / ```markdown around each body.
+    const fenced = `<<<PROJECT_YAML>>>
+\`\`\`yaml
+meta:
+  topic_oneline: "agentic model training领域进展研究"
+  language: zh
+research_questions:
+  - id: RQ1
+    text: "How is SOTA defined for agentic model training?"
+\`\`\`
+<<<END_PROJECT_YAML>>>
+
+<<<THESIS_MD>>>
+\`\`\`markdown
+# Thesis
+## Working thesis
+Agentic model training is advancing via ...
+\`\`\`
+<<<END_THESIS_MD>>>
+`;
+    const rt = fakeRuntime(fenced);
+    const r = await rewriteAnswers({
+      runtime: rt, cwd: '/tmp', methodologyBody: 's',
+      onboarding: ONBOARDING, answers: [],
+      templateProjectYaml: '', templateThesisMd: '',
+    });
+    expect(r.projectYaml).toContain('agentic model training');
+    expect(r.projectYaml).not.toMatch(/^```/);
+    expect(r.thesisMd).toContain('Working thesis');
+    expect(r.thesisMd).not.toMatch(/^```/);
+  });
+});
+
+describe('stripOuterMarkdownFence', () => {
+  it('strips a single outer fence with language tag', () => {
+    expect(stripOuterMarkdownFence('```yaml\nmeta:\n  x: 1\n```')).toBe('meta:\n  x: 1');
+  });
+
+  it('leaves unfenced body unchanged (including internal fences)', () => {
+    const body = 'meta:\n  x: 1\n# see ```example``` inline';
+    expect(stripOuterMarkdownFence(body)).toBe(body);
+  });
+});
+
+describe('parseResponse', () => {
+  it('parses unfenced blocks', () => {
+    const r = parseResponse(VALID_RESPONSE);
+    expect(r.projectYaml).toContain('Decision policies');
+    expect(r.thesisMd).toContain('Working thesis');
   });
 });
