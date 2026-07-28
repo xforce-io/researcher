@@ -1110,8 +1110,10 @@ function hideAddTopic() {
   openAddTopicButtons[0]?.focus();
 }
 function slugifySeg(s) {
+  // NOTE: this block is embedded in a server-side template literal — backslashes
+  // must be double-escaped so the browser receives real regex escapes (\\s, \\/).
   return String(s || '').trim().toLowerCase()
-    .replace(/\s+/g, '-')
+    .replace(/\\s+/g, '-')
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '');
@@ -1122,7 +1124,7 @@ function updateSlugPreview() {
   if (!input || !preview) return;
   const raw = input.value.trim();
   if (!raw) { preview.hidden = true; preview.textContent = ''; return; }
-  const slug = raw.replace(/\/+$/,'').split('/').map(slugifySeg).filter(Boolean).join('/');
+  const slug = raw.replace(/\\/+$/,'').split('/').map(slugifySeg).filter(Boolean).join('/');
   if (slug && slug !== raw) {
     preview.hidden = false;
     preview.textContent = 'Will create folder: ' + slug;

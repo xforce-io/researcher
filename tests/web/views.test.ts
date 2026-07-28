@@ -284,6 +284,18 @@ describe('renderTopics', () => {
     expect(html).toContain('name="oneline"');
     expect(html).toContain('needs setup');
   });
+
+  it('embeds parseable New topic modal JS (template-literal escapes intact)', () => {
+    const html = renderTopics(m);
+    const mScript = html.match(/<script>([\s\S]*?data-open-add-topic[\s\S]*?)<\/script>/);
+    expect(mScript).toBeTruthy();
+    const js = mScript![1];
+    // Regression: unescaped \\/ inside the server template became // (line comment)
+    // and aborted the whole script — click on New topic then did nothing.
+    expect(js).toMatch(/\\s\+/); // client must see \s, not bare s
+    expect(js).toContain('/\\/+$/'); // client must see /\/+$/, not //+$/
+    expect(() => new Function(js)).not.toThrow();
+  });
 });
 
 describe('renderTopic', () => {
