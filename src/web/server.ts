@@ -12,6 +12,7 @@ import {
   generateTopicSetup,
   type TopicSetupForm,
 } from './topic-setup.js';
+import { assessSoulReady } from './soul-ready.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
@@ -119,7 +120,7 @@ async function handle(
     if (!oneline) return fail('one-line intent is required — any language is fine');
     try {
       const created = createWorkspaceTopic({ root, path: topicPath, oneline });
-      return redirect(res, `/t/${created.slug}`);
+      return redirect(res, `/t/${created.slug}?setup=1`);
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));
     }
@@ -372,7 +373,8 @@ async function handle(
       if (!view) return send(res, 404, 'text/plain', 'unknown topic');
       const active = registry.activeTask(decodeURIComponent(slug));
       const activeRun = active ? { taskId: active.id, startedAt: active.startedAt } : null;
-      return send(res, 200, 'text/html; charset=utf-8', renderTopic(view, activeRun));
+      const openSetup = url.searchParams.get('setup') === '1' && (view.needsSetup || !view.soulReady);
+      return send(res, 200, 'text/html; charset=utf-8', renderTopic(view, activeRun, { openSetup }));
     }
 
     // All sub-routes: validate slug against the manifest before any FS/process use
@@ -397,6 +399,15 @@ async function handle(
     // POST /t/:slug/run
     if (req.method === 'POST' && sub === '/run') {
       if (registry.isBusy(decoded)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
+      const soul = assessSoulReady(topicDir);
+      if (!soul.ready) {
+        return send(
+          res,
+          409,
+          'application/json',
+          JSON.stringify({ error: 'setup_required', reasons: soul.reasons }),
+        );
+      }
       const task = registry.start(decoded, topicDir, root);
       return send(res, 200, 'application/json', JSON.stringify({ taskId: task.id }));
     }

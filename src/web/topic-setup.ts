@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 import { MilkieAdapter } from '../adapter/milkie.js';
@@ -9,7 +9,7 @@ import {
   rewriteAnswers,
 } from '../onboard/rewrite.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
-import { isOnboardable } from '../onboard/all-templates-check.js';
+import { isSoulReady } from './soul-ready.js';
 import {
   makeSlug,
   writeOnboardArtifacts,
@@ -150,8 +150,10 @@ export function assertSetupAllowed(topicDir: string): void {
   if (!existsSync(resolveProjectResearcherDir(topicDir))) {
     throw new Error('topic has no .researcher/');
   }
-  if (!isOnboardable(topicDir)) {
-    throw new Error('topic is already set up (or has non-template content); edit files manually');
+  // Allow Complete setup while soul is hollow / blocked (open_questions), not only
+  // pristine templates — fixes false "already set up" after weak onboard (#106).
+  if (isSoulReady(topicDir)) {
+    throw new Error('topic is already set up (soul ready); edit files manually');
   }
 }
 
@@ -242,6 +244,11 @@ export async function applyTopicSetup(input: ApplyTopicSetupInput): Promise<void
     thesisMd: input.thesisMd,
     slug: makeSlug(oneline),
   });
+  // Applying a real soul resolves thin-signal blocks.
+  const oq = join(resolveProjectResearcherDir(input.topicDir), 'open_questions.md');
+  if (existsSync(oq)) {
+    try { unlinkSync(oq); } catch { /* best-effort */ }
+  }
 }
 
 /** Prefill helpers for the setup form from an existing topic dir. */

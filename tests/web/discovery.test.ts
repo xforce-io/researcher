@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome } from '../../src/web/discovery.js';
@@ -176,6 +176,73 @@ describe('loadTopic', () => {
     expect(v.slug).toBe('feeds%2Fai-safety');
     expect(v.path).toBe('feeds/ai-safety');
   });
+  it('marks hollow shallow-onboard soul as needsSetup even when thesis ≠ template bytes', () => {
+    const hollow = join(root, 'hollow');
+    mkdirSync(join(hollow, '.researcher/state'), { recursive: true });
+    writeFileSync(join(hollow, '.researcher/project.yaml'),
+      'meta:\n  topic_oneline: "agentic model training领域进展研究"\n  language: zh\n' +
+      'research_questions:\n  - { id: RQ1, text: "How is the state of the art currently defined for: agentic model training领域进展研究?" }\n' +
+      'inclusion_criteria: []\nexclusion_criteria: []\n' +
+      'sources:\n  - { kind: arxiv, queries: ["agentic model training"] }\n' +
+      'cadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
+    // Not byte-equal to template, but still instructional hollow thesis.
+    writeFileSync(join(hollow, '.researcher/thesis.md'), [
+      '# Thesis',
+      '',
+      '## Working thesis',
+      '',
+      'Write one paragraph per major claim - typically one per research question.',
+      '',
+      '<!-- TODO: revisit after first few papers -->',
+      '',
+      '## Taste',
+      '',
+      'What counts as a good paper here? What does a bad one look like?',
+      '',
+    ].join('\n'));
+    const prev = readFileSync(join(root, 'researcher.workspace.yml'), 'utf8');
+    writeFileSync(join(root, 'researcher.workspace.yml'),
+      prev.trimEnd() + '\n  - { path: hollow, active: true }\n');
+    try {
+      const v = loadTopic(root, 'hollow')!;
+      expect(v.available).toBe(true);
+      expect(v.needsSetup).toBe(true);
+      expect(v.soulReady).toBe(false);
+      expect(v.hasOpenQuestions).toBe(false);
+
+      const card = loadDashboard(root).topics.find((t) => t.path === 'hollow')!;
+      expect(card.needsSetup).toBe(true);
+    } finally {
+      writeFileSync(join(root, 'researcher.workspace.yml'), prev);
+    }
+  });
+
+  it('marks open_questions as needsSetup + hasOpenQuestions and lists the doc', () => {
+    const blocked = join(root, 'blocked-soul');
+    mkdirSync(join(blocked, '.researcher/state'), { recursive: true });
+    writeFileSync(join(blocked, '.researcher/project.yaml'),
+      'meta:\n  topic_oneline: "blocked"\n  language: zh\n' +
+      'research_questions:\n  - { id: RQ1, text: "A real research question about mechanisms" }\n' +
+      'inclusion_criteria: []\nexclusion_criteria: []\n' +
+      'sources:\n  - { kind: arxiv, queries: ["agent trajectory triage"] }\n' +
+      'cadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
+    writeFileSync(join(blocked, '.researcher/thesis.md'),
+      '# Thesis\n\n## Working thesis\n\nReal claim with a falsifier: X fails if Y.\n\n## Taste\n\n- Prefer mechanisms.\n');
+    writeFileSync(join(blocked, '.researcher/open_questions.md'), '# Open Questions\n\n1. What sub-area?\n');
+    const prev = readFileSync(join(root, 'researcher.workspace.yml'), 'utf8');
+    writeFileSync(join(root, 'researcher.workspace.yml'),
+      prev.trimEnd() + '\n  - { path: blocked-soul, active: true }\n');
+    try {
+      const v = loadTopic(root, 'blocked-soul')!;
+      expect(v.needsSetup).toBe(true);
+      expect(v.hasOpenQuestions).toBe(true);
+      expect(v.soulReady).toBe(false);
+      expect(v.docs.map((d) => d.path)).toContain('.researcher/open_questions.md');
+    } finally {
+      writeFileSync(join(root, 'researcher.workspace.yml'), prev);
+    }
+  });
+
 });
 
 describe('loadLibrary', () => {
