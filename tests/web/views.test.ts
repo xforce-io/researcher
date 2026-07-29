@@ -316,7 +316,7 @@ describe('renderTopics', () => {
 
 describe('renderTopic', () => {
   const v: TopicView = {
-    slug: 'trace', path: 'trace', available: true, needsSetup: false, soulReady: true, hasOpenQuestions: false, oneline: 'triage', language: 'zh',
+    slug: 'trace', path: 'trace', available: true, needsSetup: false, soulReady: true, hasOpenQuestions: false, landscapeEmpty: false, pendingRelatedCount: 0, oneline: 'triage', language: 'zh',
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
@@ -361,7 +361,7 @@ describe('renderTopic', () => {
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
     expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
     expect(html).toContain('<h1 class="sr-only">Topic: trace</h1>');
-    expect(html).toContain('Related papers');
+    expect(html).toMatch(/Linked \(Library\)|Related papers/);
     expect(html).toContain('paper-card compact');
     expect(html).toContain('Reusable Paper Cards');
     expect(html).toContain('tag-chip');
@@ -669,7 +669,7 @@ describe('tocTitle (#45)', () => {
 
 describe('renderTopic panel layout (#45)', () => {
   const v: TopicView = {
-    slug: 'trace', path: 'trace', available: true, needsSetup: false, soulReady: true, hasOpenQuestions: false, oneline: 'triage', language: 'zh',
+    slug: 'trace', path: 'trace', available: true, needsSetup: false, soulReady: true, hasOpenQuestions: false, landscapeEmpty: false, pendingRelatedCount: 0, oneline: 'triage', language: 'zh',
     sources: [{ kind: 'arxiv', summary: 'agent' }],
     researchQuestions: [{ id: 'RQ1', text: 'how' }],
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
@@ -702,7 +702,7 @@ describe('renderTopic panel layout (#45)', () => {
 describe('renderTopic run controls', () => {
   const baseView: TopicView = {
     slug: 'trace', path: 'trace', available: true, needsSetup: false, soulReady: true,
-    hasOpenQuestions: false, oneline: 'o', language: 'zh',
+    hasOpenQuestions: false, landscapeEmpty: false, pendingRelatedCount: 0, oneline: 'o', language: 'zh',
     sources: [], researchQuestions: [], docs: [], notes: [], papers: [], seen: [], watermark: null,
   };
 
@@ -763,5 +763,58 @@ describe('renderTopic run controls', () => {
     const html = renderTopic(baseView, { taskId: 'task-7', startedAt: 1719000000000 });
     expect(html).toContain('data-active-task="task-7"');
     expect(html).toContain('data-started-at="1719000000000"');
+  });
+});
+
+
+describe('renderTopic landscape / related UX (#111)', () => {
+  const base: TopicView = {
+    slug: 't', path: 't', available: true, needsSetup: false, soulReady: true,
+    hasOpenQuestions: false, landscapeEmpty: true, pendingRelatedCount: 1,
+    oneline: 'o', language: 'zh',
+    sources: [], researchQuestions: [], docs: [{ path: 'notes/00_research_landscape.md', label: 'Landscape' }],
+    notes: [], papers: [],
+    relatedPapers: [{
+      id: 'paper_arxiv_2607_21051',
+      displayTitle: 'Sample-Efficient Learning from Agent Experience',
+      canonicalId: 'arxiv:2607.21051',
+      sourceLabel: 'arXiv',
+      tags: [],
+      readStatus: 'read',
+      linkedTopicCount: 1,
+      integratedTopicCount: 0,
+      integratedInTopic: false,
+      updatedAt: '2026-07-28T00:00:00Z',
+      relation: 'candidate',
+    }],
+    seen: [], watermark: null,
+  };
+
+  it('explains empty landscape when linked papers are pending', () => {
+    const html = renderTopic(base);
+    expect(html).toContain('Landscape is empty');
+    expect(html).toContain('linked to this topic');
+    expect(html).toContain('Linked (Library)');
+    expect(html).toContain('linked · not in landscape');
+    expect(html).toContain('researcher add 2607.21051');
+    expect(html).not.toContain('>Related papers<');
+  });
+
+  it('marks integrated related papers as in landscape', () => {
+    const html = renderTopic({
+      ...base,
+      landscapeEmpty: false,
+      pendingRelatedCount: 0,
+      relatedPapers: base.relatedPapers!.map((p) => ({ ...p, integratedInTopic: true, relation: 'integrated' })),
+    });
+    expect(html).toContain('in landscape');
+    expect(html).not.toContain('Landscape is empty');
+  });
+
+  it('surfaces no-candidate outcome in run client script', () => {
+    const html = renderTopic({ ...base, landscapeEmpty: false, pendingRelatedCount: 0, relatedPapers: [] });
+    expect(html).toContain("outcome === 'no-candidate'");
+    expect(html).toContain('Landscape was NOT updated');
+    expect(html).toContain('no candidate');
   });
 });
