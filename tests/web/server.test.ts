@@ -130,7 +130,7 @@ it('creates a local topic through POST /topics', async () => {
   });
   const res = await fetch(base + '/topics', { method: 'POST', body: form, redirect: 'manual' });
   expect(res.status).toBe(303);
-  expect(res.headers.get('location')).toBe('/t/probe-web');
+  expect(res.headers.get('location')).toBe('/t/probe-web?setup=1');
 
   const detail = await fetch(base + '/t/probe-web');
   expect(detail.status).toBe(200);
@@ -139,6 +139,10 @@ it('creates a local topic through POST /topics', async () => {
   expect(html).toContain('Needs setup');
   expect(html).toContain('Complete setup');
   expect(html).toContain('/setup/generate');
+  expect(html).toMatch(/id="run-btn"[^>]*disabled/);
+
+  const withSetup = await fetch(base + '/t/probe-web?setup=1');
+  expect(await withSetup.text()).toContain('data-auto-open-setup');
 
   const list = await fetch(base + '/topics');
   expect(await list.text()).toContain('/t/probe-web');
@@ -184,11 +188,12 @@ it('AI complete-setup generate + apply on a scaffolded topic', async () => {
       redirect: 'manual',
     });
     expect(apply.status).toBe(303);
-
     const page = await fetch(base + '/t/probe-setup');
     const html = await page.text();
-    expect(html).not.toContain('data-open-topic-setup');
+    // Button/modal gone when soul ready (JS may still mention the selector string).
+    expect(html).not.toContain('id="topic-setup-modal"');
     expect(html).not.toContain('Needs setup');
+    expect(html).not.toMatch(/id="run-btn"[^>]*disabled/);
 
     const again = await fetch(base + '/t/probe-setup/setup/generate', {
       method: 'POST',
@@ -504,6 +509,21 @@ it('crafted slug on POST /run returns 404 (slug guard prevents arbitrary spawn)'
   const res = await fetch(base + `/t/${craftedSlug}/run`, { method: 'POST' });
   expect(res.status).toBe(404);
 });
+
+it('POST /run rejects soul-not-ready topic with setup_required', async () => {
+  const form = new URLSearchParams({
+    path: 'probe-not-ready',
+    oneline: 'Not ready pillar',
+  });
+  await fetch(base + '/topics', { method: 'POST', body: form, redirect: 'manual' });
+  const res = await fetch(base + '/t/probe-not-ready/run', { method: 'POST' });
+  expect(res.status).toBe(409);
+  const body = await res.json() as { error: string; reasons?: string[] };
+  expect(body.error).toBe('setup_required');
+  expect(Array.isArray(body.reasons)).toBe(true);
+  expect(body.reasons!.length).toBeGreaterThan(0);
+});
+
 
 it('nested slug: GET /t/feeds%2Fai-safety returns 200 with topic content', async () => {
   const res = await fetch(base + '/t/feeds%2Fai-safety');

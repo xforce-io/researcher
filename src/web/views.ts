@@ -1086,7 +1086,7 @@ function renderAddTopicModal(state: AddTopicFormState = {}): string {
           `<span class="field-hint">Any language. One sentence: what this pillar is about.</span>` +
         `</label>` +
         err +
-        `<p class="modal-hint">Creates a local topic directory, scaffolds <code>.researcher/</code>, and registers it in the workspace. No AI in this step.</p>` +
+        `<p class="modal-hint">Creates a local topic directory and registers it. Next step: Complete setup (thesis + sources) before Run.</p>` +
         `<button class="primary" type="submit">Create topic</button>` +
       `</form>` +
     `</div>` +
@@ -1150,7 +1150,8 @@ export function renderTopics(m: DashboardModel, addTopic: AddTopicFormState = {}
     const tags: string[] = [];
     if (!t.active) tags.push('<span class="tag dormant">dormant</span>');
     if (!t.available) tags.push('<span class="tag missing">unavailable</span>');
-    if (t.needsSetup) tags.push('<span class="tag setup">needs setup</span>');
+    if (t.needsSetup && t.hasOpenQuestions) tags.push('<span class="tag blocked">blocked</span>');
+    else if (t.needsSetup) tags.push('<span class="tag setup">needs setup</span>');
     const title = t.available
       ? `<a class="card-title" href="/t/${t.slug}">` +
         `${t.active ? '<span class="dot"></span>' : ''}${escapeHtml(t.path)}</a>`
@@ -1190,6 +1191,7 @@ export const renderDashboard = renderTopics;
 export function renderTopic(
   v: TopicView,
   activeRun: { taskId: string; startedAt: number } | null = null,
+  opts: { openSetup?: boolean } = {},
 ): string {
   if (!v.available) {
     const body = `<header class="topbar"><a class="brand" href="/">researcher</a>` +
@@ -1197,16 +1199,29 @@ export function renderTopic(
       `<main class="notice">Topic unavailable — submodule missing or no .researcher/.</main>`;
     return page(`${v.path} · unavailable`, body);
   }
-  const setupNotice = v.needsSetup
-    ? `<div class="setup-banner" role="status">` +
+  const runBlocked = v.needsSetup || !v.soulReady;
+  let setupNotice = '';
+  if (v.hasOpenQuestions) {
+    setupNotice =
+      `<div class="setup-banner" role="status">` +
         `<div class="setup-banner-text">` +
-          `<strong>Needs setup.</strong> This topic is scaffolded but thesis is still the template. ` +
-          `Generate an AI draft, or run <code>cd ${escapeHtml(v.path)} &amp;&amp; researcher onboard</code>.` +
+          `<strong>Blocked.</strong> Run paused — answer ` +
+          `<a href="/t/${v.slug}/doc?path=${encodeURIComponent('.researcher/open_questions.md')}" class="doc-link" data-path="${encodeURIComponent('.researcher/open_questions.md')}">open_questions.md</a>` +
+          `, then Resume setup or remove the file when resolved.` +
+        `</div>` +
+        `<button type="button" class="primary" data-open-topic-setup>Resume setup</button>` +
+      `</div>`;
+  } else if (runBlocked) {
+    setupNotice =
+      `<div class="setup-banner" role="status">` +
+        `<div class="setup-banner-text">` +
+          `<strong>Needs setup.</strong> This topic has no research soul yet (thesis + sources). ` +
+          `Complete setup before running.` +
         `</div>` +
         `<button type="button" class="primary" data-open-topic-setup>Complete setup</button>` +
-      `</div>`
-    : '';
-  const setupModal = v.needsSetup ? renderTopicSetupModal(v) : '';
+      `</div>`;
+  }
+  const setupModal = runBlocked ? renderTopicSetupModal(v) : '';
   const docTree = v.docs.map((d) =>
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
@@ -1247,12 +1262,15 @@ export function renderTopic(
   const related = v.relatedPapers ?? [];
   const relatedRows = related.map((p) => renderPaperCard(p, 'compact')).join('');
 
+  const runDisabled = runBlocked && !activeRun
+    ? ` disabled title="Complete setup before running" aria-disabled="true"`
+    : '';
   const runAttrs = activeRun
     ? ` data-active-task="${escapeHtml(activeRun.taskId)}" data-started-at="${activeRun.startedAt}"`
     : '';
   const runWrap =
     `<div class="run-wrap" id="run-wrap">` +
-    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}>Run</button>` +
+    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}${runDisabled}>Run</button>` +
     `<div id="run-pop" class="run-pop" hidden>` +
       `<div id="run-bar" class="run-bar">` +
         `<span id="run-status" class="run-status">idle</span>` +
@@ -1288,7 +1306,7 @@ export function renderTopic(
       `</aside>` +
     `</main>` +
     setupModal +
-    `<script>${TOPIC_JS}${v.needsSetup ? TOPIC_SETUP_JS : ''}</script>`;
+    `<script${opts.openSetup && runBlocked ? ' data-auto-open-setup' : ''}>${TOPIC_JS}${runBlocked ? TOPIC_SETUP_JS : ''}</script>`;
   return page(`${v.path} · researcher`, body);
 }
 
@@ -1427,6 +1445,11 @@ const TOPIC_SETUP_JS = `
   regenBtn?.addEventListener('click', () => { showForm(); generate(); });
   backBtn?.addEventListener('click', showForm);
   applyBtn?.addEventListener('click', apply);
+  if (document.currentScript && document.currentScript.hasAttribute('data-auto-open-setup')) {
+    show();
+  } else if (new URLSearchParams(location.search).get('setup') === '1') {
+    show();
+  }
 })();
 `;
 
@@ -1532,6 +1555,13 @@ function subscribe(taskId, t0) {
       return;
     }
     if (data.status === 'done' || data.exitCode === 0) {
+      // thin-signal still exits 0 today; detect via log line and hard-reload into blocked UI.
+      const log = out.textContent || '';
+      if (/signal too thin|open_questions\\.md/i.test(log)) {
+        settle('blocked', 'err', '\\n\\u26a0 soul too thin — open_questions.md written. Reloading…\\n');
+        setTimeout(() => { location.reload(); }, 600);
+        return;
+      }
       settle('done', 'ok', '\\n\\u2713 run finished.\\n');
     } else {
       settle('error', 'err', '\\n\\u2717 run failed' + (data.exitCode == null ? '' : ' (exit ' + data.exitCode + ')') + '.\\n');
@@ -1554,7 +1584,19 @@ async function startRun() {
   setBtnLabel();
   try {
     const res = await fetch('/t/' + slug + '/run', { method: 'POST' });
-    if (res.status === 409) { append('A run is already in progress for this topic.\\n'); finish('busy', 'err'); return; }
+    if (res.status === 409) {
+      let body = {};
+      try { body = await res.json(); } catch {}
+      if (body.error === 'setup_required') {
+        append('Setup required before Run:\\n' + ((body.reasons || []).join('\\n') || 'complete setup first') + '\\n');
+        finish('setup', 'err');
+        document.querySelector('[data-open-topic-setup]')?.click();
+        return;
+      }
+      append('A run is already in progress for this topic.\\n');
+      finish('busy', 'err');
+      return;
+    }
     if (!res.ok) { append('Could not start run (HTTP ' + res.status + ').\\n'); finish('failed', 'err'); return; }
     const { taskId } = await res.json();
     append('\\u25b6 run started — model stages can be quiet for a few minutes.\\n   Watch for stage changes or new log lines; the timer alone is not a heartbeat.\\n\\n');
@@ -1566,6 +1608,7 @@ async function startRun() {
 }
 
 if (runBtn) runBtn.addEventListener('click', () => {
+  if (runBtn.disabled || runBtn.getAttribute('aria-disabled') === 'true') return;
   if (running) { pop.hidden ? openPop() : closePop(); return; }
   startRun();
 });

@@ -145,6 +145,7 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .tag.dormant { background:var(--line-soft); color:#8a8164; }
 .tag.missing { background:#f3dede; color:#a4453d; }
 .tag.setup { background:#efe6c8; color:#7a6230; }
+.tag.blocked { background:#f3dede; color:#8a3a34; }
 .card-new {
   border-style:dashed;
   background:transparent;

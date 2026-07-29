@@ -9,7 +9,7 @@ import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Paper, PaperNote, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
-import { isThesisTemplate } from '../onboard/all-templates-check.js';
+import { assessSoulReady } from './soul-ready.js';
 import {
   extractReadSuggestExcerpt,
   suggestTopicLinks,
@@ -24,8 +24,10 @@ export interface TopicCard {
   path: string;
   active: boolean;
   available: boolean;
-  /** Scaffolded but thesis still template, never run, no notes. */
+  /** Soul not ready for autonomous run (setup / open questions). */
   needsSetup: boolean;
+  /** open_questions.md present — blocked after thin-signal. */
+  hasOpenQuestions?: boolean;
   oneline: string;
   noteCount: number;
   lastRun: string | null;
@@ -94,6 +96,9 @@ export interface TopicView {
   path: string;
   available: boolean;
   needsSetup: boolean;
+  /** True when thesis+sources are sufficient for Run. */
+  soulReady: boolean;
+  hasOpenQuestions: boolean;
   oneline: string;
   language: string;
   sources: SourceSummary[];
@@ -147,10 +152,11 @@ function isAvailable(topicDir: string): boolean {
   return existsSync(topicDir) && existsSync(resolveProjectResearcherDir(topicDir));
 }
 
-function computeNeedsSetup(topicDir: string, available: boolean, notes: number, lastRun: string | null): boolean {
+function computeNeedsSetup(topicDir: string, available: boolean): boolean {
   if (!available) return false;
-  if (notes > 0 || lastRun) return false;
-  return isThesisTemplate(topicDir);
+  // Soul readiness is independent of notes/lastRun: open_questions or hollow
+  // thesis must keep Setup visible even after a failed/thin run.
+  return !assessSoulReady(topicDir).ready;
 }
 
 function readSeen(topicDir: string): SeenEntry[] {
@@ -174,6 +180,7 @@ function buildDocs(topicDir: string): DocRef[] {
     if (existsSync(join(topicDir, rel))) docs.push({ path: rel, label });
   };
   add('.researcher/thesis.md', 'Thesis');
+  add('.researcher/open_questions.md', 'Open questions');
   add('notes/00_research_landscape.md', 'Landscape');
   add('report.md', 'Report');
   return docs;
@@ -232,9 +239,11 @@ export function loadDashboard(root: string): DashboardModel {
       lastRun = readWatermark(join(rDir, 'state/watermark.json'))?.last_run_completed_at ?? null;
     }
     const notes = noteCount(topicDir);
+    const soul = available ? assessSoulReady(topicDir) : null;
     return {
       slug: slugOf(t.path), path: t.path, active: t.active, available,
-      needsSetup: computeNeedsSetup(topicDir, available, notes, lastRun),
+      needsSetup: available ? !soul!.ready : false,
+      hasOpenQuestions: soul?.hasOpenQuestions ?? false,
       oneline, noteCount: notes, lastRun, decisionCounts: counts,
     };
   });
@@ -531,6 +540,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
   if (!available) {
     return {
       slug: slugOf(topic.path), path: topic.path, available: false, needsSetup: false,
+      soulReady: false, hasOpenQuestions: false,
       oneline: '', language: '',
       sources: [], researchQuestions: [], docs: [], notes: [], papers: [], relatedPapers: [], seen: [], watermark: null,
     };
@@ -554,10 +564,12 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     .filter((p): p is LibraryPaperSummary => p !== null);
   const notes = listNotes(topicDir);
   const watermark = readWatermark(join(rDir, 'state/watermark.json'));
-  const lastRun = watermark?.last_run_completed_at ?? null;
+  const soul = assessSoulReady(topicDir);
   return {
     slug: slugOf(topic.path), path: topic.path, available: true,
-    needsSetup: computeNeedsSetup(topicDir, true, notes.length, lastRun),
+    needsSetup: !soul.ready,
+    soulReady: soul.ready,
+    hasOpenQuestions: soul.hasOpenQuestions,
     oneline, language,
     sources, researchQuestions: rqs,
     docs: buildDocs(topicDir),
