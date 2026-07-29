@@ -162,4 +162,24 @@ describe('generateTopicSetup + applyTopicSetup', () => {
       else process.env.RESEARCHER_HOME = prev;
     }
   });
+
+  it('apply clears open_questions even when soul files are already identical to HEAD', async () => {
+    const topicDir = setupTopicDir();
+    const dot = resolveProjectResearcherDir(topicDir);
+    // Pretend a prior thin-signal left open_questions, and draft equals current files.
+    writeFileSync(join(dot, 'open_questions.md'), '# Open Questions\n\n1. What?\n');
+    writeFileSync(join(topicDir, '.milkie/state.sqlite'), 'noise');
+    const yaml = readFileSync(join(dot, 'project.yaml'), 'utf8');
+    const thesis = readFileSync(join(dot, 'thesis.md'), 'utf8');
+
+    await applyTopicSetup({
+      topicDir,
+      projectYaml: yaml,
+      thesisMd: thesis,
+      oneline: 'Decision policies for agents',
+    });
+
+    expect(existsSync(join(dot, 'open_questions.md'))).toBe(false);
+  });
+
 });

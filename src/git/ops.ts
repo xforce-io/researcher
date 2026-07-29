@@ -18,10 +18,16 @@ export async function checkout(o: { cwd: string; branch: string }): Promise<void
   await execa('git', ['checkout', o.branch], { cwd: o.cwd });
 }
 
-export async function commit(o: CommitOpts): Promise<void> {
-  if (o.paths.length === 0) return;
+export async function commit(o: CommitOpts): Promise<{ committed: boolean }> {
+  if (o.paths.length === 0) return { committed: false };
   await execa('git', ['add', ...o.paths], { cwd: o.cwd });
+  // With only untracked noise in the tree, `git commit` exits 1 when the index
+  // has no staged delta ("nothing added to commit but untracked files present").
+  // Setup/apply must tolerate re-applying identical soul files (#106 apply path).
+  const { stdout } = await execa('git', ['diff', '--cached', '--name-only'], { cwd: o.cwd });
+  if (!stdout.trim()) return { committed: false };
   await execa('git', ['commit', '-m', o.message], { cwd: o.cwd });
+  return { committed: true };
 }
 
 export async function dirtyPathsOutside(o: { cwd: string; allowedPrefixes: string[] }): Promise<string[]> {
