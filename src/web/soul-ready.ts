@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadProjectYaml, type ProjectYaml } from '../config/project-yaml.js';
 import { isThesisTemplate } from '../onboard/all-templates-check.js';
+import { loadThesis } from '../config/thesis-md.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 
 export interface SoulReadyAssessment {
@@ -51,6 +52,12 @@ export function assessSoulReady(topicDir: string): SoulReadyAssessment {
 
   if (isThesisTemplate(topicDir) || isThesisHollow(topicDir)) {
     reasons.push('thesis is still template/hollow — complete setup first');
+  } else {
+    try {
+      loadThesis(join(researcherDir, 'thesis.md'));
+    } catch (err) {
+      reasons.push(err instanceof Error ? err.message : 'thesis.md invalid');
+    }
   }
 
   let yaml: ProjectYaml | null = null;
