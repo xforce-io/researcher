@@ -82,6 +82,20 @@ describe('TaskRegistry', () => {
     expect(t.stage).toBe('discover');
   });
 
+  it('records outcome from events', async () => {
+    const reg = new TaskRegistry({
+      runner: fakeRunner(['a'], 0, 0, [
+        { type: 'plan', stages: ['bootstrap', 'discover'] },
+        { type: 'outcome', outcome: 'no-candidate' },
+      ]),
+      idSeq,
+    });
+    const task = reg.start('trace', '/ws/trace');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(reg.get(task.id)!.outcome).toBe('no-candidate');
+  });
+
+
   it('activeTask returns the running task for a slug, undefined once finished', async () => {
     const reg = new TaskRegistry({ runner: fakeRunner(['x'], 0, 50), idSeq });
     const task = reg.start('trace', '/ws/trace');

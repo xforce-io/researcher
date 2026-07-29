@@ -107,6 +107,10 @@ export interface TopicView {
   notes: NoteRef[];
   papers: { id: string; file: string }[];
   relatedPapers?: LibraryPaperSummary[];
+  /** Landscape missing or still the empty stub — no synthesize yet. */
+  landscapeEmpty: boolean;
+  /** Linked Library papers not yet integrated into this topic's notes/landscape. */
+  pendingRelatedCount: number;
   seen: SeenEntry[];
   watermark: Watermark | null;
 }
@@ -125,6 +129,8 @@ export interface LibraryPaperSummary {
   readStatus: PaperRead['status'] | 'unread';
   linkedTopicCount: number;
   integratedTopicCount: number;
+  /** True when this paper has a TopicIntegration row for the current topic. */
+  integratedInTopic?: boolean;
   updatedAt: string;
   relation?: PaperRelation;
 }
@@ -276,7 +282,12 @@ function latestReadStatus(reads: PaperRead[]): LibraryPaperSummary['readStatus']
   return [...reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].status;
 }
 
-function summarizePaper(lib: PaperLibrary, paper: Paper, relation?: PaperRelation): LibraryPaperSummary {
+function summarizePaper(
+  lib: PaperLibrary,
+  paper: Paper,
+  relation?: PaperRelation,
+  topicPath?: string,
+): LibraryPaperSummary {
   const reads = lib.listReads(paper.id);
   const links = lib.listLinks(paper.id).filter((l) => l.surfaceType === 'topic');
   const integrations = lib.listIntegrations(paper.id);
@@ -289,6 +300,9 @@ function summarizePaper(lib: PaperLibrary, paper: Paper, relation?: PaperRelatio
     readStatus: latestReadStatus(reads),
     linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
     integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
+    integratedInTopic: topicPath
+      ? integrations.some((i) => i.topicId === topicPath)
+      : undefined,
     updatedAt: paper.updatedAt,
     relation,
   };
@@ -542,7 +556,9 @@ export function loadTopic(root: string, slug: string): TopicView | null {
       slug: slugOf(topic.path), path: topic.path, available: false, needsSetup: false,
       soulReady: false, hasOpenQuestions: false,
       oneline: '', language: '',
-      sources: [], researchQuestions: [], docs: [], notes: [], papers: [], relatedPapers: [], seen: [], watermark: null,
+      sources: [], researchQuestions: [], docs: [], notes: [], papers: [], relatedPapers: [],
+      landscapeEmpty: true, pendingRelatedCount: 0,
+      seen: [], watermark: null,
     };
   }
   const rDir = resolveProjectResearcherDir(topicDir);
@@ -559,12 +575,14 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     .filter((l) => l.surfaceType === 'topic' && l.surfaceId === topic.path)
     .map((l) => {
       const paper = lib.getPaper(l.paperId);
-      return paper ? summarizePaper(lib, paper, l.relation) : null;
+      return paper ? summarizePaper(lib, paper, l.relation, topic.path) : null;
     })
     .filter((p): p is LibraryPaperSummary => p !== null);
   const notes = listNotes(topicDir);
   const watermark = readWatermark(join(rDir, 'state/watermark.json'));
   const soul = assessSoulReady(topicDir);
+  const landscapeEmpty = isLandscapeEmpty(topicDir);
+  const pendingRelatedCount = relatedPapers.filter((p) => !p.integratedInTopic).length;
   return {
     slug: slugOf(topic.path), path: topic.path, available: true,
     needsSetup: !soul.ready,
@@ -576,7 +594,22 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     notes,
     papers: listPdfs(topicDir),
     relatedPapers,
+    landscapeEmpty,
+    pendingRelatedCount,
     seen: readSeen(topicDir),
     watermark,
   };
+}
+
+/** True when landscape is missing or still the init stub (no synthesize yet). */
+export function isLandscapeEmpty(topicDir: string): boolean {
+  const path = join(topicDir, 'notes/00_research_landscape.md');
+  if (!existsSync(path)) return true;
+  try {
+    const body = readFileSync(path, 'utf8');
+    if (!body.trim()) return true;
+    return /_No papers ingested yet\._/i.test(body) || /No papers ingested yet/i.test(body);
+  } catch {
+    return true;
+  }
 }

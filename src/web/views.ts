@@ -315,28 +315,44 @@ function renderTagChips(tags: string[]): string {
 function renderPaperCard(
   p: LibraryPaperSummary,
   variant: 'row' | 'compact' | 'detail' = 'row',
-  opts: { defaultHidden?: boolean } = {},
+  opts: { defaultHidden?: boolean; topicContext?: boolean } = {},
 ): string {
   const relation = p.relation ? `<span class="paper-relation">${escapeHtml(p.relation)}</span>` : '';
-  const counts = `${p.readStatus} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
+  let integrationBadge = '';
+  if (opts.topicContext) {
+    integrationBadge = p.integratedInTopic
+      ? `<span class="paper-integration in-landscape">in landscape</span>`
+      : `<span class="paper-integration pending-landscape">linked · not in landscape</span>`;
+  }
+  const stateBits = opts.topicContext
+    ? [escapeHtml(p.readStatus), relation].filter(Boolean).join(' · ')
+    : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated${relation ? ` ${relation}` : ''}`;
   const searchText = [
     p.displayTitle,
     p.canonicalId,
     p.sourceLabel,
     p.readStatus,
     p.relation,
+    ...(opts.topicContext
+      ? [p.integratedInTopic ? 'in landscape' : 'not in landscape']
+      : []),
     ...p.tags,
   ].filter(Boolean).join(' ').toLowerCase();
-  // Library list defaults to Unlinked: hide linked cards on first paint (JS re-filters on click).
   const hidden = opts.defaultHidden ? ' hidden' : '';
-  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}">` +
+  const arxivId = p.canonicalId.startsWith('arxiv:') ? p.canonicalId.slice('arxiv:'.length) : '';
+  const integrateCta = opts.topicContext && !p.integratedInTopic && arxivId
+    ? `<div class="paper-cta muted">Run will prefer this link, or <code>researcher add ${escapeHtml(arxivId)}</code></div>`
+    : '';
+  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}" data-in-topic="${p.integratedInTopic ? '1' : '0'}">` +
     `<div class="paper-main">` +
       `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
+      integrationBadge +
+      integrateCta +
     `</div>` +
     `<span class="source-badge">${escapeHtml(p.sourceLabel)}</span>` +
     `<div class="paper-tag-cell">${renderTagChips(p.tags)}</div>` +
-    `<div class="paper-state">${escapeHtml(counts)}${relation}</div>` +
+    `<div class="paper-state">${stateBits}</div>` +
     `<div class="paper-updated">${fmtShortDate(p.updatedAt)}</div>` +
   `</article>`;
 }
@@ -1220,6 +1236,30 @@ export function renderTopic(
         `</div>` +
         `<button type="button" class="primary" data-open-topic-setup>Complete setup</button>` +
       `</div>`;
+  } else if (v.landscapeEmpty && (v.pendingRelatedCount ?? 0) > 0) {
+    const n = v.pendingRelatedCount;
+    const sample = (v.relatedPapers ?? []).find((p) => !p.integratedInTopic);
+    const arxiv = sample?.canonicalId?.startsWith('arxiv:')
+      ? sample.canonicalId.slice('arxiv:'.length)
+      : '';
+    setupNotice =
+      `<div class="setup-banner landscape-empty" role="status">` +
+        `<div class="setup-banner-text">` +
+          `<strong>Landscape is empty.</strong> ` +
+          `${n} Library paper${n === 1 ? '' : 's'} linked to this topic, but none are written into notes/landscape yet. ` +
+          `Click <b>Run</b> to integrate the oldest linked candidate` +
+          (arxiv ? ` (or <code>researcher add ${escapeHtml(arxiv)}</code>)` : '') +
+          `, or open a paper under <b>Linked (Library)</b>.` +
+        `</div>` +
+      `</div>`;
+  } else if (v.landscapeEmpty) {
+    setupNotice =
+      `<div class="setup-banner landscape-empty" role="status">` +
+        `<div class="setup-banner-text">` +
+          `<strong>Landscape is empty.</strong> ` +
+          `No papers have been synthesized into this topic yet. Run discover, or link a Library paper and Run.` +
+        `</div>` +
+      `</div>`;
   }
   const setupModal = runBlocked ? renderTopicSetupModal(v) : '';
   const docTree = v.docs.map((d) =>
@@ -1260,7 +1300,7 @@ export function renderTopic(
     ? `last run ${fmtDate(v.watermark.last_run_completed_at)} · <span class="mono">${escapeHtml(v.watermark.last_run_id)}</span>`
     : 'never run';
   const related = v.relatedPapers ?? [];
-  const relatedRows = related.map((p) => renderPaperCard(p, 'compact')).join('');
+  const relatedRows = related.map((p) => renderPaperCard(p, 'compact', { topicContext: true })).join('');
 
   const runDisabled = runBlocked && !activeRun
     ? ` disabled title="Complete setup before running" aria-disabled="true"`
@@ -1297,7 +1337,11 @@ export function renderTopic(
       `<aside class="right" id="right-panel"><h3>About</h3>` +
         `<p class="about">${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'}` +
         `${v.language ? ` <span class="lang">${escapeHtml(v.language)}</span>` : ''}</p>` +
-        (related.length ? `<h3>Related papers <span class="h3-count">${related.length}</span></h3><div class="related-papers">${relatedRows}</div>` : '') +
+        (related.length
+          ? `<h3>Linked (Library) <span class="h3-count">${related.length}</span></h3>` +
+            `<p class="muted related-hint">Library links — not the same as landscape until integrated.</p>` +
+            `<div class="related-papers">${relatedRows}</div>`
+          : '') +
         `<h3>Sources</h3><ul class="meta-list">${sourceList || '<li>—</li>'}</ul>` +
         `<h3>Questions</h3><ul class="meta-list">${rqList || '<li>—</li>'}</ul>` +
         `<h3>State</h3><p class="state">${wm}</p>` +
@@ -1555,14 +1599,30 @@ function subscribe(taskId, t0) {
       return;
     }
     if (data.status === 'done' || data.exitCode === 0) {
-      // thin-signal still exits 0 today; detect via log line and hard-reload into blocked UI.
+      const outcome = data.outcome || '';
       const log = out.textContent || '';
-      if (/signal too thin|open_questions\\.md/i.test(log)) {
-        settle('blocked', 'err', '\\n\\u26a0 soul too thin — open_questions.md written. Reloading…\\n');
+      if (outcome === 'thin-signal' || /signal too thin|open_questions\\.md/i.test(log)) {
+        settle('blocked', 'err', '\\n\\u26a0 soul too thin - open_questions.md written. Reloading...n');
         setTimeout(() => { location.reload(); }, 600);
         return;
       }
-      settle('done', 'ok', '\\n\\u2713 run finished.\\n');
+      if (outcome === 'no-candidate') {
+        settle('no candidate', 'warn',
+          '\\n\\u25cb no deep-read candidate this tick.\\n' +
+          '   Landscape was NOT updated.\\n' +
+          '   Link a Library paper or wait for discover hits, then Run again.\\n');
+        return;
+      }
+      if (outcome === 'no-queries') {
+        settle('no queries', 'warn',
+          '\\n\\u25cb no arxiv queries configured - discover skipped.\\n' +
+          '   Landscape was NOT updated.\\n');
+        return;
+      }
+      settle('done', 'ok', '\\n\\u2713 run finished' + (outcome ? ' (' + outcome + ')' : '') + '.\\n');
+      if (outcome === 'completed' || /deep-read:/i.test(log)) {
+        setTimeout(() => { location.reload(); }, 800);
+      }
     } else {
       settle('error', 'err', '\\n\\u2717 run failed' + (data.exitCode == null ? '' : ' (exit ' + data.exitCode + ')') + '.\\n');
     }

@@ -24,6 +24,8 @@ import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
 import type { LibraryReadRunner } from '../web/library-read.js';
 import { resolveRunSourceMode } from './run-source-mode.js';
+import { PaperLibrary } from '../library/store.js';
+
 
 /** Resolve a configured inbox_dir, expanding a leading ~. */
 function resolveInboxDir(p: string | undefined): string | null {
@@ -58,6 +60,11 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
 
   let outcome: RunOutcome = 'completed';
+  const setOutcome = (o: RunOutcome) => {
+    outcome = o;
+    emitEvent({ type: 'outcome', outcome: o });
+  };
+
   await withLock(join(researcherDir, 'state/.lock'), async () => {
     let ctx: RunContext;
     await runStages(runDir, [
@@ -75,7 +82,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         `autonomous tick: signal too thin to draft project soul. ` +
         `see .researcher/open_questions.md, fill it in, then re-run. (${runDir.id})\n`,
       );
-      outcome = 'thin-signal';
+      setOutcome('thin-signal');
       return;
     }
 
@@ -91,14 +98,14 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         process.stdout.write(
           `autonomous tick: x-inbox source has no inbox_dir configured — nothing to consume. (${runDir.id})\n`,
         );
-        outcome = 'no-queries';
+        setOutcome('no-queries');
         return;
       }
       const seen = new Seen(join(researcherDir, 'state/seen.jsonl'));
       const pick = pickOldestUnconsumed(inboxDir, (id) => seen.has(id));
       if (!pick) {
         process.stdout.write(`autonomous tick: no unconsumed digest in ${inboxDir} (${runDir.id}).\n`);
-        outcome = 'no-candidate';
+        setOutcome('no-candidate');
         return;
       }
       ctx!.feedDigest = pick;
@@ -121,32 +128,53 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
       );
       reportContradictions(ctx!);
+      setOutcome('completed');
       return;
     }
 
     const hasRealQueries = ctx!.projectYaml.sources.some(
       (s) => s.queries && s.queries.some((q) => q.trim() !== '' && q !== 'your topic keyword')
     );
-    if (!hasRealQueries) {
-      process.stdout.write(
-        `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
-        `Add queries to .researcher/project.yaml sources[].queries, or use \`researcher add <arxiv-id>\`.\n`
-      );
-      outcome = 'no-queries';
-      return;
-    }
+
+    // Prefer Library papers already linked to this topic but not yet integrated —
+    // users see them under Related papers and expect Run to consume them.
+    const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
+    const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
+    const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
 
     emitEvent({
       type: 'plan',
-      stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
+      stages: linkedId
+        ? ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package']
+        : ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
     });
-    await runStages(runDir, [
-      { name: 'discover', fn: async () => discoverTriage(ctx!) },
-    ]);
+
+    if (linkedId) {
+      ctx!.addSourceId = linkedId;
+      ctx!.triageReason = 'library-linked candidate (not yet in landscape)';
+      process.stdout.write(
+        `autonomous tick: using library-linked candidate ${linkedId} (skip discover). (${runDir.id})\n`,
+      );
+    } else {
+      if (!hasRealQueries) {
+        process.stdout.write(
+          `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
+          `Add queries to .researcher/project.yaml sources[].queries, or use \`researcher add <arxiv-id>\`.\n`
+        );
+        setOutcome('no-queries');
+        return;
+      }
+      await runStages(runDir, [
+        { name: 'discover', fn: async () => discoverTriage(ctx!) },
+      ]);
+    }
 
     if (!ctx!.addSourceId) {
-      process.stdout.write(`autonomous tick: no deep-read candidate this run (${runDir.id}).\n`);
-      outcome = 'no-candidate';
+      process.stdout.write(
+        `autonomous tick: no deep-read candidate this run (${runDir.id}).\n` +
+        `landscape unchanged — link a Library paper or wait for discover hits.\n`,
+      );
+      setOutcome('no-candidate');
       return;
     }
 
@@ -154,8 +182,8 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       {
         name: 'read',
         fn: async () => libraryTopicRead(ctx!, {
-          workspaceRoot: opts.workspaceRoot ?? opts.cwd,
-          topicPath: opts.topicPath,
+          workspaceRoot,
+          topicPath,
           libraryReadRunner: opts.libraryReadRunner,
         }),
       },
@@ -165,9 +193,52 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     ]);
     process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addSourceId})\n`);
     reportContradictions(ctx!);
+    setOutcome('completed');
   });
   return { outcome, runId: runDir.id };
 }
+
+/** Oldest linked Library paper for this topic that is not yet integrated. Prefers arxiv. */
+export function pickLinkedLibraryCandidate(opts: {
+  workspaceRoot: string;
+  topicPath: string;
+}): string | null {
+  if (!opts.topicPath) return null;
+  let lib: PaperLibrary;
+  try {
+    lib = new PaperLibrary(opts.workspaceRoot);
+  } catch {
+    return null;
+  }
+  const integrated = new Set(
+    lib.listIntegrations()
+      .filter((i) => i.topicId === opts.topicPath)
+      .map((i) => i.paperId),
+  );
+  const links = lib.listLinks()
+    .filter((l) => l.surfaceType === 'topic' && l.surfaceId === opts.topicPath)
+    .filter((l) => l.relation === 'candidate' || l.relation === 'relevant')
+    .filter((l) => !integrated.has(l.paperId))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  let fallback: string | null = null;
+  for (const link of links) {
+    const paper = lib.getPaper(link.paperId);
+    if (!paper) continue;
+    const id = paper.canonicalSource.id;
+    if (paper.canonicalSource.kind === 'arxiv') return id;
+    if (!fallback) fallback = id;
+  }
+  return fallback;
+}
+
+function inferTopicPath(workspaceRoot: string, topicDir: string): string {
+  const rel = topicDir.startsWith(workspaceRoot)
+    ? topicDir.slice(workspaceRoot.length).replace(/^[/\\]/, '')
+    : '';
+  return rel || topicDir.split(/[/\\]/).filter(Boolean).at(-1) || '';
+}
+
 
 /** Surface contradiction/landscape/charter signals from this run's contradictions.md. */
 function reportContradictions(ctx: RunContext): void {

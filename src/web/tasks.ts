@@ -28,6 +28,8 @@ export interface RunTask {
   startedAt: number;
   plan: Stage[] | null;
   stage: Stage | null;
+  /** Terminal tick classification when the child emitted an outcome event. */
+  outcome?: string;
   /** Why the task ended, when not a normal exit (e.g. unknown task id). */
   endReason?: 'unknown' | 'fork-error';
 }
@@ -155,6 +157,7 @@ export class TaskRegistry {
     const onEvent = (ev: RunEvent) => {
       if (ev.type === 'plan') task.plan = ev.stages;
       else if (ev.type === 'stage') task.stage = ev.name;
+      else if (ev.type === 'outcome') task.outcome = ev.outcome;
       for (const l of this.listeners.get(task.id) ?? []) l.onEvent(ev);
     };
     job(onLine, onEvent).then(

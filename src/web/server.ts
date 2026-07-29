@@ -424,6 +424,7 @@ async function handle(
               status: task.status,
               exitCode: task.exitCode,
               endReason: task.endReason,
+              outcome: task.outcome,
             })}\n\n`,
           );
           res.end();
