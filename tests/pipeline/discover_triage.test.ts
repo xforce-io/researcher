@@ -13,13 +13,49 @@ import type { Triaged } from '../../src/config/triaged.js';
 
 class WriteTriagedAdapter implements AgentRuntime {
   id = 'stub';
+  calls = 0;
   constructor(private readonly payload: Triaged) {}
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls += 1;
     // Tests look for the triaged_path placeholder in the user prompt and write there.
-    const m = /triaged_path:\s*(\S+)/.exec(opts.userPrompt) ?? /Write[^\n]*at `([^`]+triaged\.json)`/.exec(opts.userPrompt);
+    const m =
+      /`([^`]+triaged\.json)`/.exec(opts.userPrompt) ??
+      /triaged_path:\s*(\S+)/.exec(opts.userPrompt) ??
+      /Write[^\n]*at `([^`]+triaged\.json)`/.exec(opts.userPrompt);
     if (!m) throw new Error('stub: could not find triaged_path in prompt');
     writeFileSync(m[1], JSON.stringify(this.payload, null, 2));
     return { output: `done\n\nFILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
+  }
+}
+
+/** First call: no file. Second call (recovery): write triaged.json. */
+class WriteOnSecondCallAdapter implements AgentRuntime {
+  id = 'stub-retry';
+  calls = 0;
+  constructor(private readonly payload: Triaged) {}
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls += 1;
+    const m = /`([^`]+triaged\.json)`/.exec(opts.userPrompt);
+    if (!m) throw new Error('stub: could not find triaged path');
+    if (this.calls === 1) {
+      return {
+        output: 'still searching, will write triaged.json next…',
+        modifiedFiles: [],
+        exitCode: 0,
+        finishReason: 'length',
+      };
+    }
+    writeFileSync(m[1], JSON.stringify(this.payload, null, 2));
+    return { output: `FILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
+  }
+}
+
+class NeverWriteAdapter implements AgentRuntime {
+  id = 'stub-never';
+  calls = 0;
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls += 1;
+    return { output: 'no file', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
 
@@ -152,4 +188,26 @@ describe('discover_triage stage', () => {
     // We do NOT re-read a previously-decided paper.
     expect(ctx.addSourceId).toBeUndefined();
   });
+
+  it('retries once when the first agent call exits without triaged.json', async () => {
+    const adapter = new WriteOnSecondCallAdapter(sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(adapter.calls).toBe(2);
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+    expect(existsSync(rd.path('triaged.json'))).toBe(true);
+  });
+
+  it('fails after one recovery attempt if triaged.json is still missing', async () => {
+    const adapter = new NeverWriteAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).rejects.toThrow(/did not produce.*triaged\.json/);
+    expect(adapter.calls).toBe(2);
+  });
+
 });

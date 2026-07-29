@@ -7,6 +7,7 @@ import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
+const RECOVERY_TIMEOUT_MS = 8 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
 export async function discoverTriage(ctx: RunContext): Promise<void> {
@@ -39,7 +40,49 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
     timeoutMs: TIMEOUT_MS,
   });
   assertAgentOk(ctx.runDir, 'discover', result);
-  if (!existsSync(triagedPath)) throw new Error(`discover_triage: agent did not produce ${triagedPath}`);
+
+  if (!existsSync(triagedPath)) {
+    // Common failure: model finishReason=length / max_iterations while still
+    // searching, exit 0, no file. One focused recovery pass that may only write
+    // the JSON (even candidates:[]) is cheaper than failing the whole tick.
+    const recoveryPrompt = [
+      '# Discover recovery — write triaged.json NOW',
+      '',
+      'Your previous discover attempt finished without creating the required output file.',
+      `Required path (create with run_command, e.g. cat > '${triagedPath}' <<'EOF' ... EOF):`,
+      '',
+      `\`${triagedPath}\``,
+      '',
+      'Rules for this recovery call:',
+      '- Do NOT run more arXiv/web searches.',
+      '- Do NOT read PDFs.',
+      '- Write exactly one JSON file at the path above.',
+      '- Prefer a real triage if you already know candidates from context; otherwise write:',
+      '  {"candidates":[],"search_summary":"<why empty or incomplete>"}',
+      '- File body must be pure JSON (no markdown fences).',
+      '- Final stdout must end with:',
+      '  FILES_MODIFIED:',
+      `  ${triagedPath}`,
+      '',
+      '## Working thesis (context only)',
+      ctx.thesis.body.slice(0, 2000),
+      '',
+      '## project.yaml sources (context only)',
+      readFileSync(join(ctx.researcherDir, 'project.yaml'), 'utf8').slice(0, 1500),
+    ].join('\n');
+
+    const recovery = await ctx.adapter.invoke({
+      cwd: ctx.projectRoot,
+      systemPrompt,
+      userPrompt: recoveryPrompt,
+      timeoutMs: RECOVERY_TIMEOUT_MS,
+    });
+    assertAgentOk(ctx.runDir, 'discover', recovery);
+  }
+
+  if (!existsSync(triagedPath)) {
+    throw new Error(`discover_triage: agent did not produce ${triagedPath}`);
+  }
 
   const triaged = parseTriaged(readFileSync(triagedPath, 'utf8'));
 
