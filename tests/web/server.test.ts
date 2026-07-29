@@ -24,7 +24,27 @@ beforeAll(async () => {
     'meta:\n  topic_oneline: t\n  language: zh\nresearch_questions:\n  - { id: RQ1, text: how }\n' +
     'inclusion_criteria: []\nexclusion_criteria: []\nsources:\n  - { kind: arxiv, queries: [a] }\n' +
     'cadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
-  writeFileSync(join(trace, '.researcher/thesis.md'), '# Thesis\n\nbody');
+  writeFileSync(join(trace, '.researcher/thesis.md'), [
+    '# Thesis',
+    '',
+    '## Working thesis',
+    '',
+    'Trace triage should prefer lightweight signals over LLM judges.',
+    'Falsifier: LLM-judge-first pipelines beat signal triage on cost-normalized quality.',
+    '',
+    '## Taste',
+    '',
+    '- Prefer mechanisms.',
+    '',
+    '## Anti-patterns',
+    '',
+    '- Benchmark-only papers.',
+    '',
+    '## Examples',
+    '',
+    '(empty)',
+    '',
+  ].join('\n'));
 
   // nested topic "feeds/ai-safety"
   const feedsAi = join(root, 'feeds/ai-safety');
@@ -34,7 +54,27 @@ beforeAll(async () => {
     'research_questions:\n  - { id: RQ1, text: safe }\n' +
     'inclusion_criteria: []\nexclusion_criteria: []\n' +
     'sources:\n  - { kind: arxiv, queries: [safety] }\ncadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
-  writeFileSync(join(feedsAi, '.researcher/thesis.md'), '# AI Safety Thesis\n\nbody');
+  writeFileSync(join(feedsAi, '.researcher/thesis.md'), [
+    '# AI Safety Thesis',
+    '',
+    '## Working thesis',
+    '',
+    'Safety feeds should surface mechanism-level failures first.',
+    'Falsifier: generic news digests beat mechanism feeds on decision usefulness.',
+    '',
+    '## Taste',
+    '',
+    '- Prefer primary sources.',
+    '',
+    '## Anti-patterns',
+    '',
+    '- Hype roundups without methods.',
+    '',
+    '## Examples',
+    '',
+    '(empty)',
+    '',
+  ].join('\n'));
 
   // a registry with a fake runner so POST /run never spawns a real process
   const registry = new TaskRegistry({
@@ -80,7 +120,27 @@ beforeAll(async () => {
           '  default_interval_days: 7',
           '  backoff_after_empty_runs: 3',
         ].join('\n');
-        const thesis = '# Thesis\n\n## Working thesis\n\nSetup works when AI drafts are applied.\n';
+        const thesis = [
+          '# Thesis',
+          '',
+          '## Working thesis',
+          '',
+          'Setup works when AI drafts are applied with required thesis sections.',
+          'Falsifier: incomplete drafts still unlock Run.',
+          '',
+          '## Taste',
+          '',
+          '- Prefer concrete RQs.',
+          '',
+          '## Anti-patterns',
+          '',
+          '- Hollow template thesis.',
+          '',
+          '## Examples',
+          '',
+          '(empty)',
+          '',
+        ].join('\n');
         return {
           exitCode: 0,
           modifiedFiles: [],

@@ -40,7 +40,25 @@ cadence:
   backoff_after_empty_runs: 3
 `;
 
-const DRAFT_THESIS = `# Working Thesis\n\n## Working thesis\n\nAgents should escalate when uncertainty exceeds a threshold.\n`;
+const DRAFT_THESIS = `# Working Thesis
+
+## Working thesis
+
+Agents should escalate when uncertainty exceeds a threshold.
+Falsifier: always-acting agents match escalate policies on calibrated regret.
+
+## Taste
+
+- Prefer mechanism papers over leaderboard-only reports.
+
+## Anti-patterns
+
+- Benchmark-only papers without a method.
+
+## Examples
+
+(empty until first notes)
+`;
 
 function agentOutput(yaml: string, thesis: string): string {
   return [
