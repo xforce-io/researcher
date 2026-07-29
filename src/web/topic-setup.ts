@@ -244,7 +244,7 @@ export async function applyTopicSetup(input: ApplyTopicSetupInput): Promise<void
     thesisMd: input.thesisMd,
     slug: makeSlug(oneline),
   });
-  // Applying a real soul resolves thin-signal blocks.
+  // Clear thin-signal block even when the commit was a no-op (files already matched HEAD).
   const oq = join(resolveProjectResearcherDir(input.topicDir), 'open_questions.md');
   if (existsSync(oq)) {
     try { unlinkSync(oq); } catch { /* best-effort */ }

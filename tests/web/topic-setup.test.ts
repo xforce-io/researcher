@@ -40,7 +40,25 @@ cadence:
   backoff_after_empty_runs: 3
 `;
 
-const DRAFT_THESIS = `# Working Thesis\n\n## Working thesis\n\nAgents should escalate when uncertainty exceeds a threshold.\n`;
+const DRAFT_THESIS = `# Working Thesis
+
+## Working thesis
+
+Agents should escalate when uncertainty exceeds a threshold.
+Falsifier: always-acting agents match escalate policies on calibrated regret.
+
+## Taste
+
+- Prefer mechanism papers over leaderboard-only reports.
+
+## Anti-patterns
+
+- Benchmark-only papers without a method.
+
+## Examples
+
+(empty until first notes)
+`;
 
 function agentOutput(yaml: string, thesis: string): string {
   return [
@@ -162,4 +180,24 @@ describe('generateTopicSetup + applyTopicSetup', () => {
       else process.env.RESEARCHER_HOME = prev;
     }
   });
+
+  it('apply clears open_questions even when soul files are already identical to HEAD', async () => {
+    const topicDir = setupTopicDir();
+    const dot = resolveProjectResearcherDir(topicDir);
+    // Pretend a prior thin-signal left open_questions, and draft equals current files.
+    writeFileSync(join(dot, 'open_questions.md'), '# Open Questions\n\n1. What?\n');
+    writeFileSync(join(topicDir, '.milkie/state.sqlite'), 'noise');
+    const yaml = readFileSync(join(dot, 'project.yaml'), 'utf8');
+    const thesis = readFileSync(join(dot, 'thesis.md'), 'utf8');
+
+    await applyTopicSetup({
+      topicDir,
+      projectYaml: yaml,
+      thesisMd: thesis,
+      oneline: 'Decision policies for agents',
+    });
+
+    expect(existsSync(join(dot, 'open_questions.md'))).toBe(false);
+  });
+
 });

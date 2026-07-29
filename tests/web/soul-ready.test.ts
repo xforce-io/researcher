@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -64,6 +64,10 @@ function readyThesis(): string {
     '',
     '- Benchmark-only papers without a method.',
     '',
+    '## Examples',
+    '',
+    '(empty until first notes)',
+    '',
   ].join('\n');
 }
 
@@ -90,8 +94,6 @@ describe('assessSoulReady / isSoulReady (#106)', () => {
   });
 
   it('rejects shallow onboard: template thesis anchors + oneline-derived queries only look filled', () => {
-    // Mirrors agentic-model-training after weak onboard: thesis still instructional,
-    // queries are a single broad phrase, RQ boilerplate from oneline.
     const dot = resolveProjectResearcherDir(dir);
     writeFileSync(
       join(dot, 'project.yaml'),
@@ -118,7 +120,6 @@ describe('assessSoulReady / isSoulReady (#106)', () => {
         '',
       ].join('\n'),
     );
-    // thesis: not byte-equal to template (em-dash normalized) but still hollow
     const tmpl = readFileSync(join(resolvePackageRoot(), 'templates/thesis.md'), 'utf8');
     writeFileSync(
       join(dot, 'thesis.md'),
@@ -132,7 +133,7 @@ describe('assessSoulReady / isSoulReady (#106)', () => {
 
     const r = assessSoulReady(dir);
     expect(r.ready).toBe(false);
-    expect(isThesisStillHollow(r)).toBe(true);
+    expect(r.reasons.some((x) => /thesis|template|hollow/i.test(x))).toBe(true);
   });
 
   it('rejects when open_questions.md exists even if yaml/thesis look filled', () => {
@@ -211,8 +212,31 @@ describe('assessSoulReady / isSoulReady (#106)', () => {
     writeFileSync(join(dot, 'thesis.md'), readyThesis());
     expect(isSoulReady(dir)).toBe(false);
   });
-});
 
-function isThesisStillHollow(r: { reasons: string[] }): boolean {
-  return r.reasons.some((x) => /thesis|template|hollow/i.test(x));
-}
+  it('rejects thesis missing required section Examples', () => {
+    const dot = resolveProjectResearcherDir(dir);
+    writeFileSync(join(dot, 'project.yaml'), readyYaml('agent post-training'));
+    writeFileSync(
+      join(dot, 'thesis.md'),
+      [
+        '# Thesis',
+        '',
+        '## Working thesis',
+        '',
+        'Real claim with a falsifier: X fails if Y happens on Z.',
+        '',
+        '## Taste',
+        '',
+        '- Prefer mechanisms.',
+        '',
+        '## Anti-patterns',
+        '',
+        '- Benchmark-only papers.',
+        '',
+      ].join('\n'),
+    );
+    const r = assessSoulReady(dir);
+    expect(r.ready).toBe(false);
+    expect(r.reasons.some((x) => /Examples|required section/i.test(x))).toBe(true);
+  });
+});
