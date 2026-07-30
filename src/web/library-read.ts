@@ -10,10 +10,17 @@ import type { AgentRuntime } from '../adapter/interface.js';
 import { defaultDocTypeForSource, isPaperDocType, type DocType } from '../library/doc-type.js';
 import type { Paper } from '../library/model.js';
 import type { RunEvent } from '../pipeline/events.js';
+import {
+  DOC_READ_SECTIONS,
+  PAPER_READ_SECTIONS,
+  libraryReadBodyHasRequiredSections,
+} from './library-read-sections.js';
 
 /** Bound the model call so silent hangs cannot stretch to the SDK's default 10min×retries. */
 const TIMEOUT_MS = 5 * 60 * 1000;
-const LIBRARY_READ_MAX_TOKENS = 8192;
+/** Chinese multi-section read cards often exceed 8k completion tokens. */
+const LIBRARY_READ_MAX_TOKENS = 16_384;
+const RECOVERY_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_HEARTBEAT_MS = 10_000;
 
 export interface LibraryReadRunnerOptions {
@@ -116,15 +123,52 @@ export async function runLibraryRead(
   if (result.exitCode !== 0) {
     throw new Error(`library read agent exited ${result.exitCode}${result.stderr ? `: ${result.stderr}` : ''}`);
   }
+
+  const requiredSections = isPaperDocType(material.docType) ? PAPER_READ_SECTIONS : DOC_READ_SECTIONS;
+  let body = normalizeLibraryReadBody(result.output);
+
+  // finishReason=length is common on long ZH cards (#114):
+  // - accept when required H2s are already present
+  // - otherwise one recovery pass; still incomplete → fail as truncated
+  // Non-length paths keep the historical rule: any non-empty body is accepted.
   if (result.finishReason === 'length') {
-    throw new Error('library read agent output was truncated before completing the Library read artifact');
+    if (libraryReadBodyHasRequiredSections(body, requiredSections)) {
+      opts.onLine?.('draft-read: finishReason=length but required sections present — accepting');
+    } else {
+      opts.onLine?.(
+        'draft-read: model hit max tokens with incomplete sections — one recovery pass…',
+      );
+      const recovery = await opts.adapter.invoke({
+        cwd: opts.workspaceRoot,
+        systemPrompt: librarySystemPrompt(material.docType),
+        userPrompt: libraryReadRecoveryPrompt({
+          partialBody: body || result.output,
+          requiredSections,
+          language: 'zh',
+        }),
+        timeoutMs: RECOVERY_TIMEOUT_MS,
+        maxTokens: LIBRARY_READ_MAX_TOKENS,
+      });
+      if (recovery.exitCode !== 0) {
+        throw new Error(
+          `library read recovery exited ${recovery.exitCode}${recovery.stderr ? `: ${recovery.stderr}` : ''}`,
+        );
+      }
+      body = normalizeLibraryReadBody(recovery.output);
+      if (!libraryReadBodyHasRequiredSections(body, requiredSections)) {
+        throw new Error(
+          'library read agent output was truncated before completing the Library read artifact',
+        );
+      }
+    }
   }
-  opts.onEvent?.({ type: 'stage', name: 'record-read' });
-  opts.onLine?.(`record-read: writing artifact (${result.output.length} chars of model output)`);
-  const body = normalizeLibraryReadBody(result.output);
+
   if (!body) {
     throw new Error('library read agent produced no Library read content');
   }
+
+  opts.onEvent?.({ type: 'stage', name: 'record-read' });
+  opts.onLine?.(`record-read: writing artifact (${body.length} chars)`);
   writeLibraryReadArtifact({
     workspaceRoot: opts.workspaceRoot,
     artifactPath,
@@ -135,6 +179,34 @@ export async function runLibraryRead(
     body,
   });
   return { artifactPath, title: material.meta.title || undefined };
+}
+
+function libraryReadRecoveryPrompt(opts: {
+  partialBody: string;
+  requiredSections: readonly string[];
+  language: string;
+}): string {
+  const sectionList = opts.requiredSections.map((s) => `- ## ${s}`).join('\n');
+  return [
+    '# Library read recovery — complete the truncated artifact',
+    '',
+    'The previous draft hit the output token limit (finishReason=length) before every',
+    'required section was present. Return a **complete** Markdown artifact body now.',
+    '',
+    'Rules:',
+    '- Return ONLY the full Markdown body (no tools, no frontmatter, no FILES_MODIFIED).',
+    `- Write ALL prose in **${opts.language}** (zh=简体中文, en=English).`,
+    '- Include every required H2 heading exactly (order below):',
+    sectionList,
+    '- You may reuse usable prose from the partial draft; rewrite or expand as needed.',
+    '- Prefer concise sections over repeating the paper.',
+    '',
+    '## Partial draft (may be incomplete — finish it)',
+    '',
+    '```markdown',
+    opts.partialBody.slice(0, 40_000),
+    '```',
+  ].join('\n');
 }
 
 function writeLibraryReadArtifact(opts: {
