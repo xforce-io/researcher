@@ -96,6 +96,112 @@ class TruncatedStubAdapter implements AgentRuntime {
   }
 }
 
+const COMPLETE_PAPER_BODY = [
+  '# Library Read Paper',
+  '',
+  '> Frame.',
+  '',
+  '## Essence',
+  '',
+  '**问题** friction. **做法** mechanism. **证据** one number. **边界** dependency.',
+  '',
+  '## Claims',
+  '',
+  '- x',
+  '',
+  '## Assumptions',
+  '',
+  '- y',
+  '',
+  '## Method',
+  '',
+  '- z',
+  '',
+  '## Eval',
+  '',
+  '- e',
+  '',
+  '## Weaknesses',
+  '',
+  '- w',
+  '',
+  '## Relations',
+  '',
+  '- standalone [low]: test.',
+  '',
+  '## Takeaway',
+  '',
+  '- remember the mechanism first.',
+].join('\n');
+
+class LengthButCompleteAdapter implements AgentRuntime {
+  id = 'length-complete-stub';
+  lastMaxTokens: number | undefined;
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.lastMaxTokens = opts.maxTokens;
+    return {
+      output: COMPLETE_PAPER_BODY,
+      modifiedFiles: [],
+      exitCode: 0,
+      finishReason: 'length',
+    };
+  }
+}
+
+/** First call: truncated mid-body; second (recovery): complete. */
+class LengthThenRecoverAdapter implements AgentRuntime {
+  id = 'length-recover-stub';
+  calls = 0;
+  prompts: string[] = [];
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls += 1;
+    this.prompts.push(opts.userPrompt);
+    if (this.calls === 1) {
+      return {
+        output: '# Library Read Paper\n\n> Frame.\n\n## Essence\n\npartial only\n',
+        modifiedFiles: [],
+        exitCode: 0,
+        finishReason: 'length',
+      };
+    }
+    return {
+      output: COMPLETE_PAPER_BODY,
+      modifiedFiles: [],
+      exitCode: 0,
+      finishReason: 'stop',
+    };
+  }
+}
+
+class LengthIncompleteTwiceAdapter implements AgentRuntime {
+  id = 'length-incomplete-twice';
+  calls = 0;
+
+  async invoke(): Promise<InvokeResult> {
+    this.calls += 1;
+    return {
+      output: '# Library Read Paper\n\n> Frame.\n\n## Essence\n\nstill partial\n',
+      modifiedFiles: [],
+      exitCode: 0,
+      finishReason: 'length',
+    };
+  }
+}
+
+function sampleArxivPaper(): Paper {
+  return {
+    id: 'paper_arxiv_2401_12345',
+    canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
+    sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
+    identifiers: { arxiv: '2401.12345' },
+    tags: [],
+    createdAt: '2026-07-02T00:00:00Z',
+    updatedAt: '2026-07-02T00:00:00Z',
+  };
+}
+
 describe('runLibraryRead', () => {
   it('writes a standalone workspace library read without topic context', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-'));
@@ -176,26 +282,71 @@ describe('runLibraryRead', () => {
     })).rejects.toThrow('produced no Library read content');
   });
 
-  it('fails clearly when the model output is truncated', async () => {
+  it('fails clearly when the model output is truncated with no usable body', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-truncated-'));
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
     writeTextCache('2401.12345', 'CACHED PAPER BODY');
-    const paper: Paper = {
-      id: 'paper_arxiv_2401_12345',
-      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' },
-      sources: [{ kind: 'arxiv', id: 'arxiv:2401.12345', url: 'https://arxiv.org/abs/2401.12345' }],
-      identifiers: { arxiv: '2401.12345' },
-      tags: [],
-      createdAt: '2026-07-02T00:00:00Z',
-      updatedAt: '2026-07-02T00:00:00Z',
-    };
 
     await expect(runLibraryRead({
       workspaceRoot: root,
-      paper,
+      paper: sampleArxivPaper(),
       readId: 'read_paper_arxiv_2401_12345',
       adapter: new TruncatedStubAdapter(),
     })).rejects.toThrow('truncated');
+  });
+
+  it('accepts finishReason=length when the body already has all required sections', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-length-ok-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const adapter = new LengthButCompleteAdapter();
+
+    const result = await runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter,
+    });
+
+    const body = readFileSync(join(root, result.artifactPath), 'utf8');
+    expect(body).toContain('## Takeaway');
+    expect(body).toContain('## Essence');
+    expect(adapter.lastMaxTokens).toBeGreaterThanOrEqual(16384);
+  });
+
+  it('retries once when length-truncated body is incomplete, then succeeds', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-length-retry-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const adapter = new LengthThenRecoverAdapter();
+
+    const result = await runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter,
+    });
+
+    expect(adapter.calls).toBe(2);
+    expect(adapter.prompts[1]).toMatch(/recover|complet|truncated|续写|补全/i);
+    const body = readFileSync(join(root, result.artifactPath), 'utf8');
+    expect(body).toContain('## Takeaway');
+    expect(body).toContain('- x');
+  });
+
+  it('fails when recovery after length still lacks required sections', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-length-fail-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const adapter = new LengthIncompleteTwiceAdapter();
+
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter,
+    })).rejects.toThrow('truncated');
+    expect(adapter.calls).toBe(2);
   });
 
   it('deep-reads a URL document with runner-owned text and non-paper sections', async () => {

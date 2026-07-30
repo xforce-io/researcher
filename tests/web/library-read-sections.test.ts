@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import {
   displayLibraryReadMarkdown,
   firstScreenSection,
+  libraryReadBodyHasRequiredSections,
+  PAPER_READ_SECTIONS,
   requiredPaperReadSections,
 } from '../../src/web/library-read-sections.js';
 import { renderLibraryPaper } from '../../src/web/views.js';
@@ -43,6 +45,15 @@ describe('library-read section contract (Essence replaces Brief)', () => {
     expect(structure).not.toContain('## Brief');
     expect(prompt).toMatch(/\*\*Essence\*\*/);
     expect(prompt).not.toMatch(/\*\*Brief\*\*/);
+  });
+});
+
+describe('libraryReadBodyHasRequiredSections', () => {
+  it('returns true only when every required H2 is present', () => {
+    const complete = PAPER_READ_SECTIONS.map((s) => `## ${s}\n\nbody`).join('\n');
+    expect(libraryReadBodyHasRequiredSections(complete, PAPER_READ_SECTIONS)).toBe(true);
+    expect(libraryReadBodyHasRequiredSections('## Essence\n\nok\n', PAPER_READ_SECTIONS)).toBe(false);
+    expect(libraryReadBodyHasRequiredSections('', PAPER_READ_SECTIONS)).toBe(false);
   });
 });
 
