@@ -1,7 +1,15 @@
-import { copyFileSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 import { resolvePackageRoot, resolveProjectResearcherDir } from '../paths.js';
+
+/** Root-level ignore rules for milkie cwd runtime (not covered by .researcher/.gitignore). */
+export const MILKIE_RUNTIME_GITIGNORE = [
+  '# milkie agent runtime (local-only; agents.json may still be committed)',
+  '.milkie/runs/',
+  '.milkie/objects/',
+  '.milkie/state.sqlite',
+].join('\n');
 
 export interface InitOptions {
   targetDir: string;
@@ -59,6 +67,26 @@ export function scaffoldTopicRepo(opts: ScaffoldOptions): void {
   writeFileSync(join(target, 'state/seen.jsonl'), '');
 }
 
+/**
+ * Ensure the topic repo root `.gitignore` ignores milkie runtime artifacts.
+ * Idempotent: skips when the marker paths are already present.
+ * Called from scaffold so init / library-read / web setup all get the rules.
+ */
+export function ensureMilkieGitignore(root: string): void {
+  const gi = join(root, '.gitignore');
+  const existing = existsSync(gi) ? readFileSync(gi, 'utf8') : '';
+  if (
+    existing.includes('.milkie/runs/') ||
+    existing.includes('.milkie/objects/') ||
+    /(^|\n)\.milkie\/(\n|$)/.test(existing)
+  ) {
+    return;
+  }
+  const sep = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  const block = existing.length === 0 ? `${MILKIE_RUNTIME_GITIGNORE}\n` : `${sep}\n${MILKIE_RUNTIME_GITIGNORE}\n`;
+  writeFileSync(gi, existing + block);
+}
+
 export function scaffoldMilkieRuntime(opts: ScaffoldMilkieRuntimeOptions): void {
   const pkg = resolvePackageRoot();
   mkdirSync(join(opts.root, '.milkie'), { recursive: true });
@@ -71,6 +99,7 @@ export function scaffoldMilkieRuntime(opts: ScaffoldMilkieRuntimeOptions): void 
   if (!existsSync(researcherAgent)) {
     copyFileSync(join(pkg, 'templates/milkie-researcher.md'), researcherAgent);
   }
+  ensureMilkieGitignore(opts.root);
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {

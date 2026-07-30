@@ -35,7 +35,7 @@ describe('package stage', () => {
     await runMethodologyInstall();
     // Commit project config + milkie provider config as the initial main-branch state.
     // notes/ are created uncommitted so the package stage actually commits them.
-    execaSync('git', ['add', '.researcher', '.milkie', 'agents'], { cwd: proj });
+    execaSync('git', ['add', '.researcher', '.milkie', 'agents', '.gitignore'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
@@ -56,6 +56,30 @@ describe('package stage', () => {
     writeFileSync(ctx.contradictionsPath, 'none');
 
     await expect(packageStage(ctx)).rejects.toThrow(/working tree|dirty|uncommitted/i);
+  });
+
+  it('allows dirty .milkie runtime and agents scaffold (milkie cwd state, not research content)', async () => {
+    // Strip runtime ignore rules so files show in `git status` and exercise the allow-list
+    // (with gitignore in place they would be invisible and the guard would not see them).
+    writeFileSync(join(proj, '.gitignore'), '# test: no milkie ignores\n');
+    mkdirSync(join(proj, '.milkie/runs'), { recursive: true });
+    writeFileSync(join(proj, '.milkie/runs/deadbeef.jsonl'), '{"type":"agent.run.started"}\n');
+    writeFileSync(join(proj, '.milkie/state.sqlite'), 'not-a-real-db');
+    mkdirSync(join(proj, '.milkie/objects/sha256/ab'), { recursive: true });
+    writeFileSync(join(proj, '.milkie/objects/sha256/ab/cd'), 'obj');
+    // Uncommitted scaffold is fine — package must not fail-fast on it.
+    writeFileSync(join(proj, 'agents/researcher.md'), '# agent\n');
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter: new StubAdapter(), runDir: rd, addSourceId: 'arxiv:2401.00001' });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteRelPath = 'notes/active/01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    ctx.landscapeDiff = '+stub';
+    ctx.contradictionsPath = rd.path('contradictions.md');
+    writeFileSync(ctx.contradictionsPath, 'none');
+    mkdirSync(join(proj, '.researcher/state/runs/RUN'), { recursive: true });
+
+    await packageStage(ctx); // must NOT throw
   });
 
   it('allows README.md and papers/README.md to be dirty (synthesize maintains them)', async () => {

@@ -44,7 +44,7 @@ describe('runRead', () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
     await runInit({ targetDir: proj });
     await runMethodologyInstall();
-    execaSync('git', ['add', '.researcher', '.milkie', 'agents'], { cwd: proj });
+    execaSync('git', ['add', '.researcher', '.milkie', 'agents', '.gitignore'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
   });
 

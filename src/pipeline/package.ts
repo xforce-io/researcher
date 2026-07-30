@@ -29,12 +29,19 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
   //    Both paths pass the note zone dirs (notes/active|buffer|history/) via extraAllowedPrefixes:
   //    rebalance runs before package on BOTH the paper and feed paths and legitimately rewrites
   //    frontmatter on — and relocates — prior notes inside those zone dirs.
+  //    notes/ is allowed wholesale so flat→zone migration deletes (notes/01_*.md) don't fail package.
+  //    .milkie/ + agents/ are the milkie runtime scaffold/cwd state — never research content;
+  //    runs/objects/sqlite must not block packaging (also gitignored by ensureMilkieGitignore).
   //    Truly unrelated dirty files (anything outside the allow-list, e.g. src/foo.txt) still fail fast.
   const dirty = await gitops.dirtyPathsOutside({
     cwd: ctx.projectRoot,
     allowedPrefixes: [
       '.researcher/', 'README.md', 'report.md', 'papers/', 'references/',
       '.researcher-workspace/',
+      '.milkie/',
+      'agents/',
+      'notes/',
+      '.gitignore', // ensureMilkieGitignore may create/update this at repo root
       LANDSCAPE,
       ctx.newNoteRelPath,
       ...extraAllowedPrefixes,

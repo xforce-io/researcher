@@ -152,7 +152,7 @@ describe('researcher run (autonomous)', () => {
     // Override placeholder query so the `hasRealQueries` check in run.ts passes.
     const pyPath = join(proj, '.researcher/project.yaml');
     writeFileSync(pyPath, readFileSync(pyPath, 'utf8').replace('your topic keyword', 'test query'));
-    execaSync('git', ['add', '.researcher', '.milkie', 'agents'], { cwd: proj });
+    execaSync('git', ['add', '.researcher', '.milkie', 'agents', '.gitignore'], { cwd: proj });
     execaSync('git', ['commit', '-m', 'init'], { cwd: proj });
     mkdirSync(join(proj, 'notes', 'active'), { recursive: true });
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
