@@ -24,6 +24,11 @@ describe('init', () => {
     expect(existsSync(join(dir, '.milkie/agents.json'))).toBe(true);
     expect(existsSync(join(dir, 'agents/researcher.md'))).toBe(true);
     expect(readFileSync(join(dir, '.researcher/.gitignore'), 'utf8')).toContain('state/runs/');
+    // Root .gitignore must ignore milkie runtime (not covered by .researcher/.gitignore).
+    const rootGi = readFileSync(join(dir, '.gitignore'), 'utf8');
+    expect(rootGi).toContain('.milkie/runs/');
+    expect(rootGi).toContain('.milkie/objects/');
+    expect(rootGi).toContain('.milkie/state.sqlite');
   });
   it('refuses if .researcher already exists', async () => {
     await runInit({ targetDir: dir });
