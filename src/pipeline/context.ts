@@ -40,4 +40,16 @@ export interface RunContext {
   /** Newline list "NN zone" for every note, injected into the synthesize prompt so it
    *  demotes history-zone papers to landscape archive / report appendix. */
   zoneManifest?: string;
+  /**
+   * Stashed by libraryTopicRead; applied by finalizeLibraryIntegration only after
+   * synthesize proves the landscape file actually changed.
+   */
+  pendingLibraryIntegration?: {
+    workspaceRoot: string;
+    paperId: string;
+    topicId: string;
+    notePath: string;
+    zone: 'active' | 'buffer' | 'history';
+    summary?: string;
+  };
 }

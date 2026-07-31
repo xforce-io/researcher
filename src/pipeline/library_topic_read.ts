@@ -54,21 +54,60 @@ export async function libraryTopicRead(ctx: RunContext, opts: LibraryTopicReadOp
   });
 
   const topicId = opts.topicPath ?? inferTopicPath(opts.workspaceRoot, ctx.projectRoot);
-  lib.upsertLink({
-    paperId: paper.id,
-    surfaceType: 'topic',
-    surfaceId: topicId,
-    relation: 'integrated',
-    rationale: ctx.triageReason,
-  });
-  lib.upsertIntegration({
+  // Defer Library "integrated" until synthesize actually rewrites the landscape.
+  // Marking here made Web show "in landscape" while 00_research_landscape.md was still empty.
+  if (!lib.listLinks(paper.id).some((l) => l.surfaceType === 'topic' && l.surfaceId === topicId)) {
+    lib.upsertLink({
+      paperId: paper.id,
+      surfaceType: 'topic',
+      surfaceId: topicId,
+      relation: 'candidate',
+      rationale: ctx.triageReason,
+    });
+  }
+  ctx.pendingLibraryIntegration = {
+    workspaceRoot: opts.workspaceRoot,
     paperId: paper.id,
     topicId,
     notePath: noteRelPath,
     zone: 'active',
-    integratedAt: new Date().toISOString(),
     summary: ctx.triageReason,
+  };
+}
+
+/** Record Library integration after landscape synthesize has been verified. */
+export function finalizeLibraryIntegration(
+  ctx: RunContext,
+  opts?: { workspaceRoot?: string; topicPath?: string },
+): void {
+  const pending = ctx.pendingLibraryIntegration;
+  if (!pending) return;
+
+  const workspaceRoot = opts?.workspaceRoot ?? pending.workspaceRoot;
+  const topicId = opts?.topicPath ?? pending.topicId;
+  const notePath = ctx.newNoteRelPath ?? pending.notePath;
+  const zone: 'active' | 'buffer' | 'history' = notePath.includes('/buffer/')
+    ? 'buffer'
+    : notePath.includes('/history/')
+      ? 'history'
+      : (pending.zone ?? 'active');
+  const lib = new PaperLibrary(workspaceRoot);
+  lib.upsertLink({
+    paperId: pending.paperId,
+    surfaceType: 'topic',
+    surfaceId: topicId,
+    relation: 'integrated',
+    rationale: pending.summary ?? ctx.triageReason,
   });
+  lib.upsertIntegration({
+    paperId: pending.paperId,
+    topicId,
+    notePath,
+    zone,
+    integratedAt: new Date().toISOString(),
+    summary: pending.summary ?? ctx.triageReason,
+  });
+  ctx.pendingLibraryIntegration = undefined;
 }
 
 async function ensureLibraryRead(opts: {

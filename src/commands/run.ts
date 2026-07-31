@@ -12,7 +12,7 @@ import { emitEvent } from '../pipeline/events.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
-import { libraryTopicRead } from '../pipeline/library_topic_read.js';
+import { libraryTopicRead, finalizeLibraryIntegration } from '../pipeline/library_topic_read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { feedSynthesize } from '../pipeline/feed_synthesize.js';
 import { feedEnrich } from '../pipeline/feed_enrich.js';
@@ -188,7 +188,14 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         }),
       },
       { name: 'rebalance',  fn: async () => rebalance(ctx!) },
-      { name: 'synthesize', fn: async () => synthesize(ctx!) },
+      {
+        name: 'synthesize',
+        fn: async () => {
+          await synthesize(ctx!);
+          // Only after landscape content actually changed (synthesize throws otherwise).
+          finalizeLibraryIntegration(ctx!, { workspaceRoot, topicPath });
+        },
+      },
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);
     process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addSourceId})\n`);

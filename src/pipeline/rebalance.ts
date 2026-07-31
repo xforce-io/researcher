@@ -49,6 +49,16 @@ export async function rebalance(ctx: RunContext): Promise<void> {
       ));
       summary.push(`- [${a.num}] ${n.filename}: ${a.from} → ${a.to} (score ${newScore.toFixed(3)})`);
       n.zone = a.to; // reflect for manifest
+      if (ctx.newNoteFilename === n.filename || ctx.newNoteRelPath === n.relPath) {
+        ctx.newNoteRelPath = toRel;
+        if (ctx.pendingLibraryIntegration) {
+          ctx.pendingLibraryIntegration = {
+            ...ctx.pendingLibraryIntegration,
+            notePath: toRel,
+            zone: a.to,
+          };
+        }
+      }
     } else {
       // stayed: bump dwell (unpinned), refresh score, rewrite in place
       const { body } = parseNote(readFileSync(n.absPath, 'utf8'));
