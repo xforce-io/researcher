@@ -3,12 +3,20 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execa } from 'execa';
-import type { AgentRuntime, InvokeOptions, InvokeResult } from './interface.js';
+import type { AgentRuntime, InvokeError, InvokeOptions, InvokeResult } from './interface.js';
 
 const require = createRequire(import.meta.url);
 
 const MILKIE_BIN = resolveMilkieBin();
 const MILKIE_AGENT = process.env.RESEARCHER_MILKIE_AGENT ?? 'researcher';
+
+interface MilkieTerminal {
+  runId?: unknown;
+  status?: unknown;
+  lastOutput?: unknown;
+  output?: unknown;
+  error?: unknown;
+}
 
 export class MilkieAdapter implements AgentRuntime {
   readonly id = 'milkie';
@@ -46,18 +54,30 @@ export class MilkieAdapter implements AgentRuntime {
       );
       const stdout = result.stdout ?? '';
       const stderr = result.stderr ?? '';
-      const output = extractMilkieOutput(stdout);
-      const runId = extractMilkieRunId(stdout);
-      const exitCode = result.exitCode ?? 1;
-      // When milkie fails, prefer a human-readable CLI error from stdout/stderr
-      // over a bare "exit code N" at the call site.
-      const failureDetail = exitCode === 0 ? '' : extractMilkieErrorMessage(stdout, stderr);
+      const terminal = parseMilkieTerminal(stdout);
+      const output = extractMilkieOutput(stdout, terminal);
+      const runId = typeof terminal?.runId === 'string' ? terminal.runId : undefined;
+      const terminalError = parseMilkieError(terminal?.error);
+      const stderrError = parseMilkieStderrError(stderr);
+      const error = terminal?.status === 'error' ? terminalError ?? stderrError : undefined;
+      const processExitCode = result.exitCode ?? 1;
+      const exitCode = processExitCode && processExitCode !== 0
+        ? processExitCode
+        : terminal?.status === 'error'
+          ? 1
+          : 0;
+      // When milkie fails, prefer its structured terminal error over a bare
+      // exit code or less specific stderr text at the call site.
+      const failureDetail = exitCode === 0
+        ? ''
+        : extractMilkieErrorMessage(stdout, stderr, terminalError ?? stderrError);
       return {
         output: exitCode === 0 ? output : (failureDetail || output),
         exitCode,
         modifiedFiles: parseFilesModified(output || stdout),
         stderr,
         finishReason: runId ? readMilkieFinishReason(opts.cwd, runId) : undefined,
+        error,
       };
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -65,12 +85,38 @@ export class MilkieAdapter implements AgentRuntime {
   }
 }
 
-function extractMilkieRunId(stdout: string): string | undefined {
+function parseMilkieTerminal(stdout: string): MilkieTerminal | undefined {
   const last = stdout.trim().split('\n').filter(Boolean).at(-1);
   if (!last) return undefined;
   try {
-    const parsed = JSON.parse(last) as { runId?: unknown };
-    return typeof parsed.runId === 'string' ? parsed.runId : undefined;
+    const parsed: unknown = JSON.parse(last);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    return parsed as MilkieTerminal;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseMilkieError(value: unknown): InvokeError | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const rawCode = 'code' in value ? value.code : undefined;
+  const rawMessage = 'message' in value ? value.message : undefined;
+  const details = 'details' in value ? value.details : undefined;
+  if (typeof rawMessage !== 'string' || !rawMessage.trim()) return undefined;
+
+  const message = rawMessage.trim();
+  const code = typeof rawCode === 'string' && rawCode.trim() ? rawCode : undefined;
+  return details === undefined ? { code, message } : { code, message, details };
+}
+
+function parseMilkieStderrError(stderr: string): InvokeError | undefined {
+  const last = stderr.trim().split('\n').filter(Boolean).at(-1);
+  if (!last) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(last);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    if (!('error' in parsed)) return undefined;
+    return parseMilkieError(parsed.error);
   } catch {
     return undefined;
   }
@@ -113,41 +159,24 @@ export function resolveMilkieBin(env: NodeJS.ProcessEnv = process.env): string {
   return 'milkie';
 }
 
-function extractMilkieErrorMessage(stdout: string, stderr: string): string {
+function extractMilkieErrorMessage(
+  stdout: string,
+  stderr: string,
+  terminalError: InvokeError | undefined,
+): string {
+  if (terminalError) {
+    return terminalError.code ? `${terminalError.code}: ${terminalError.message}` : terminalError.message;
+  }
   const combined = [stdout, stderr].filter(Boolean).join('\n').trim();
   if (!combined) return '';
-  // milkie often prints a single JSON line: {"error":{"code":"…","message":"…"}}
-  for (const line of combined.split('\n').reverse()) {
-    const t = line.trim();
-    if (!t.startsWith('{')) continue;
-    try {
-      const parsed = JSON.parse(t) as { error?: { message?: unknown; code?: unknown } };
-      const msg = parsed.error?.message;
-      if (typeof msg === 'string' && msg.trim()) {
-        const code = typeof parsed.error?.code === 'string' ? parsed.error.code : '';
-        return code ? `${code}: ${msg.trim()}` : msg.trim();
-      }
-    } catch {
-      // keep scanning
-    }
-  }
   // Fall back to a short tail so UI errors stay readable.
   const tail = combined.split('\n').filter(Boolean).slice(-6).join('\n');
   return tail.length > 800 ? `${tail.slice(0, 800)}…` : tail;
 }
 
-function extractMilkieOutput(stdout: string): string {
-  const lines = stdout.trim().split('\n').filter(Boolean);
-  const last = lines.at(-1);
-  if (!last) return stdout;
-  try {
-    const parsed = JSON.parse(last) as { lastOutput?: unknown; output?: unknown };
-    const out = parsed.lastOutput ?? parsed.output;
-    if (typeof out === 'string') return out;
-  } catch {
-    // Plain-text provider output is still accepted.
-  }
-  return stdout;
+function extractMilkieOutput(stdout: string, terminal: MilkieTerminal | undefined): string {
+  const out = terminal?.lastOutput ?? terminal?.output;
+  return typeof out === 'string' ? out : stdout;
 }
 
 function parseFilesModified(output: string): string[] {
