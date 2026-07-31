@@ -22,10 +22,16 @@ describe('parseDiscoverCandidates', () => {
   it('rejects malformed candidate entries', () => {
     expect(() => parseDiscoverCandidates('{"candidates":[{}]}')).toThrow();
   });
-});
+
+  it('canonicalizes an uppercase source namespace while preserving its payload', () => {
+    const uppercase = structuredClone(valid);
+    uppercase.candidates[0].id = 'ARXIV:2401.12345';
+    expect(parseDiscoverCandidates(JSON.stringify(uppercase)).candidates[0].id).toBe('arxiv:2401.12345');
+  });
 
   it.each(['arxiv:', 'doi:', 'openreview:', 'urlhash:'])('rejects an ID without a %s payload', (id) => {
     const bad = structuredClone(valid);
     bad.candidates[0].id = id;
     expect(() => parseDiscoverCandidates(JSON.stringify(bad))).toThrow();
   });
+});

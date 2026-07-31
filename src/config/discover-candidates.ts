@@ -3,7 +3,8 @@ import { z } from 'zod';
 const ID_RE = /^(?:arxiv:(?:\d{4}\.\d{4,5}(?:v\d+)?|[a-z-]+(?:\.[a-z]{2})?\/\d{7}(?:v\d+)?)|doi:10\.\d{4,9}\/\S+|openreview:[a-z0-9_-]+|urlhash:[a-f0-9]{8,64})$/i;
 
 export const DiscoverCandidateSchema = z.object({
-  id: z.string().regex(ID_RE, 'id must be namespaced (arxiv:|doi:|openreview:|urlhash:)'),
+  id: z.string().regex(ID_RE, 'id must be namespaced (arxiv:|doi:|openreview:|urlhash:)').transform((id) =>
+    id.replace(/^[^:]+/, (namespace) => namespace.toLowerCase())),
   title: z.string().min(1),
   url: z.string().url(),
   abstract: z.string().min(1),

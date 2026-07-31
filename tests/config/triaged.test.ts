@@ -49,6 +49,12 @@ describe('TriagedSchema', () => {
     expect(() => TriagedSchema.parse(bad)).toThrow();
   });
 
+  it('canonicalizes an uppercase source namespace while preserving its payload', () => {
+    const uppercase = structuredClone(valid);
+    uppercase.candidates[0].id = 'ARXIV:2401.12345';
+    expect(parseTriaged(JSON.stringify(uppercase)).candidates[0].id).toBe('arxiv:2401.12345');
+  });
+
   it('parseTriaged reads a JSON file and returns typed value', () => {
     const out = parseTriaged(JSON.stringify(valid));
     expect(out.candidates[0].decision).toBe('deep-read');
