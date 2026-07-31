@@ -9,53 +9,86 @@ import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { discoverTriage } from '../../src/pipeline/discover_triage.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
+import type { DiscoverCandidates } from '../../src/config/discover-candidates.js';
 import type { Triaged } from '../../src/config/triaged.js';
 
-class WriteTriagedAdapter implements AgentRuntime {
+class CollectThenTriageAdapter implements AgentRuntime {
   id = 'stub';
-  calls = 0;
-  constructor(private readonly payload: Triaged) {}
+  calls: InvokeOptions[] = [];
+
+  constructor(
+    private readonly collected: DiscoverCandidates,
+    private readonly triaged: Triaged,
+  ) {}
+
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
-    this.calls += 1;
-    // Tests look for the triaged_path placeholder in the user prompt and write there.
-    const m =
-      /`([^`]+triaged\.json)`/.exec(opts.userPrompt) ??
-      /triaged_path:\s*(\S+)/.exec(opts.userPrompt) ??
-      /Write[^\n]*at `([^`]+triaged\.json)`/.exec(opts.userPrompt);
-    if (!m) throw new Error('stub: could not find triaged_path in prompt');
-    writeFileSync(m[1], JSON.stringify(this.payload, null, 2));
-    return { output: `done\n\nFILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    if (opts.agentId === 'researcher-triage') {
+      return { output: JSON.stringify(this.triaged), modifiedFiles: [], exitCode: 0 };
+    }
+
+    // Lets the pre-split implementation complete so the assertions below prove
+    // the requested two-agent boundary rather than failing from fixture setup.
+    const triagedPath = /`([^`]+triaged\.json)`/.exec(opts.userPrompt)?.[1];
+    if (!triagedPath) throw new Error('stub: unexpected generic agent invocation');
+    writeFileSync(triagedPath, JSON.stringify(this.triaged, null, 2));
+    return { output: 'legacy', modifiedFiles: [triagedPath], exitCode: 0 };
   }
 }
 
-/** First call: no file. Second call (recovery): write triaged.json. */
-class WriteOnSecondCallAdapter implements AgentRuntime {
+/** Returns length once from triage, then a valid text JSON recovery response. */
+class TriageLengthRecoveryAdapter implements AgentRuntime {
   id = 'stub-retry';
-  calls = 0;
-  constructor(private readonly payload: Triaged) {}
+  calls: InvokeOptions[] = [];
+  private triageCalls = 0;
+
+  constructor(
+    private readonly collected: DiscoverCandidates,
+    private readonly triaged: Triaged,
+  ) {}
+
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
-    this.calls += 1;
-    const m = /`([^`]+triaged\.json)`/.exec(opts.userPrompt);
-    if (!m) throw new Error('stub: could not find triaged path');
-    if (this.calls === 1) {
-      return {
-        output: 'still searching, will write triaged.json next…',
-        modifiedFiles: [],
-        exitCode: 0,
-        finishReason: 'length',
-      };
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
     }
-    writeFileSync(m[1], JSON.stringify(this.payload, null, 2));
-    return { output: `FILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
+    if (opts.agentId === 'researcher-triage') {
+      this.triageCalls += 1;
+      if (this.triageCalls === 1) {
+        return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
+      }
+      return { output: JSON.stringify(this.triaged), modifiedFiles: [], exitCode: 0 };
+    }
+
+    // The old one-agent implementation must remain observable as a red test.
+    return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
 
 class NeverWriteAdapter implements AgentRuntime {
   id = 'stub-never';
-  calls = 0;
+  calls: InvokeOptions[] = [];
+
+  constructor(private readonly collected: DiscoverCandidates) {}
+
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
-    this.calls += 1;
-    return { output: 'no file', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
 
@@ -91,6 +124,33 @@ const sample = (overrides: Partial<Triaged> = {}): Triaged => ({
   ...overrides,
 });
 
+const collected = (): DiscoverCandidates => ({
+  candidates: [
+    {
+      id: 'arxiv:2401.11111',
+      title: 'Top deep-read pick',
+      url: 'https://arxiv.org/abs/2401.11111',
+      abstract: 'A directly relevant result.',
+      source: 'arxiv',
+    },
+    {
+      id: 'arxiv:2401.22222',
+      title: 'Skim only',
+      url: 'https://arxiv.org/abs/2401.22222',
+      abstract: 'A tangential result.',
+      source: 'arxiv',
+    },
+    {
+      id: 'arxiv:2401.33333',
+      title: 'Off-topic',
+      url: 'https://arxiv.org/abs/2401.33333',
+      abstract: 'An unrelated result.',
+      source: 'arxiv',
+    },
+  ],
+  search_summary: '3 searches, 12 surveyed',
+});
+
 describe('discover_triage stage', () => {
   let proj: string;
   beforeEach(async () => {
@@ -103,11 +163,24 @@ describe('discover_triage stage', () => {
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty landscape\n');
   });
 
+  it('collects candidates before tool-free triage and writes host-owned triaged.json', async () => {
+    const adapter = new CollectThenTriageAdapter(collected(), sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(adapter.calls.map((call) => call.agentId)).toEqual(['researcher-collect', 'researcher-triage']);
+    expect(adapter.calls[1].userPrompt).not.toContain('run_command');
+    expect(adapter.calls[1].userPrompt).toContain('"abstract": "A directly relevant result."');
+    expect(readFileSync(rd.path('triaged.json'), 'utf8')).toContain('"candidates"');
+  });
+
   it('sets ctx.addSourceId from the first deep-read pick and writes skim/reject to seen.jsonl', async () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({
       projectRoot: proj,
-      adapter: new WriteTriagedAdapter(sample()),
+      adapter: new CollectThenTriageAdapter(collected(), sample()),
       runDir: rd,
     });
 
@@ -137,7 +210,7 @@ describe('discover_triage stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({
       projectRoot: proj,
-      adapter: new WriteTriagedAdapter(noDeepRead),
+      adapter: new CollectThenTriageAdapter(collected(), noDeepRead),
       runDir: rd,
     });
 
@@ -152,7 +225,7 @@ describe('discover_triage stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({
       projectRoot: proj,
-      adapter: new WriteTriagedAdapter(empty),
+      adapter: new CollectThenTriageAdapter(collected(), empty),
       runDir: rd,
     });
 
@@ -179,7 +252,7 @@ describe('discover_triage stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({
       projectRoot: proj,
-      adapter: new WriteTriagedAdapter(sample()),
+      adapter: new CollectThenTriageAdapter(collected(), sample()),
       runDir: rd,
     });
 
@@ -189,25 +262,30 @@ describe('discover_triage stage', () => {
     expect(ctx.addSourceId).toBeUndefined();
   });
 
-  it('retries once when the first agent call exits without triaged.json', async () => {
-    const adapter = new WriteOnSecondCallAdapter(sample());
+  it('retries a length-limited triage response once without re-running collect', async () => {
+    const adapter = new TriageLengthRecoveryAdapter(collected(), sample());
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
 
     await discoverTriage(ctx);
 
-    expect(adapter.calls).toBe(2);
+    expect(adapter.calls.map((call) => call.agentId)).toEqual([
+      'researcher-collect',
+      'researcher-triage',
+      'researcher-triage',
+    ]);
+    expect(adapter.calls.slice(1).every((call) => !call.userPrompt.includes('run_command'))).toBe(true);
     expect(ctx.addSourceId).toBe('arxiv:2401.11111');
     expect(existsSync(rd.path('triaged.json'))).toBe(true);
   });
 
-  it('fails after one recovery attempt if triaged.json is still missing', async () => {
-    const adapter = new NeverWriteAdapter();
+  it('fails after one recovery attempt when triage still returns no JSON', async () => {
+    const adapter = new NeverWriteAdapter(collected());
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
 
-    await expect(discoverTriage(ctx)).rejects.toThrow(/did not produce.*triaged\.json/);
-    expect(adapter.calls).toBe(2);
+    await expect(discoverTriage(ctx)).rejects.toThrow(/triaged\.json is not valid JSON/);
+    expect(adapter.calls).toHaveLength(3);
   });
 
 });
