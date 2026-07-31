@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -69,12 +69,31 @@ function soulStep(): (opts: InvokeOptions) => InvokeResult {
   // Default: pretend the soul is already real (Case A — no writes).
   return () => ({ output: 'no changes needed\nSOUL_DECISION: skip\n', modifiedFiles: [], exitCode: 0 });
 }
-function discoverStep(payload: Triaged) {
-  return (opts: InvokeOptions): InvokeResult => {
-    const m = /Write[^\n]*at `([^`]+triaged\.json)`/.exec(opts.userPrompt);
-    if (!m) throw new Error('discover step: no triaged_path in prompt');
-    writeFileSync(m[1], JSON.stringify(payload, null, 2));
-    return { output: `done\n\nFILES_MODIFIED:\n${m[1]}\n`, modifiedFiles: [m[1]], exitCode: 0 };
+function collectStep(): (opts: InvokeOptions) => InvokeResult {
+  return (opts) => {
+    expect(opts.agentId).toBe('researcher-collect');
+    const m = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt);
+    if (!m) throw new Error('collect step: no discover-candidates path');
+    writeFileSync(
+      m[1],
+      JSON.stringify({
+        candidates: [{
+          id: 'arxiv:2401.55555',
+          title: 'Auto-picked deep read',
+          url: 'https://arxiv.org/abs/2401.55555',
+          abstract: 'A stub candidate abstract.',
+          source: 'arxiv',
+        }],
+        search_summary: 'stubbed collection',
+      }),
+    );
+    return { output: 'collected', modifiedFiles: [m[1]], exitCode: 0 };
+  };
+}
+function triageStep(payload: Triaged): (opts: InvokeOptions) => InvokeResult {
+  return (opts) => {
+    expect(opts.agentId).toBe('researcher-triage');
+    return { output: JSON.stringify(payload), modifiedFiles: [], exitCode: 0 };
   };
 }
 function synthesizeStep(expectPromptIncludes?: string): (opts: InvokeOptions) => InvokeResult {
@@ -161,7 +180,8 @@ describe('researcher run (autonomous)', () => {
   it('runs the full discover→read→synth→package chain when discover finds a deep-read pick', async () => {
     const adapter = new ScriptedAdapter([
       soulStep(),
-      discoverStep(triagedDeepRead),
+      collectStep(),
+      triageStep(triagedDeepRead),
       synthesizeStep('Fresh library artifact body.'),
       packageStep(),
     ]);
@@ -182,7 +202,7 @@ describe('researcher run (autonomous)', () => {
     });
     expect(sent).toContainEqual({ type: 'stage', name: 'synthesize' });
 
-    expect(adapter.callCount).toBe(4);
+    expect(adapter.callCount).toBe(5);
     expect(readFileSync(join(proj, libraryArtifactPath), 'utf8')).toContain('Fresh library artifact body.');
     expect(readFileSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'), 'utf8')).toContain(libraryArtifactPath);
     const seen = readFileSync(join(proj, '.researcher/state/seen.jsonl'), 'utf8');
@@ -199,7 +219,8 @@ describe('researcher run (autonomous)', () => {
     upsertLibraryRead(proj);
     const adapter = new ScriptedAdapter([
       soulStep(),
-      discoverStep(triagedDeepRead),
+      collectStep(),
+      triageStep(triagedDeepRead),
       synthesizeStep('Reusable library artifact body.'),
       packageStep(),
     ]);
@@ -214,7 +235,7 @@ describe('researcher run (autonomous)', () => {
       },
     });
 
-    expect(adapter.callCount).toBe(4);
+    expect(adapter.callCount).toBe(5);
     expect(readFileSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'), 'utf8')).toContain('Reusable library artifact body.');
   });
 
@@ -243,14 +264,32 @@ describe('researcher run (autonomous)', () => {
   });
 
   it('exits cleanly when discover returns no deep-read candidate (no commits, no branch)', async () => {
-    const adapter = new ScriptedAdapter([soulStep(), discoverStep(triagedEmpty)]);
+    const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedEmpty)]);
     const { runRun } = await import('../../src/commands/run.js');
     await runRun({ cwd: proj, adapter });
 
-    expect(adapter.callCount).toBe(2); // soul + discover only
+    expect(adapter.callCount).toBe(3); // soul + collect + tool-free triage
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
     const log = execaSync('git', ['log', '--oneline'], { cwd: proj }).stdout.trim().split('\n');
     expect(log.length).toBe(1); // only the init commit
+  });
+
+  it('migrates legacy managed contracts during a normal autonomous run', async () => {
+    rmSync(join(proj, 'agents/researcher-collect.md'));
+    rmSync(join(proj, 'agents/researcher-triage.md'));
+    writeFileSync(
+      join(proj, '.milkie/agents.json'),
+      JSON.stringify({ agents: [{ id: 'researcher', file: '../agents/researcher.md' }] }, null, 2),
+    );
+    const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedEmpty)]);
+    const { runRun } = await import('../../src/commands/run.js');
+
+    await runRun({ cwd: proj, adapter });
+
+    expect(existsSync(join(proj, 'agents/researcher-collect.md'))).toBe(true);
+    expect(existsSync(join(proj, 'agents/researcher-triage.md'))).toBe(true);
+    expect(readFileSync(join(proj, '.milkie/agents.json'), 'utf8')).toContain('researcher-collect');
+    expect(readFileSync(join(proj, '.milkie/agents.json'), 'utf8')).toContain('researcher-triage');
   });
 
   it('exits cleanly when soul_bootstrap writes open_questions.md (signal too thin)', async () => {
@@ -277,7 +316,7 @@ describe('researcher run (autonomous)', () => {
     mkdirSync(join(lockPath, '..'), { recursive: true });
     writeFileSync(lockPath, '99999 stale\n');
 
-    const adapter = new ScriptedAdapter([soulStep(), discoverStep(triagedEmpty)]);
+    const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedEmpty)]);
     const { runRun } = await import('../../src/commands/run.js');
     await expect(runRun({ cwd: proj, adapter })).rejects.toThrow(/lock|locked/i);
     expect(existsSync(lockPath)).toBe(true); // we did not delete a lock we didn't own

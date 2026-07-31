@@ -43,6 +43,12 @@ describe('TriagedSchema', () => {
     expect(() => TriagedSchema.parse(bad)).toThrow();
   });
 
+  it.each(['arxiv:', 'doi:', 'openreview:', 'urlhash:'])('rejects an ID without a %s payload', (id) => {
+    const bad = structuredClone(valid);
+    bad.candidates[0].id = id;
+    expect(() => TriagedSchema.parse(bad)).toThrow();
+  });
+
   it('parseTriaged reads a JSON file and returns typed value', () => {
     const out = parseTriaged(JSON.stringify(valid));
     expect(out.candidates[0].decision).toBe('deep-read');

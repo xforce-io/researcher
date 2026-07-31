@@ -23,3 +23,9 @@ describe('parseDiscoverCandidates', () => {
     expect(() => parseDiscoverCandidates('{"candidates":[{}]}')).toThrow();
   });
 });
+
+  it.each(['arxiv:', 'doi:', 'openreview:', 'urlhash:'])('rejects an ID without a %s payload', (id) => {
+    const bad = structuredClone(valid);
+    bad.candidates[0].id = id;
+    expect(() => parseDiscoverCandidates(JSON.stringify(bad))).toThrow();
+  });

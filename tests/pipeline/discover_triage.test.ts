@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
@@ -172,8 +172,30 @@ describe('discover_triage stage', () => {
 
     expect(adapter.calls.map((call) => call.agentId)).toEqual(['researcher-collect', 'researcher-triage']);
     expect(adapter.calls[1].userPrompt).not.toContain('run_command');
+    expect(adapter.calls[1].systemPrompt).not.toContain('working directory');
+    expect(adapter.calls[1].systemPrompt).not.toContain('read files');
+    expect(adapter.calls[1].systemPrompt).not.toContain('write');
     expect(adapter.calls[1].userPrompt).toContain('"abstract": "A directly relevant result."');
     expect(readFileSync(rd.path('triaged.json'), 'utf8')).toContain('"candidates"');
+  });
+
+  it('migrates legacy managed contracts before collect and triage', async () => {
+    rmSync(join(proj, 'agents/researcher-collect.md'));
+    rmSync(join(proj, 'agents/researcher-triage.md'));
+    writeFileSync(
+      join(proj, '.milkie/agents.json'),
+      JSON.stringify({ agents: [{ id: 'researcher', file: '../agents/researcher.md' }] }, null, 2),
+    );
+    const adapter = new CollectThenTriageAdapter(collected(), sample({ candidates: [] }));
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(existsSync(join(proj, 'agents/researcher-collect.md'))).toBe(true);
+    expect(existsSync(join(proj, 'agents/researcher-triage.md'))).toBe(true);
+    expect(readFileSync(join(proj, '.milkie/agents.json'), 'utf8')).toContain('researcher-collect');
+    expect(readFileSync(join(proj, '.milkie/agents.json'), 'utf8')).toContain('researcher-triage');
   });
 
   it('sets ctx.addSourceId from the first deep-read pick and writes skim/reject to seen.jsonl', async () => {
