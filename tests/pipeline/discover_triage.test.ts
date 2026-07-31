@@ -390,7 +390,7 @@ describe('discover_triage stage', () => {
     const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
     const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
 
-    await expect(discoverTriage(ctx)).rejects.toThrow('discover stage agent exited 1');
+    await expect(discoverTriage(ctx)).rejects.toThrow(/discover stage agent exited 1: agent failed before writing triaged\.json/);
     expect(adapter.calls).toBe(1);
     expect(existsSync(rd.path('discover.err'))).toBe(true);
   });
