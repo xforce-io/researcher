@@ -75,3 +75,29 @@ Result: 1 file, 4 tests passed. The new Grok-only case reached exactly one fake 
 - `src/commands/onboard.ts`
 - `tests/commands/onboard.test.ts`
 - `8ae94f9 fix: skip Milkie preflight for Grok onboarding`
+
+## Grok methodology preflight boundary
+
+### RED evidence
+
+With `runtime: grok-cli`, no Milkie binary, and the installed onboarding methodology removed, ran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: the new test failed as expected because `runOnboard` scaffolded first and then threw `ENOENT` reading `methodology/onboarding.md`, rather than the actionable methodology-preflight error.
+
+### GREEN evidence
+
+Made only the Milkie binary probe conditional on `runtime.id === 'milkie'`; methodology presence remains checked for every runtime. Reran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: 1 file, 5 tests passed. The new test verifies the original actionable methodology error occurs before `.researcher` is scaffolded and before Grok invocation.
+
+### Commit
+
+`ef9d481 fix: validate onboarding methodology for every runtime`

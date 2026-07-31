@@ -206,15 +206,14 @@ async function rewriteOrLog(
 }
 
 function preFlight(runtime: AgentRuntime): void {
-  if (runtime.id !== 'milkie') {
-    return;
-  }
-  // 1. milkie binary
-  const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
-  try {
-    execaSync(bin, ['--help'], { stdio: 'ignore' });
-  } catch {
-    throw new Error(`milkie CLI not found; install it or set RESEARCHER_MILKIE_BIN`);
+  if (runtime.id === 'milkie') {
+    // 1. milkie binary
+    const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
+    try {
+      execaSync(bin, ['--help'], { stdio: 'ignore' });
+    } catch {
+      throw new Error(`milkie CLI not found; install it or set RESEARCHER_MILKIE_BIN`);
+    }
   }
   // 2. onboarding methodology installed
   const methPath = join(resolveResearcherHome(), 'methodology', 'onboarding.md');

@@ -112,6 +112,27 @@ describe('runOnboard (integration)', () => {
     expect(state.grokInvocations).toBe(1);
   });
 
+  it('rejects a missing methodology before scaffolding for the configured Grok runtime', async () => {
+    process.env.RESEARCHER_MILKIE_BIN = '__researcher_missing_milkie__';
+    writeFileSync(join(methHome, 'config.yaml'), 'runtime: grok-cli\n');
+    rmSync(join(methHome, 'methodology', 'onboarding.md'));
+
+    let error: unknown;
+    try {
+      await runOnboard({ cwd: dir });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining('onboarding methodology missing at'),
+      })
+    );
+    expect(existsSync(join(dir, '.researcher'))).toBe(false);
+    expect(state.grokInvocations).toBe(0);
+  });
+
 
   afterEach(() => {
     delete process.env.RESEARCHER_HOME;
