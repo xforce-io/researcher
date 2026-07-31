@@ -154,6 +154,28 @@ describe('MilkieAdapter', () => {
     });
   });
 
+
+  it('surfaces lastOutput when status=error has no error envelope', async () => {
+    const { execa } = await import('execa');
+    const msg =
+      '404 The requested model does not support the coding plan feature. Please refer to the documentation at https://www.volcengine.com/docs/82379/1925114 to select a compatible model.';
+    (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout:
+        JSON.stringify({
+          runId: 'run-model-404',
+          status: 'error',
+          lastOutput: msg,
+        }) + '\n',
+      stderr: '',
+      args: [],
+    });
+    const a = new MilkieAdapter();
+    const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toBe(msg);
+    expect(r.output).not.toContain('"status":"error"');
+  });
   it('treats an omitted process exit code as failure', async () => {
     const { execa } = await import('execa');
     (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -167,7 +189,6 @@ describe('MilkieAdapter', () => {
 
     expect(r.exitCode).toBe(1);
   });
-
   it('recovers finishReason from the Milkie run trace', async () => {
     const { execa } = await import('execa');
     const root = mkdtempSync(join(tmpdir(), 'rsw-milkie-trace-'));

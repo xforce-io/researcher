@@ -18,11 +18,27 @@ export async function runStages(rd: RunDir, stages: readonly StageDef[]): Promis
 
 /**
  * Guard an agent invocation result: on non-zero exit, persist stderr + stdout
- * tail to `<stage>.err` and throw an error pointing at it. No-op on success.
- * Replaces the bare `if (exitCode !== 0) throw` each stage used to hand-write.
+ * tail to `<stage>.err` and throw an error that includes a short failure
+ * detail (so UI/logs show the real provider error, not only exit code).
+ * No-op on success.
  */
 export function assertAgentOk(rd: RunDir, stage: Stage, result: InvokeResult): void {
   if (result.exitCode === 0) return;
   const errPath = rd.recordAgentFailure(stage, result);
-  throw new Error(`${stage} stage agent exited ${result.exitCode} (stderr saved to ${errPath})`);
+  const detail = summarizeAgentFailure(result);
+  throw new Error(
+    detail
+      ? `${stage} stage agent exited ${result.exitCode}: ${detail} (stderr saved to ${errPath})`
+      : `${stage} stage agent exited ${result.exitCode} (stderr saved to ${errPath})`,
+  );
+}
+
+/** Prefer structured error, then output, then stderr; one short line for throws. */
+function summarizeAgentFailure(result: InvokeResult): string {
+  const structured = result.error?.message?.trim() ?? '';
+  const raw = (structured || result.output || result.stderr || '').trim();
+  if (!raw) return '';
+  const line = raw.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? raw;
+  const oneLine = line.replace(/\s+/g, ' ');
+  return oneLine.length > 240 ? `${oneLine.slice(0, 240)}…` : oneLine;
 }

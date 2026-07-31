@@ -66,13 +66,19 @@ export class MilkieAdapter implements AgentRuntime {
         : terminal?.status === 'error'
           ? 1
           : 0;
-      // When milkie fails, prefer its structured terminal error over a bare
-      // exit code or less specific stderr text at the call site.
+      // Prefer structured error → lastOutput → raw stream tail.
+      // Do not call the stream-tail extractor before lastOutput: without an
+      // error envelope it returns the terminal JSON line and hides the provider message.
+      const structured = terminalError ?? stderrError;
       const failureDetail = exitCode === 0
         ? ''
-        : extractMilkieErrorMessage(stdout, stderr, terminalError ?? stderrError);
+        : (structured
+            ? extractMilkieErrorMessage(stdout, stderr, structured)
+            : '')
+          || (typeof output === 'string' ? output.trim() : '')
+          || extractMilkieErrorMessage(stdout, stderr, undefined);
       return {
-        output: exitCode === 0 ? output : (failureDetail || output),
+        output: exitCode === 0 ? output : failureDetail || output,
         exitCode,
         modifiedFiles: parseFilesModified(output || stdout),
         stderr,

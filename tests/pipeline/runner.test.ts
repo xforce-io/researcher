@@ -75,6 +75,35 @@ describe('assertAgentOk', () => {
     expect(existsSync(rd.path('read.err'))).toBe(true);
   });
 
+  it('includes agent failure detail in the thrown message', () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-assert-'));
+    const rd = new RunDir(base, newRunId());
+    expect(() =>
+      assertAgentOk(rd, 'discover', {
+        output:
+          '404 The requested model does not support the coding plan feature. Please refer to docs.',
+        modifiedFiles: [],
+        exitCode: 1,
+        stderr: '',
+      }),
+    ).toThrow(/discover stage agent exited 1: 404 The requested model does not support the coding plan feature/);
+    expect(existsSync(rd.path('discover.err'))).toBe(true);
+  });
+
+  it('prefers structured error.message over stderr JSON noise', () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-assert-'));
+    const rd = new RunDir(base, newRunId());
+    expect(() =>
+      assertAgentOk(rd, 'discover', {
+        output: 'raw lastOutput fallback',
+        modifiedFiles: [],
+        exitCode: 1,
+        stderr: JSON.stringify({ error: { code: 'AGENT_RUN_ERROR', message: 'ignored stderr envelope' } }),
+        error: { code: 'AGENT_RUN_ERROR', message: '404 model does not support coding plan' },
+      }),
+    ).toThrow(/discover stage agent exited 1: 404 model does not support coding plan/);
+  });
+
   it('is a no-op (no throw, no .err file) when exitCode is 0', () => {
     const base = mkdtempSync(join(tmpdir(), 'r-assert-'));
     const rd = new RunDir(base, newRunId());
