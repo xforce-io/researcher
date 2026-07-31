@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TriagedSchema, parseTriaged } from '../../src/config/triaged.js';
+import { TriagedSchema, parseTriaged, parseTriagedOutput } from '../../src/config/triaged.js';
 
 const valid = {
   candidates: [
@@ -63,5 +63,31 @@ describe('TriagedSchema', () => {
 
   it('parseTriaged surfaces a clear error on malformed JSON', () => {
     expect(() => parseTriaged('not json {')).toThrow(/json|parse/i);
+  });
+});
+
+describe('parseTriagedOutput', () => {
+  it('accepts a pure JSON response unchanged', () => {
+    expect(parseTriagedOutput(JSON.stringify(valid)).candidates[0].id).toBe('arxiv:2401.12345');
+  });
+
+  it('recovers JSON wrapped in narration prose (2026-07-31 production failure shape)', () => {
+    const raw = `正在读取完整候选交接，随后给出分诊结果。\n\n${JSON.stringify(valid, null, 2)}\n\n以上为全部结果。`;
+    expect(parseTriagedOutput(raw).candidates[0].decision).toBe('deep-read');
+  });
+
+  it('recovers JSON wrapped in a markdown fence', () => {
+    const raw = `Here is the result:\n\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``;
+    expect(parseTriagedOutput(raw).search_summary).toBe(valid.search_summary);
+  });
+
+  it('surfaces the zod error when the response is valid JSON with a wrong schema', () => {
+    const bad = structuredClone(valid);
+    bad.candidates[0].decision = 'definitely-read' as never;
+    expect(() => parseTriagedOutput(JSON.stringify(bad))).toThrow(/decision/);
+  });
+
+  it('throws the strict-parse error when no valid JSON can be recovered', () => {
+    expect(() => parseTriagedOutput('正在读取完整候选交接')).toThrow(/triaged\.json is not valid JSON/);
   });
 });
