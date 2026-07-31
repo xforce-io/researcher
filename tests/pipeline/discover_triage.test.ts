@@ -120,6 +120,33 @@ class NeverWriteAdapter implements AgentRuntime {
     return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
+
+/** Collect returns candidates only in stdout — host must write the artifact. */
+class CollectStdoutOnlyAdapter implements AgentRuntime {
+  id = 'stub-stdout-collect';
+  calls: InvokeOptions[] = [];
+
+  constructor(
+    private readonly collected: DiscoverCandidates,
+    private readonly triaged: Triaged,
+  ) {}
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      return {
+        output: `done\n${JSON.stringify(this.collected, null, 2)}\n`,
+        modifiedFiles: [],
+        exitCode: 0,
+      };
+    }
+    if (opts.agentId === 'researcher-triage') {
+      return { output: JSON.stringify(this.triaged), modifiedFiles: [], exitCode: 0 };
+    }
+    throw new Error('stub: unexpected agent');
+  }
+}
+
 class TerminalErrorAdapter implements AgentRuntime {
   id = 'stub-terminal-error';
   calls = 0;
@@ -375,6 +402,37 @@ describe('discover_triage stage', () => {
     expect(adapter.calls.slice(1).every((call) => !call.userPrompt.includes('run_command'))).toBe(true);
     expect(ctx.addSourceId).toBe('arxiv:2401.11111');
     expect(existsSync(rd.path('triaged.json'))).toBe(true);
+  });
+
+  it('host-writes discover-candidates.json when collect only returns JSON on stdout', async () => {
+    const adapter = new CollectStdoutOnlyAdapter(collected(), sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    const path = rd.path('discover-candidates.json');
+    expect(existsSync(path)).toBe(true);
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as DiscoverCandidates;
+    expect(saved.candidates.map((c) => c.id)).toEqual([
+      'arxiv:2401.11111',
+      'arxiv:2401.22222',
+      'arxiv:2401.33333',
+    ]);
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+  });
+
+  it('collect prompt forbids embedding the full candidates JSON in run_command', async () => {
+    const adapter = new CollectStdoutOnlyAdapter(collected(), sample({ candidates: [] }));
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    const collectPrompt = adapter.calls.find((c) => c.agentId === 'researcher-collect')?.userPrompt ?? '';
+    expect(collectPrompt).toMatch(/do not embed the full candidates json inside a single/i);
+    expect(collectPrompt).toMatch(/stdout/i);
+    expect(collectPrompt).toContain('discover-candidates.json');
   });
 
   it('fails after one recovery attempt when triage still returns no JSON', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDiscoverCandidates } from '../../src/config/discover-candidates.js';
+import { extractDiscoverCandidatesJson, parseDiscoverCandidates } from '../../src/config/discover-candidates.js';
 
 const valid = {
   candidates: [
@@ -33,5 +33,22 @@ describe('parseDiscoverCandidates', () => {
     const bad = structuredClone(valid);
     bad.candidates[0].id = id;
     expect(() => parseDiscoverCandidates(JSON.stringify(bad))).toThrow();
+  });
+});
+
+describe('extractDiscoverCandidatesJson', () => {
+  it('extracts a fenced json block from agent stdout', () => {
+    const raw = `notes\n\`\`\`json\n${JSON.stringify(valid, null, 2)}\n\`\`\`\nbye`;
+    expect(extractDiscoverCandidatesJson(raw)).toContain('"arxiv:2401.12345"');
+  });
+
+  it('extracts a bare JSON object from mixed stdout', () => {
+    const raw = `done\n${JSON.stringify(valid)}\n`;
+    expect(extractDiscoverCandidatesJson(raw)).toContain('"candidates"');
+  });
+
+  it('returns null when stdout has no valid candidates object', () => {
+    expect(extractDiscoverCandidatesJson('no json here')).toBeNull();
+    expect(extractDiscoverCandidatesJson('{"foo":1}')).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
-import { parseDiscoverCandidates, type DiscoverCandidates } from '../config/discover-candidates.js';
+import { extractDiscoverCandidatesJson, parseDiscoverCandidates, type DiscoverCandidates } from '../config/discover-candidates.js';
 import { parseTriaged, type Triaged } from '../config/triaged.js';
 import { scaffoldMilkieRuntime } from '../commands/init.js';
 import { Seen } from '../state/seen.js';
@@ -143,6 +143,16 @@ async function loadCollectedCandidates(
     timeoutMs: TIMEOUT_MS,
   });
   assertAgentOk(ctx.runDir, 'discover', result);
+
+  // Prefer an agent-written file; otherwise host-recover JSON from stdout.
+  // Embedding the full candidates payload in run_command args is forbidden —
+  // large heredocs hit output caps and arrive as empty tool inputs.
+  if (!existsSync(candidatesPath)) {
+    const extracted = extractDiscoverCandidatesJson(result.output ?? '');
+    if (extracted) {
+      writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+    }
+  }
   return validateAndCapCandidates(candidatesPath);
 }
 
