@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 import { runOnboard } from '../../src/commands/onboard.js';
+import { scaffoldTopicRepo } from '../../src/commands/init.js';
 import { resolvePackageRoot } from '../../src/paths.js';
 
 // Stub the adapter so the test does not call real `milkie`.
@@ -79,5 +80,49 @@ describe('runOnboard (integration)', () => {
     expect(readFileSync(join(dir, '.researcher/thesis.md'), 'utf8')).toContain('Working thesis');
     const log = execaSync('git', ['log', '--oneline'], { cwd: dir }).stdout;
     expect(log).toMatch(/researcher: onboard /);
+  });
+
+  it('migrates a pristine legacy runtime before onboarding commits it', async () => {
+    scaffoldTopicRepo({ repoRoot: dir });
+    writeFileSync(join(dir, '.milkie/agents.json'), JSON.stringify({
+      agents: [
+        { id: 'researcher', file: '../agents/researcher.md' },
+        { id: 'custom', file: '../agents/custom.md' },
+      ],
+    }) + '\n');
+    writeFileSync(join(dir, 'agents/researcher.md'), 'custom agent contract\n');
+    execaSync('git', ['add', 'agents/researcher.md'], { cwd: dir });
+    execaSync('git', ['commit', '-m', 'legacy agent customization'], { cwd: dir });
+    rmSync(join(dir, 'agents/researcher-collect.md'));
+    rmSync(join(dir, 'agents/researcher-triage.md'));
+
+    await runOnboard({
+      cwd: dir,
+      answersOverride: [
+        { questionId: 'Q1', fieldId: 'topic_oneline', kind: 'text', text: 'legacy decision agents' },
+        { questionId: 'Q2', fieldId: 'research_questions', kind: 'text', text: 'How do legacy agents decide?' },
+        { questionId: 'Q3', fieldId: 'inclusion_criteria', kind: 'skipped' },
+        { questionId: 'Q4', fieldId: 'exclusion_criteria', kind: 'skipped' },
+        { questionId: 'Q5', fieldId: 'taste', kind: 'skipped' },
+        { questionId: 'Q6', fieldId: 'seed_keywords', kind: 'skipped' },
+      ],
+      autoAcceptDiff: true,
+    });
+
+    const registry = JSON.parse(readFileSync(join(dir, '.milkie/agents.json'), 'utf8'));
+    expect(registry.agents.map((agent: { id: string }) => agent.id)).toEqual([
+      'researcher',
+      'custom',
+      'researcher-collect',
+      'researcher-triage',
+    ]);
+    expect(readFileSync(join(dir, 'agents/researcher.md'), 'utf8')).toBe('custom agent contract\n');
+    expect(existsSync(join(dir, 'agents/researcher-collect.md'))).toBe(true);
+    expect(existsSync(join(dir, 'agents/researcher-triage.md'))).toBe(true);
+    const committed = execaSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: dir }).stdout;
+    expect(committed).toContain('.milkie/agents.json');
+    expect(committed).toContain('agents/researcher.md');
+    expect(committed).toContain('agents/researcher-collect.md');
+    expect(committed).toContain('agents/researcher-triage.md');
   });
 });
