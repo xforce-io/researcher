@@ -71,6 +71,24 @@ describe('GrokCliAdapter', () => {
       '',
     ].join('\n'));
   });
+  it('removes NUL characters from the model argument before invoking Grok', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'researcher-grok-cli-'));
+    const modelPath = join(dir, 'model.txt');
+    const bin = writeExecutable(
+      dir,
+      `require('node:fs').writeFileSync(${JSON.stringify(modelPath)}, process.argv[5]); process.stdout.write('ok');`,
+    );
+
+    const result = await new GrokCliAdapter({ bin, model: 'grok\u0000-4.5' }).invoke({
+      cwd: dir,
+      systemPrompt: 'system',
+      userPrompt: 'user',
+      timeoutMs: 500,
+    });
+
+    expect(result).toMatchObject({ output: 'ok', exitCode: 0, modifiedFiles: [], stderr: '' });
+    expect(readFileSync(modelPath, 'utf8')).toBe('grok-4.5');
+  });
 
   it('reports a missing executable with the Grok not-found error code', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'researcher-grok-cli-'));

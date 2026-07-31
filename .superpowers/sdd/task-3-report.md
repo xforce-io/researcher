@@ -134,3 +134,21 @@ Duration    7.90s
 ### Concern
 
 - No unresolved concern. This deliberately removes only NUL (the value unsupported by Node argv); all other prompt text is preserved.
+
+## Final review follow-up — Grok CLI model NUL argv
+
+### Red
+
+`npm test -- tests/adapter/grok-cli.test.ts` failed after adding the model-NUL regression: the adapter returned `Grok CLI could not be started.` with exit code `1`, so the fake CLI did not execute. Node rejected the NUL-containing model argv value before process startup.
+
+### Green / focused
+
+`npm test -- tests/adapter/grok-cli.test.ts` passed: 1 file / 6 tests. The fake Grok CLI executed and received `grok-4.5` for configured `model: 'grok\0-4.5'`.
+
+### Change
+
+- Applied the existing `stripNul` rule to the model immediately before it is added to the argv array.
+
+### Concern
+
+- No unresolved concern. Only NUL is removed, preserving all other model text and the existing process-error contract.

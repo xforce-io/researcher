@@ -28,7 +28,7 @@ export class GrokCliAdapter implements AgentRuntime {
     try {
       const result = await execa(
         this.options.bin,
-        ['-p', prompt, '--model', this.options.model, '--no-plan', '--no-memory'],
+        ['-p', prompt, '--model', stripNul(this.options.model), '--no-plan', '--no-memory'],
         {
           cwd: opts.cwd,
           timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
