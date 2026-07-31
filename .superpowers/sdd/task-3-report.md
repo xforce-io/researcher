@@ -89,3 +89,48 @@ Duration    7.90s
 
 - No unresolved concerns. This regression begins at the normalized adapter exit-code contract; Milkie terminal-status normalization and failure-artifact diagnostic content are covered by Tasks 1 and 2.
 - No push or PR was performed.
+
+# Task 3 report — Grok CLI provider activation (#120)
+
+## External operational changes
+
+- Created `/Users/xupeng/.researcher/config.yaml` with `runtime: grok-cli`, binary `/Users/xupeng/.grok/bin/grok`, and model `grok-4.5`. It is local operational configuration and was not committed; no credentials were recorded.
+- In `/Users/xupeng/dev/github/research-harness/agentic-model-training/agents/researcher.md`, restored the sole Milkie fallback model line to `glm-latest`. No other external-project file was modified or committed.
+
+## Red / green evidence
+
+- **Red (Tasks 1–2):** Before implementation, the focused config/factory tests rejected `runtime: grok-cli` and lacked `createAgentRuntime`; the adapter test could not load `GrokCliAdapter`. The production-routing test's fake Grok binary was not invoked and its failure case bypassed the configured runtime. These failures are recorded in `.superpowers/sdd/task-1-report.md` and `task-2-report.md`.
+- **Green:** `npm test` exited 0 after activation: 75 test files / 501 tests passed; the pre-existing opt-in `tests/integration/discover-milkie-cross-repo.test.ts` was skipped (1 file / 1 test) because its enabling environment variable was absent.
+
+## Build and real compiled factory probe
+
+- `npm run build` exited 0 and refreshed `dist/`.
+- The required `RESEARCHER_HOME=/Users/xupeng/.researcher node --input-type=module -e ...` compiled-factory probe exited 0 in 16.48s. Its own exit assertion requires `createAgentRuntime()` to return a zero-exit runtime result with output exactly `GROK_PROVIDER_OK`; therefore the compiled factory selected and completed the configured real Grok CLI path.
+
+## Controlled documents and commit
+
+- Marked `docs/design/120-grok-cli-provider.md` as `Implemented` after the green verification.
+- `ba79045` — `docs: record Grok CLI runtime design`
+
+## Concern
+
+- No unresolved concern. The Grok selection is intentionally machine-local via `/Users/xupeng/.researcher/config.yaml`; a host without the authenticated binary must configure its own local runtime before using this provider.
+
+## Final review follow-up — Grok CLI NUL argv
+
+### Red
+
+`npm test -- tests/adapter/grok-cli.test.ts` failed after adding the prompt-NUL regression: the adapter returned `Grok CLI could not be started.` with exit code `1`, because Node rejected the NUL-containing argv before the fake Grok CLI ran.
+
+### Green / focused
+
+`npm test -- tests/adapter/grok-cli.test.ts` passed: 1 file / 5 tests. The fake Grok CLI received a combined prompt with NUL removed from both system and user sections and returned `ok`.
+
+### Commit and files
+
+- Commit: `fix: sanitize Grok CLI argv prompts` (this commit).
+- Files: `src/adapter/grok-cli.ts`, `tests/adapter/grok-cli.test.ts`, `.superpowers/sdd/task-3-report.md`.
+
+### Concern
+
+- No unresolved concern. This deliberately removes only NUL (the value unsupported by Node argv); all other prompt text is preserved.

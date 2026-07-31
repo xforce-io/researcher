@@ -46,6 +46,31 @@ describe('GrokCliAdapter', () => {
       '--no-memory',
     ].join('\n'));
   });
+  it('removes NUL characters from both prompt sections before invoking Grok', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'researcher-grok-cli-'));
+    const promptPath = join(dir, 'prompt.txt');
+    const bin = writeExecutable(
+      dir,
+      `require('node:fs').writeFileSync(${JSON.stringify(promptPath)}, process.argv[3]); process.stdout.write('ok');`,
+    );
+
+    const result = await new GrokCliAdapter({ bin, model: 'grok-4.5' }).invoke({
+      cwd: dir,
+      systemPrompt: 'system\u0000prompt',
+      userPrompt: 'user\u0000prompt',
+      timeoutMs: 500,
+    });
+
+    expect(result).toMatchObject({ output: 'ok', exitCode: 0, modifiedFiles: [], stderr: '' });
+    expect(readFileSync(promptPath, 'utf8')).toBe([
+      '# System prompt',
+      'systemprompt',
+      '',
+      '# User prompt',
+      'userprompt',
+      '',
+    ].join('\n'));
+  });
 
   it('reports a missing executable with the Grok not-found error code', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'researcher-grok-cli-'));

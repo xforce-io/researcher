@@ -18,10 +18,10 @@ export class GrokCliAdapter implements AgentRuntime {
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
     const prompt = [
       '# System prompt',
-      opts.systemPrompt,
+      stripNul(opts.systemPrompt),
       '',
       '# User prompt',
-      opts.userPrompt,
+      stripNul(opts.userPrompt),
       '',
     ].join('\n');
 
@@ -77,4 +77,9 @@ function failed(code: string, message: string, stderr: string): InvokeResult {
     stderr,
     error: { code, message },
   };
+}
+
+function stripNul(s: string): string {
+  // eslint-disable-next-line no-control-regex -- intentional: matches NUL
+  return s.replace(/\u0000/g, '');
 }
