@@ -48,11 +48,12 @@ Use the landscape only to identify coverage gaps and form focused discovery quer
 - Use at most 2 arXiv (or equivalent) search calls per query.
 - Consider at most 30 raw candidates and fetch at most 12 abstracts.
 - Do not read PDFs or full papers.
-- Reserve enough time to write the output artifact. A partial valid artifact is better than another search.
+- Project soul / thesis / landscape / seen IDs are already in this prompt — do **not** re-cat them.
+- Reserve enough budget to emit the final JSON. A partial valid list is better than another search.
 
 ## Output
 
-Use `run_command` to write exactly one JSON file at `{{candidates_path}}`. Its entire content must be valid JSON with this shape:
+Deliver **exactly one** JSON object with this shape (keys exact):
 
 ```json
 {
@@ -69,4 +70,11 @@ Use `run_command` to write exactly one JSON file at `{{candidates_path}}`. Its e
 }
 ```
 
-IDs must be canonical and namespaced: `arxiv:`, `doi:`, `openreview:`, or `urlhash:`. Omit candidates without a canonical ID, URL, title, and abstract. Do not modify any project file other than `{{candidates_path}}`.
+**How to deliver (required):**
+
+1. Put the full JSON in your **final stdout** (a fenced ` ```json ` block is fine). The host will write `{{candidates_path}}`.
+2. **Do not embed the full candidates JSON inside a single `run_command.command`** (no giant heredoc / `cat > file <<EOF` of the whole artifact). Those tool arguments get truncated and arrive empty.
+3. `run_command` is only for discovery (search/fetch/list). Keep each command short.
+4. Optional: if you already have a small on-disk partial, you may leave a valid file at `{{candidates_path}}`; otherwise stdout is enough.
+
+IDs must be canonical and namespaced: `arxiv:`, `doi:`, `openreview:`, or `urlhash:`. Omit candidates without a canonical ID, URL, title, and abstract. Do not modify project files other than optional writes under the run directory for this artifact.
