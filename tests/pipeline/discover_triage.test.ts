@@ -74,6 +74,35 @@ class TriageLengthRecoveryAdapter implements AgentRuntime {
   }
 }
 
+class LengthWithJsonAdapter implements AgentRuntime {
+  id = 'stub-length-json';
+  calls: InvokeOptions[] = [];
+
+  constructor(
+    private readonly collected: DiscoverCandidates,
+    private readonly triaged: Triaged,
+  ) {}
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    if (opts.agentId === 'researcher-triage') {
+      return {
+        output: JSON.stringify(this.triaged),
+        modifiedFiles: [],
+        exitCode: 0,
+        finishReason: 'length',
+      };
+    }
+    throw new Error('stub: unexpected generic agent invocation');
+  }
+}
+
 class NeverWriteAdapter implements AgentRuntime {
   id = 'stub-never';
   calls: InvokeOptions[] = [];
@@ -177,6 +206,40 @@ describe('discover_triage stage', () => {
     expect(adapter.calls[1].systemPrompt).not.toContain('write');
     expect(adapter.calls[1].userPrompt).toContain('"abstract": "A directly relevant result."');
     expect(readFileSync(rd.path('triaged.json'), 'utf8')).toContain('"candidates"');
+  });
+
+  it('deduplicates canonical candidate IDs before applying the 30-candidate cap', async () => {
+    const candidates = Array.from({ length: 31 }, (_, index) => ({
+      id: `arxiv:2401.${String(10000 + index)}`,
+      title: `Candidate ${index}`,
+      url: `https://arxiv.org/abs/2401.${String(10000 + index)}`,
+      abstract: `Abstract ${index}`,
+      source: 'arxiv',
+    }));
+    candidates.splice(1, 0, { ...candidates[0], id: 'ARXIV:2401.10000' });
+    const adapter = new CollectThenTriageAdapter(
+      { candidates, search_summary: 'duplicate boundary fixture' },
+      sample({ candidates: [] }),
+    );
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    const normalized = JSON.parse(readFileSync(rd.path('discover-candidates.json'), 'utf8')) as DiscoverCandidates;
+    expect(normalized.candidates).toHaveLength(30);
+    expect(new Set(normalized.candidates.map((candidate) => candidate.id)).size).toBe(30);
+  });
+
+  it('accepts parseable triage JSON despite a length finish reason without recovery', async () => {
+    const adapter = new LengthWithJsonAdapter(collected(), sample({ candidates: [] }));
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(adapter.calls.map((call) => call.agentId)).toEqual(['researcher-collect', 'researcher-triage']);
+    expect(existsSync(rd.path('triaged.json'))).toBe(true);
   });
 
   it('migrates legacy managed contracts before collect and triage', async () => {

@@ -292,6 +292,34 @@ describe('researcher run (autonomous)', () => {
     expect(readFileSync(join(proj, '.milkie/agents.json'), 'utf8')).toContain('researcher-triage');
   });
 
+  it('commits legacy managed-contract migration on the deep-read branch', async () => {
+    rmSync(join(proj, 'agents/researcher-collect.md'));
+    rmSync(join(proj, 'agents/researcher-triage.md'));
+    writeFileSync(
+      join(proj, '.milkie/agents.json'),
+      JSON.stringify({ agents: [{ id: 'researcher', file: '../agents/researcher.md' }] }, null, 2),
+    );
+    execaSync('git', ['add', '.milkie/agents.json', 'agents'], { cwd: proj });
+    execaSync('git', ['commit', '-m', 'legacy managed contracts'], { cwd: proj });
+    const adapter = new ScriptedAdapter([
+      soulStep(),
+      collectStep(),
+      triageStep(triagedDeepRead),
+      synthesizeStep('Fresh library artifact body.'),
+      packageStep(),
+    ]);
+    const { runRun } = await import('../../src/commands/run.js');
+
+    await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
+
+    expect(execaSync('git', ['show', 'HEAD:agents/researcher-collect.md'], { cwd: proj }).stdout)
+      .toContain('agentId: researcher-collect');
+    expect(execaSync('git', ['show', 'HEAD:agents/researcher-triage.md'], { cwd: proj }).stdout)
+      .toContain('agentId: researcher-triage');
+    expect(execaSync('git', ['show', 'HEAD:.milkie/agents.json'], { cwd: proj }).stdout)
+      .toContain('researcher-collect');
+  });
+
   it('exits cleanly when soul_bootstrap writes open_questions.md (signal too thin)', async () => {
     const adapter = new ScriptedAdapter([
       (opts) => {

@@ -29,3 +29,9 @@ The host validates the collection artifact and triage response schema, while the
 - **Red:** Uppercase `ARXIV:2401.12345` passed the case-insensitive schema but remained uppercase, while deep-read dispatch checks the lowercase `arxiv:` prefix.
 - **Fix:** Both handoff schemas lowercase only the namespace after validation; the identifier payload remains unchanged.
 - **Green:** `npx vitest run tests/config/discover-candidates.test.ts tests/config/triaged.test.ts` passed 2 files / 19 tests.
+
+## Final orchestration boundaries
+
+- **Red:** The host capped raw candidates before canonical-ID deduplication, a parseable `length` response still made a recovery call, and managed migration files vanished during a deep-read package branch dance.
+- **Fix:** The host now deduplicates canonical IDs before capping; it parses the initial triage text before deciding whether `length` needs recovery; package snapshots and commits only the managed migration manifest/contracts so they survive stash/drop and branch creation.
+- **Green:** `npx vitest run tests/pipeline/discover_triage.test.ts tests/commands/run.test.ts` passed 2 files / 18 tests, including duplicate-boundary, parseable-length, and deep-read persistence regressions.

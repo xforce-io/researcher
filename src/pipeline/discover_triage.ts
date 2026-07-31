@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { parseDiscoverCandidates, type DiscoverCandidates } from '../config/discover-candidates.js';
-import { parseTriaged } from '../config/triaged.js';
+import { parseTriaged, type Triaged } from '../config/triaged.js';
 import { scaffoldMilkieRuntime } from '../commands/init.js';
 import { Seen } from '../state/seen.js';
 import type { RunContext } from './context.js';
@@ -57,7 +57,12 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
   });
   assertAgentOk(ctx.runDir, 'discover', triage);
 
-  if (triage.finishReason === 'length') {
+  let triaged: Triaged;
+  try {
+    triaged = parseTriaged(triage.output);
+  } catch (error) {
+    if (triage.finishReason !== 'length') throw error;
+
     triage = await ctx.adapter.invoke({
       cwd: ctx.projectRoot,
       systemPrompt: TRIAGE_SYSTEM_PROMPT,
@@ -66,9 +71,8 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
       timeoutMs: RECOVERY_TIMEOUT_MS,
     });
     assertAgentOk(ctx.runDir, 'discover', triage);
+    triaged = parseTriaged(triage.output);
   }
-
-  const triaged = parseTriaged(triage.output);
   writeFileSync(triagedPath, JSON.stringify(triaged, null, 2));
 
   // Persist skim + reject decisions to seen.jsonl (dedup ledger).
@@ -144,9 +148,16 @@ async function loadCollectedCandidates(
 
 function validateAndCapCandidates(candidatesPath: string): DiscoverCandidates {
   const parsed = parseDiscoverCandidates(readFileSync(candidatesPath, 'utf8'));
+  const ids = new Set<string>();
   const capped = {
     ...parsed,
-    candidates: parsed.candidates.slice(0, MAX_COLLECTED_CANDIDATES),
+    candidates: parsed.candidates
+      .filter((candidate) => {
+        if (ids.has(candidate.id)) return false;
+        ids.add(candidate.id);
+        return true;
+      })
+      .slice(0, MAX_COLLECTED_CANDIDATES),
   };
   writeFileSync(candidatesPath, JSON.stringify(capped, null, 2));
   return capped;
