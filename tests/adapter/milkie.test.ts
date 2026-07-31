@@ -23,6 +23,7 @@ describe('MilkieAdapter', () => {
     const a = new MilkieAdapter();
     const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'SYS', userPrompt: 'USR' });
     expect(r.exitCode).toBe(0);
+    expect(r.output).toBe('hello\n\nFILES_MODIFIED:\nnotes/active/01_x.md\n');
     expect(r.modifiedFiles).toEqual(['notes/active/01_x.md']);
 
     const lastCall = (execa as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1);
@@ -58,6 +59,51 @@ describe('MilkieAdapter', () => {
     const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toBe('the real failure reason');
+  });
+
+  it.each([
+    [0, 1],
+    [17, 17],
+  ])('normalizes terminal status:error with process exit %i', async (processExitCode, expectedExitCode) => {
+    const { execa } = await import('execa');
+    const root = mkdtempSync(join(tmpdir(), 'rsw-milkie-terminal-error-'));
+    const runId = `run-error-${processExitCode}`;
+    mkdirSync(join(root, '.milkie/runs'), { recursive: true });
+    writeFileSync(
+      join(root, `.milkie/runs/${runId}.jsonl`),
+      JSON.stringify({
+        type: 'llm.responded',
+        payload: { response: { finishReason: 'length', content: [], toolCalls: [] } },
+      }) + '\n',
+    );
+    (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      exitCode: processExitCode,
+      stdout: JSON.stringify({
+        runId,
+        status: 'error',
+        lastOutput: 'invalid tool arguments',
+        error: {
+          code: 'AGENT_RUN_ERROR',
+          message: 'The agent could not complete the run.',
+          phase: 'tool_arguments',
+          retryable: false,
+          toolCallId: 'call_1',
+          finishReason: 'length',
+        },
+      }) + '\n',
+      stderr: 'fallback stderr',
+      args: [],
+    });
+
+    const a = new MilkieAdapter();
+    const r = await a.invoke({ cwd: root, systemPrompt: 'S', userPrompt: 'U' });
+
+    expect(r.exitCode).toBe(expectedExitCode);
+    expect(r.finishReason).toBe('length');
+    expect(r.error).toMatchObject({
+      code: 'AGENT_RUN_ERROR',
+      message: 'The agent could not complete the run.',
+    });
   });
 
   it('recovers finishReason from the Milkie run trace', async () => {
