@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { TaskRegistry, resolveCliEntry, type Runner } from '../../src/web/tasks.js';
 import type { RunEvent } from '../../src/pipeline/events.js';
 
@@ -149,5 +152,11 @@ describe('resolveCliEntry', () => {
     if (existsSync(entry)) {
       expect(entry.endsWith('cli.js') || entry.includes('cli')).toBe(true);
     }
+  });
+
+  it('does not mistake an unrelated test runner for the CLI entry', () => {
+    const metaUrl = pathToFileURL(join(tmpdir(), 'researcher-resolve-cli-entry', 'web', 'tasks.js')).href;
+
+    expect(resolveCliEntry(metaUrl)).toBe(join(tmpdir(), 'researcher-resolve-cli-entry', 'cli.js'));
   });
 });
