@@ -92,12 +92,19 @@ export function scaffoldMilkieRuntime(opts: ScaffoldMilkieRuntimeOptions): void 
   mkdirSync(join(opts.root, '.milkie'), { recursive: true });
   mkdirSync(join(opts.root, 'agents'), { recursive: true });
   const agentsJson = join(opts.root, '.milkie/agents.json');
-  const researcherAgent = join(opts.root, 'agents/researcher.md');
+  const agentTemplates: ReadonlyArray<readonly [target: string, template: string]> = [
+    ['researcher.md', 'milkie-researcher.md'],
+    ['researcher-collect.md', 'milkie-researcher-collect.md'],
+    ['researcher-triage.md', 'milkie-researcher-triage.md'],
+  ];
   if (!existsSync(agentsJson)) {
     copyFileSync(join(pkg, 'templates/milkie-agents.json'), agentsJson);
   }
-  if (!existsSync(researcherAgent)) {
-    copyFileSync(join(pkg, 'templates/milkie-researcher.md'), researcherAgent);
+  for (const [target, template] of agentTemplates) {
+    const agentPath = join(opts.root, 'agents', target);
+    if (!existsSync(agentPath)) {
+      copyFileSync(join(pkg, 'templates', template), agentPath);
+    }
   }
   ensureMilkieGitignore(opts.root);
 }

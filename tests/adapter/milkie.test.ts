@@ -15,7 +15,7 @@ vi.mock('execa', () => ({
   })),
 }));
 
-import { MilkieAdapter, resolveMilkieBin } from '../../src/adapter/milkie.js';
+import { MilkieAdapter, resolveMilkieAgent, resolveMilkieBin } from '../../src/adapter/milkie.js';
 
 describe('MilkieAdapter', () => {
   it('invokes milkie agent run with an input file', async () => {
@@ -101,5 +101,9 @@ describe('MilkieAdapter', () => {
 
   it('allows RESEARCHER_MILKIE_BIN to override the packaged runtime', () => {
     expect(resolveMilkieBin({ RESEARCHER_MILKIE_BIN: '/custom/milkie' })).toBe('/custom/milkie');
+  });
+
+  it('allows RESEARCHER_MILKIE_AGENT to set the default agent', () => {
+    expect(resolveMilkieAgent({ RESEARCHER_MILKIE_AGENT: 'custom-researcher' })).toBe('custom-researcher');
   });
 });
