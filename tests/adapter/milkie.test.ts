@@ -33,6 +33,21 @@ describe('MilkieAdapter', () => {
     expect(args).toContain('--input-file');
   });
 
+  it('invokes the requested Milkie agent', async () => {
+    const { execa } = await import('execa');
+    const a = new MilkieAdapter();
+    await a.invoke({
+      cwd: '/tmp/x',
+      systemPrompt: 'SYS',
+      userPrompt: 'USR',
+      agentId: 'researcher-triage',
+    });
+
+    const lastCall = (execa as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    const args = lastCall?.[1] as string[];
+    expect(args.slice(0, 3)).toEqual(['agent', 'run', 'researcher-triage']);
+  });
+
   it('strips NUL bytes before writing the milkie input', async () => {
     const { execa } = await import('execa');
     const a = new MilkieAdapter();

@@ -1,5 +1,7 @@
 {
   "agents": [
-    { "id": "researcher", "file": "../agents/researcher.md" }
+    { "id": "researcher", "file": "../agents/researcher.md" },
+    { "id": "researcher-collect", "file": "../agents/researcher-collect.md" },
+    { "id": "researcher-triage", "file": "../agents/researcher-triage.md" }
   ]
 }

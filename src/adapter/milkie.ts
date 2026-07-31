@@ -8,7 +8,6 @@ import type { AgentRuntime, InvokeOptions, InvokeResult } from './interface.js';
 const require = createRequire(import.meta.url);
 
 const MILKIE_BIN = resolveMilkieBin();
-const MILKIE_AGENT = process.env.RESEARCHER_MILKIE_AGENT ?? 'researcher';
 
 export class MilkieAdapter implements AgentRuntime {
   readonly id = 'milkie';
@@ -32,7 +31,7 @@ export class MilkieAdapter implements AgentRuntime {
         [
           'agent',
           'run',
-          MILKIE_AGENT,
+          opts.agentId ?? 'researcher',
           '--input-file',
           inputPath,
           '--goal',
