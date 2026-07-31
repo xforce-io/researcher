@@ -12,6 +12,9 @@ describe('writeOnboardArtifacts', () => {
     execaSync('git', ['init', '-b', 'main'], { cwd: dir });
     execaSync('git', ['config', 'user.email', 't@t'], { cwd: dir });
     execaSync('git', ['config', 'user.name', 't'], { cwd: dir });
+    writeFileSync(join(dir, 'README.md'), '# Test\n');
+    execaSync('git', ['add', 'README.md'], { cwd: dir });
+    execaSync('git', ['commit', '-m', 'initial'], { cwd: dir });
     mkdirSync(join(dir, '.researcher/state'), { recursive: true });
     mkdirSync(join(dir, '.milkie'), { recursive: true });
     mkdirSync(join(dir, 'agents'), { recursive: true });
@@ -21,8 +24,8 @@ describe('writeOnboardArtifacts', () => {
     writeFileSync(join(dir, '.researcher/state/seen.jsonl'), '');
     writeFileSync(join(dir, '.milkie/agents.json'), '{"agents":[]}\n');
     writeFileSync(join(dir, 'agents/researcher.md'), '---\nagentId: researcher\n---\n');
-    execaSync('git', ['add', '.'], { cwd: dir });
-    execaSync('git', ['commit', '-m', 'initial'], { cwd: dir });
+    writeFileSync(join(dir, 'agents/researcher-collect.md'), '---\nagentId: researcher-collect\n---\n');
+    writeFileSync(join(dir, 'agents/researcher-triage.md'), '---\nagentId: researcher-triage\n---\n');
   });
 
   it('writes both files and creates a single commit', async () => {
@@ -38,6 +41,10 @@ describe('writeOnboardArtifacts', () => {
     expect(log).toContain('researcher: onboard decision-agent');
     const status = execaSync('git', ['status', '--porcelain'], { cwd: dir }).stdout;
     expect(status).toBe('');
+    const committed = execaSync('git', ['show', '--format=', '--name-only', 'HEAD'], { cwd: dir }).stdout;
+    expect(committed).toContain('agents/researcher.md');
+    expect(committed).toContain('agents/researcher-collect.md');
+    expect(committed).toContain('agents/researcher-triage.md');
   });
 });
 

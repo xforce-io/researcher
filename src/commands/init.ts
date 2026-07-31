@@ -24,6 +24,12 @@ export interface ScaffoldMilkieRuntimeOptions {
   root: string;
 }
 
+const MANAGED_MILKIE_AGENTS = [
+  { id: 'researcher', file: '../agents/researcher.md', target: 'researcher.md', template: 'milkie-researcher.md' },
+  { id: 'researcher-collect', file: '../agents/researcher-collect.md', target: 'researcher-collect.md', template: 'milkie-researcher-collect.md' },
+  { id: 'researcher-triage', file: '../agents/researcher-triage.md', target: 'researcher-triage.md', template: 'milkie-researcher-triage.md' },
+] as const;
+
 function gitToplevel(dir: string): string | null {
   try {
     const { stdout } = execaSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir });
@@ -92,14 +98,47 @@ export function scaffoldMilkieRuntime(opts: ScaffoldMilkieRuntimeOptions): void 
   mkdirSync(join(opts.root, '.milkie'), { recursive: true });
   mkdirSync(join(opts.root, 'agents'), { recursive: true });
   const agentsJson = join(opts.root, '.milkie/agents.json');
-  const researcherAgent = join(opts.root, 'agents/researcher.md');
   if (!existsSync(agentsJson)) {
     copyFileSync(join(pkg, 'templates/milkie-agents.json'), agentsJson);
+  } else {
+    mergeManagedAgentEntries(agentsJson);
   }
-  if (!existsSync(researcherAgent)) {
-    copyFileSync(join(pkg, 'templates/milkie-researcher.md'), researcherAgent);
+  for (const { target, template } of MANAGED_MILKIE_AGENTS) {
+    const agentPath = join(opts.root, 'agents', target);
+    if (!existsSync(agentPath)) {
+      copyFileSync(join(pkg, 'templates', template), agentPath);
+    }
   }
   ensureMilkieGitignore(opts.root);
+}
+
+function mergeManagedAgentEntries(agentsJson: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(agentsJson, 'utf8'));
+  } catch (error) {
+    throw new Error(`cannot migrate ${agentsJson}: invalid JSON: ${(error as Error).message}`);
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.agents)) {
+    throw new Error(`cannot migrate ${agentsJson}: expected an object with an agents array`);
+  }
+
+  const registeredIds = new Set(
+    parsed.agents.flatMap((agent) => isRecord(agent) && typeof agent.id === 'string' ? [agent.id] : []),
+  );
+  const additions = MANAGED_MILKIE_AGENTS
+    .filter((agent) => !registeredIds.has(agent.id))
+    .map(({ id, file }) => ({ id, file }));
+  if (additions.length === 0) return;
+
+  writeFileSync(
+    agentsJson,
+    `${JSON.stringify({ ...parsed, agents: [...parsed.agents, ...additions] }, null, 2)}\n`,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {

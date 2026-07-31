@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { fork } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUN_IPC_ENV, type RunEvent } from '../pipeline/events.js';
 import type { Stage } from '../state/runs.js';
@@ -58,8 +58,8 @@ export function resolveCliEntry(metaUrl: string = import.meta.url): string {
   for (const p of candidates) {
     if (existsSync(p)) return p;
   }
-  // Last resort: argv (normal `node dist/cli.js serve` / npm bin)
-  if (process.argv[1] && existsSync(process.argv[1])) return process.argv[1];
+  // Last resort: argv only when it is the CLI itself, not a test runner or host process.
+  if (process.argv[1] && basename(process.argv[1]) === 'cli.js' && existsSync(process.argv[1])) return process.argv[1];
   return candidates[0];
 }
 

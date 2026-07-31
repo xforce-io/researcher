@@ -15,7 +15,7 @@ vi.mock('execa', () => ({
   })),
 }));
 
-import { MilkieAdapter, resolveMilkieBin } from '../../src/adapter/milkie.js';
+import { MilkieAdapter, resolveMilkieAgent, resolveMilkieBin } from '../../src/adapter/milkie.js';
 
 describe('MilkieAdapter', () => {
   it('invokes milkie agent run with an input file', async () => {
@@ -32,6 +32,21 @@ describe('MilkieAdapter', () => {
     const args = lastCall?.[1] as string[];
     expect(args.slice(0, 3)).toEqual(['agent', 'run', 'researcher']);
     expect(args).toContain('--input-file');
+  });
+
+  it('invokes the requested Milkie agent', async () => {
+    const { execa } = await import('execa');
+    const a = new MilkieAdapter();
+    await a.invoke({
+      cwd: '/tmp/x',
+      systemPrompt: 'SYS',
+      userPrompt: 'USR',
+      agentId: 'researcher-triage',
+    });
+
+    const lastCall = (execa as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    const args = lastCall?.[1] as string[];
+    expect(args.slice(0, 3)).toEqual(['agent', 'run', 'researcher-triage']);
   });
 
   it('strips NUL bytes before writing the milkie input', async () => {
@@ -179,5 +194,9 @@ describe('MilkieAdapter', () => {
 
   it('allows RESEARCHER_MILKIE_BIN to override the packaged runtime', () => {
     expect(resolveMilkieBin({ RESEARCHER_MILKIE_BIN: '/custom/milkie' })).toBe('/custom/milkie');
+  });
+
+  it('allows RESEARCHER_MILKIE_AGENT to set the default agent', () => {
+    expect(resolveMilkieAgent({ RESEARCHER_MILKIE_AGENT: 'custom-researcher' })).toBe('custom-researcher');
   });
 });

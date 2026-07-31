@@ -7,7 +7,7 @@ import {
   resolveProjectResearcherDir,
   resolveResearcherHome,
 } from '../paths.js';
-import { scaffoldTopicRepo, validateRepoRoot } from './init.js';
+import { scaffoldMilkieRuntime, scaffoldTopicRepo, validateRepoRoot } from './init.js';
 import { MilkieAdapter } from '../adapter/milkie.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
@@ -42,6 +42,7 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
         `${dotR} already contains user content; edit files manually or remove .researcher/ to re-onboard`
       );
     }
+    scaffoldMilkieRuntime({ root: repoRoot });
   } else {
     scaffoldTopicRepo({ repoRoot });
   }

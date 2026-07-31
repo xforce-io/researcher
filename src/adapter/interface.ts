@@ -5,6 +5,8 @@ export interface InvokeOptions {
   systemPrompt: string;
   /** Stage-specific user prompt. */
   userPrompt: string;
+  /** Milkie agent contract to invoke; defaults to the general researcher agent. */
+  agentId?: string;
   /** Hard timeout in milliseconds. */
   timeoutMs?: number;
   /** Desired maximum model output tokens. Adapters that cannot enforce it may ignore it. */

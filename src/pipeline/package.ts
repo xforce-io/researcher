@@ -99,6 +99,13 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   //    to main's content — so we capture the cumulative content here and restore on the new branch.
   //    Snapshot ALL live notes (not just the current one) so rebalance moves survive the branch dance.
   const noteRelPaths = listIntegratedNotes(ctx.projectRoot).map((n) => n.relPath);
+  // Discover may idempotently migrate legacy repos with these managed contracts.
+  // Snapshot and commit only managed files, never arbitrary user agent contracts.
+  const managedRuntimePaths = [
+    '.milkie/agents.json',
+    'agents/researcher-collect.md',
+    'agents/researcher-triage.md',
+  ];
   const candidatePaths = [
     ...noteRelPaths,
     LANDSCAPE,
@@ -109,6 +116,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     '.researcher/project.yaml',
     '.researcher/thesis.md',
     '.researcher/.gitignore',
+    ...managedRuntimePaths,
   ];
   const currentNoteRels = new Set(noteRelPaths.concat(LANDSCAPE));
   const snapshots = new Map<string, string>();
@@ -206,6 +214,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
     '.researcher/project.yaml',
     '.researcher/thesis.md',
     '.researcher/.gitignore',
+    ...managedRuntimePaths,
   ].filter((p) => existsSync(join(ctx.projectRoot, p)));
   await gitops.commit({
     cwd: ctx.projectRoot,
