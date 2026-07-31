@@ -31,6 +31,8 @@ export async function writeOnboardArtifacts(opts: WriteArtifactsOptions): Promis
       '.researcher/.gitignore',
       '.milkie/agents.json',
       'agents/researcher.md',
+      'agents/researcher-collect.md',
+      'agents/researcher-triage.md',
       '.researcher/state/seen.jsonl',
       'notes/00_research_landscape.md',
     ],
