@@ -1,35 +1,103 @@
 # Task 2 report
 
-## Implemented
+## RED evidence
 
-- `RunDir.recordAgentFailure` now accepts the normalized failure properties from `InvokeResult`.
-- Failure artifact headers retain `exitCode` and add `finishReason`, `errorCode`, and `errorMessage` only when their normalized source value exists.
-- Existing stderr and 50-line stdout-tail sections remain below the summary header unchanged.
-- Tests cover both enriched artifacts and legacy artifacts with no diagnostic header fields.
+Before the production routing change, ran:
 
-## TDD evidence
-
-### Red
-
-`npx vitest run tests/state/runs.test.ts tests/pipeline/runner.test.ts` exited `1`.
-
-- `RunDir.recordAgentFailure > includes normalized diagnostics in the failure summary while preserving tails` failed as expected.
-- The prior artifact contained `exitCode`, stderr, and stdout tail but lacked `finishReason: length`.
-
-### Green
-
-`npx vitest run tests/state/runs.test.ts tests/pipeline/runner.test.ts` exited `0`.
-
-```text
-Test Files  2 passed (2)
-Tests       10 passed (10)
-Duration    235ms
+```sh
+npx vitest run tests/commands/runtime-selection.test.ts
 ```
+
+Both tests failed for the intended missing-selection mechanism:
+
+- The success case could not read `grok-args.json` (`ENOENT`), proving the configured fake Grok executable was never invoked.
+- The failure case resolved with `{ outcome: 'no-queries' }` instead of rejecting, proving the configured non-zero Grok process was bypassed.
+
+The test fixes `RESEARCHER_MILKIE_BIN` to a deterministic successful fake before dynamically importing `runRun`; this makes the RED failure attributable specifically to the hard-coded default adapter rather than an unavailable local Milkie installation.
+
+## GREEN evidence
+
+After replacing production defaults with `createAgentRuntime()`, ran:
+
+```sh
+npx vitest run tests/commands/runtime-selection.test.ts
+```
+
+Result: 1 file, 2 tests passed. The success test verifies exactly one Grok `-p` invocation and returns `no-queries`; the failure test verifies `soul.err` contains `GROK_CLI_EXIT`.
+
+Also ran the required focused regression suite:
+
+```sh
+npx vitest run tests/commands/runtime-selection.test.ts tests/commands/run.test.ts tests/commands/add.test.ts tests/commands/read.test.ts tests/commands/onboard.test.ts tests/web/topic-setup.test.ts
+```
+
+Result: 6 files, 20 tests passed.
+
+## Changes
+
+- Replaced default `MilkieAdapter` construction with `createAgentRuntime()` in `run`, `add`, `read`, `onboard`, and web topic setup.
+- Kept `runRun` and web topic setup's explicit injected runtime paths unchanged.
+- Left `src/web/library-read.ts` on its independent `OpenAITextAdapter` provider.
+- Added deterministic production `runRun` integration coverage for configured Grok CLI success and failure artifacts.
 
 ## Commit
 
-`5ad0a24` — `fix: persist normalized failure diagnostics`
+`7110c0c feat: select configured agent runtime`
 
 ## Concerns
 
-- Per the task constraint, verification was limited to the specified focused tests; no formatter, linter, typecheck, or project-wide suite was run.
+None. The new test deliberately imports `runRun` after setting its fallback Milkie environment because `MilkieAdapter` resolves its executable at module load; this isolates and proves the runtime-factory selection behavior.
+
+## Grok-only onboarding preflight repair
+
+### RED evidence
+
+With `runtime: grok-cli`, a fake Grok adapter, and `RESEARCHER_MILKIE_BIN=__researcher_missing_milkie__`, ran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: 1 failed test. `runOnboard` threw `milkie CLI not found` from `preFlight` before the fake Grok adapter could invoke.
+
+### GREEN evidence
+
+After constructing the configured runtime before preflight and restricting the existing `milkie --help` check to the Milkie runtime, reran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: 1 file, 4 tests passed. The new Grok-only case reached exactly one fake Grok invocation with no Milkie binary; the new default-runtime case still rejects when Milkie is unavailable.
+
+### Files and commit
+
+- `src/commands/onboard.ts`
+- `tests/commands/onboard.test.ts`
+- `8ae94f9 fix: skip Milkie preflight for Grok onboarding`
+
+## Grok methodology preflight boundary
+
+### RED evidence
+
+With `runtime: grok-cli`, no Milkie binary, and the installed onboarding methodology removed, ran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: the new test failed as expected because `runOnboard` scaffolded first and then threw `ENOENT` reading `methodology/onboarding.md`, rather than the actionable methodology-preflight error.
+
+### GREEN evidence
+
+Made only the Milkie binary probe conditional on `runtime.id === 'milkie'`; methodology presence remains checked for every runtime. Reran:
+
+```sh
+npm test -- tests/commands/onboard.test.ts
+```
+
+Result: 1 file, 5 tests passed. The new test verifies the original actionable methodology error occurs before `.researcher` is scaffolded and before Grok invocation.
+
+### Commit
+
+`9a3ed1b fix: validate onboarding methodology for every runtime`

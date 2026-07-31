@@ -7,13 +7,21 @@ import { loadGlobalConfig } from '../../src/config/global-config.js';
 describe('loadGlobalConfig', () => {
   it('returns defaults when file is missing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'r-glob-'));
-    const cfg = loadGlobalConfig(join(dir, 'config.yaml'));
-    expect(cfg.runtime).toBe('milkie');
+    expect(loadGlobalConfig(join(dir, 'config.yaml'))).toMatchObject({
+      runtime: 'milkie',
+      runtime_options: { 'grok-cli': { bin: 'grok', model: 'grok-4.5' } },
+    });
   });
-  it('reads runtime override', () => {
+  it('reads Grok runtime and options overrides', () => {
     const dir = mkdtempSync(join(tmpdir(), 'r-glob-'));
     const p = join(dir, 'config.yaml');
-    writeFileSync(p, 'runtime: milkie\n');
-    expect(loadGlobalConfig(p).runtime).toBe('milkie');
+    writeFileSync(
+      p,
+      'runtime: grok-cli\nruntime_options:\n  grok-cli:\n    bin: /tmp/grok\n    model: custom\n',
+    );
+    expect(loadGlobalConfig(p)).toMatchObject({
+      runtime: 'grok-cli',
+      runtime_options: { 'grok-cli': { bin: '/tmp/grok', model: 'custom' } },
+    });
   });
 });

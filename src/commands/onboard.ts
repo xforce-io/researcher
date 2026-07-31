@@ -8,7 +8,7 @@ import {
   resolveResearcherHome,
 } from '../paths.js';
 import { scaffoldMilkieRuntime, scaffoldTopicRepo, validateRepoRoot } from './init.js';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isOnboardable } from '../onboard/all-templates-check.js';
@@ -31,7 +31,8 @@ export interface OnboardOptions {
 }
 
 export async function runOnboard(opts: OnboardOptions): Promise<void> {
-  preFlight();
+  const runtime = createAgentRuntime();
+  preFlight(runtime);
   const repoRoot = validateRepoRoot(opts.cwd);
 
   const dotR = resolveProjectResearcherDir(repoRoot);
@@ -56,7 +57,6 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const templateProjectYaml = readFileSync(join(pkg, 'templates/project.yaml'), 'utf8');
   const templateThesisMd = readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
-  const runtime = new MilkieAdapter();
   const state = new OnboardingState(onboarding.questions);
 
   // ===== Test path: bypass interactive flow =====
@@ -205,13 +205,15 @@ async function rewriteOrLog(
   }
 }
 
-function preFlight(): void {
-  // 1. milkie binary
-  const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
-  try {
-    execaSync(bin, ['--help'], { stdio: 'ignore' });
-  } catch {
-    throw new Error(`milkie CLI not found; install it or set RESEARCHER_MILKIE_BIN`);
+function preFlight(runtime: AgentRuntime): void {
+  if (runtime.id === 'milkie') {
+    // 1. milkie binary
+    const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
+    try {
+      execaSync(bin, ['--help'], { stdio: 'ignore' });
+    } catch {
+      throw new Error(`milkie CLI not found; install it or set RESEARCHER_MILKIE_BIN`);
+    }
   }
   // 2. onboarding methodology installed
   const methPath = join(resolveResearcherHome(), 'methodology', 'onboarding.md');

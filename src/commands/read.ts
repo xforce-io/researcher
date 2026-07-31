@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { read } from '../pipeline/read.js';
@@ -18,7 +18,7 @@ export interface ReadCommandOptions {
 export async function runRead(opts: ReadCommandOptions): Promise<void> {
   const id = canonicalizeAddInput(opts.input);
   const researcherDir = resolveProjectResearcherDir(opts.cwd);
-  const adapter = new MilkieAdapter();
+  const adapter = createAgentRuntime();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
   await withLock(join(researcherDir, 'state/.lock'), async () => {
     let ctx: RunContext;
