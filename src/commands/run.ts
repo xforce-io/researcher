@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
@@ -37,7 +37,7 @@ export interface RunOptions {
   cwd: string;
   workspaceRoot?: string;
   topicPath?: string;
-  /** Injectable for tests. Production: MilkieAdapter. */
+  /** Injectable for tests. Production: configured runtime factory. */
   adapter?: AgentRuntime;
   libraryReadRunner?: LibraryReadRunner;
 }
@@ -56,7 +56,7 @@ export interface RunResult {
 
 export async function runRun(opts: RunOptions): Promise<RunResult> {
   const researcherDir = resolveProjectResearcherDir(opts.cwd);
-  const adapter = opts.adapter ?? new MilkieAdapter();
+  const adapter = opts.adapter ?? createAgentRuntime();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
 
   let outcome: RunOutcome = 'completed';

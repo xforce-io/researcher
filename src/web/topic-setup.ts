@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import {
   composeSystemPrompt,
@@ -174,7 +174,7 @@ export async function generateTopicSetup(
     ? readFileSync(join(dotR, 'thesis.md'), 'utf8')
     : readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
-  const runtime = input.runtime ?? new MilkieAdapter();
+  const runtime = input.runtime ?? createAgentRuntime();
   const systemPrompt = composeSystemPrompt(methodologyBody);
   const userPrompt = composeUserPrompt({
     runtime,

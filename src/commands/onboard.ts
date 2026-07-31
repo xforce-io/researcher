@@ -8,7 +8,7 @@ import {
   resolveResearcherHome,
 } from '../paths.js';
 import { scaffoldMilkieRuntime, scaffoldTopicRepo, validateRepoRoot } from './init.js';
-import { MilkieAdapter } from '../adapter/milkie.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isOnboardable } from '../onboard/all-templates-check.js';
@@ -56,7 +56,7 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const templateProjectYaml = readFileSync(join(pkg, 'templates/project.yaml'), 'utf8');
   const templateThesisMd = readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
-  const runtime = new MilkieAdapter();
+  const runtime = createAgentRuntime();
   const state = new OnboardingState(onboarding.questions);
 
   // ===== Test path: bypass interactive flow =====
