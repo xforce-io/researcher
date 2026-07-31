@@ -40,6 +40,28 @@ describe('RunDir.recordAgentFailure', () => {
     expect(content).toContain('the real failure reason');
     expect(content).toContain('line79');        // stdout tail is present
     expect(content).not.toContain('line0\n');    // early stdout is truncated (tail only)
+    expect(content).not.toContain('finishReason:');
+    expect(content).not.toContain('errorCode:');
+    expect(content).not.toContain('errorMessage:');
+  });
+  it('includes normalized diagnostics in the failure summary while preserving tails', () => {
+    const base = mkdtempSync(join(tmpdir(), 'r-runs-err-'));
+    const rd = new RunDir(base, newRunId());
+    const p = rd.recordAgentFailure('read', {
+      output: 'older stdout\nfinal stdout',
+      modifiedFiles: [],
+      exitCode: 1,
+      stderr: 'terminal stderr',
+      finishReason: 'length',
+      error: { code: 'AGENT_RUN_ERROR', message: 'The agent could not complete the run.' },
+    });
+
+    const content = readFileSync(p, 'utf8');
+    expect(content).toContain('finishReason: length');
+    expect(content).toContain('errorCode: AGENT_RUN_ERROR');
+    expect(content).toContain('errorMessage: The agent could not complete the run.');
+    expect(content).toContain('--- stderr ---\nterminal stderr');
+    expect(content).toContain('--- stdout (last 50 lines) ---\nolder stdout\nfinal stdout');
   });
 
   it('handles an empty stderr without crashing', () => {

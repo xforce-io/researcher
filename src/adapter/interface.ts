@@ -13,6 +13,15 @@ export interface InvokeOptions {
   maxTokens?: number;
 }
 
+export interface InvokeError {
+  /** Provider-specific error code, when safely supplied by the runtime. */
+  code?: string;
+  /** Human-readable failure summary. */
+  message: string;
+  /** Opaque provider diagnostics, when available. */
+  details?: unknown;
+}
+
 export interface InvokeResult {
   /** Final stdout content from the agent (its textual output). */
   output: string;
@@ -24,6 +33,8 @@ export interface InvokeResult {
   stderr?: string;
   /** Provider finish reason, when the adapter can recover it from the runtime trace. */
   finishReason?: string;
+  /** Structured adapter error, when safely extractable from the provider. */
+  error?: InvokeError;
 }
 
 export interface AgentRuntime {

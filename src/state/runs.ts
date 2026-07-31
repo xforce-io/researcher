@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import type { InvokeResult } from '../adapter/interface.js';
+
 
 export type Stage =
   | 'bootstrap'
@@ -48,12 +50,19 @@ export class RunDir {
    */
   recordAgentFailure(
     stage: Stage,
-    result: { exitCode: number; stderr?: string; output?: string },
+    result: Pick<InvokeResult, 'exitCode' | 'stderr' | 'output' | 'finishReason' | 'error'>,
   ): string {
     const TAIL = 50;
     const stdoutTail = (result.output ?? '').split('\n').slice(-TAIL).join('\n');
+    const finishReason = result.finishReason === undefined ? '' : `finishReason: ${result.finishReason}\n`;
+    const errorCode = result.error?.code === undefined ? '' : `errorCode: ${result.error.code}\n`;
+    const errorMessage = result.error?.message === undefined ? '' : `errorMessage: ${result.error.message}\n`;
     const body =
-      `exitCode: ${result.exitCode}\n\n` +
+      `exitCode: ${result.exitCode}\n` +
+      finishReason +
+      errorCode +
+      errorMessage +
+      '\n' +
       `--- stderr ---\n${result.stderr || '(empty)'}\n\n` +
       `--- stdout (last ${TAIL} lines) ---\n${stdoutTail}\n`;
     const p = this.path(`${stage}.err`);

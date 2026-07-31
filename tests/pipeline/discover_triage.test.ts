@@ -120,6 +120,19 @@ class NeverWriteAdapter implements AgentRuntime {
     return { output: '', modifiedFiles: [], exitCode: 0, finishReason: 'length' };
   }
 }
+class TerminalErrorAdapter implements AgentRuntime {
+  id = 'stub-terminal-error';
+  calls = 0;
+  async invoke(_opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls += 1;
+    return {
+      output: 'agent failed before writing triaged.json',
+      modifiedFiles: [],
+      exitCode: 1,
+      stderr: 'intentional terminal failure',
+    };
+  }
+}
 
 const sample = (overrides: Partial<Triaged> = {}): Triaged => ({
   candidates: [
@@ -371,6 +384,15 @@ describe('discover_triage stage', () => {
 
     await expect(discoverTriage(ctx)).rejects.toThrow(/triaged\.json is not valid JSON/);
     expect(adapter.calls).toHaveLength(3);
+  });
+  it('fails on a terminal agent error without triggering recovery', async () => {
+    const adapter = new TerminalErrorAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).rejects.toThrow('discover stage agent exited 1');
+    expect(adapter.calls).toBe(1);
+    expect(existsSync(rd.path('discover.err'))).toBe(true);
   });
 
 });
