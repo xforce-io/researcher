@@ -91,4 +91,27 @@ describe('synthesize stage', () => {
     expect(adapter.lastPrompt).toContain('01 active');
     expect(adapter.lastPrompt).toContain('02 buffer');
   });
+
+  it('fails when the agent exits 0 but does not modify the landscape', async () => {
+    class NoopLandscapeAdapter implements AgentRuntime {
+      id = 'noop-landscape';
+      async invoke(_opts: InvokeOptions): Promise<InvokeResult> {
+        return { output: 'ok', modifiedFiles: [], exitCode: 0 };
+      }
+    }
+
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({
+      projectRoot: proj,
+      adapter: new NoopLandscapeAdapter(),
+      runDir: rd,
+      addSourceId: 'arxiv:2401.00001',
+    });
+    ctx.newNoteFilename = '01_stub.md';
+    ctx.newNoteContent = '# Stub';
+    writeFileSync(join(proj, 'notes/01_stub.md'), '# Stub');
+
+    await expect(synthesize(ctx)).rejects.toThrow(/did not modify.*00_research_landscape/i);
+    expect(readFileSync(join(proj, 'notes/00_research_landscape.md'), 'utf8')).toBe('# Empty landscape\n');
+  });
 });

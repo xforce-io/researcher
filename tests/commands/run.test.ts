@@ -338,6 +338,49 @@ describe('researcher run (autonomous)', () => {
     expect(execaSync('git', ['log', '--oneline'], { cwd: proj }).stdout.trim().split('\n').length).toBe(1);
   });
 
+  it('marks Library integrated only after synthesize modifies landscape', async () => {
+    const adapter = new ScriptedAdapter([
+      soulStep(),
+      collectStep(),
+      triageStep(triagedDeepRead),
+      synthesizeStep('Fresh library artifact body.'),
+      packageStep(),
+    ]);
+    const { runRun } = await import('../../src/commands/run.js');
+    await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
+
+    const lib = new PaperLibrary(proj);
+    expect(lib.listIntegrations(libraryPaperId)).toEqual([
+      expect.objectContaining({
+        paperId: libraryPaperId,
+        notePath: expect.stringMatching(/^notes\/active\/\d+_/),
+        zone: 'active',
+      }),
+    ]);
+    expect(lib.listLinks(libraryPaperId)).toEqual([
+      expect.objectContaining({ relation: 'integrated' }),
+    ]);
+    expect(readFileSync(join(proj, 'notes/00_research_landscape.md'), 'utf8')).toContain('new entry');
+  });
+
+  it('does not mark integrated when synthesize leaves landscape unchanged', async () => {
+    const adapter = new ScriptedAdapter([
+      soulStep(),
+      collectStep(),
+      triageStep(triagedDeepRead),
+      () => ({ output: 'ok', modifiedFiles: [], exitCode: 0 }), // synthesize no-op
+    ]);
+    const { runRun } = await import('../../src/commands/run.js');
+    await expect(
+      runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() }),
+    ).rejects.toThrow(/did not modify.*00_research_landscape/i);
+
+    const lib = new PaperLibrary(proj);
+    expect(lib.listIntegrations(libraryPaperId)).toEqual([]);
+    expect(lib.listLinks(libraryPaperId).some((l) => l.relation === 'integrated')).toBe(false);
+    expect(existsSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'))).toBe(true);
+  });
+
   it('refuses to run a second concurrent autonomous tick (lock)', async () => {
     // Hold the lock manually — the second call should reject.
     const lockPath = join(proj, '.researcher/state/.lock');

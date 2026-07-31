@@ -73,11 +73,18 @@ export async function synthesize(ctx: RunContext): Promise<void> {
   });
   assertAgentOk(ctx.runDir, 'synthesize', result);
 
+  const landscapeAfter = existsSync(landscapePath) ? readFileSync(landscapePath, 'utf8') : '';
+  if (landscapeAfter === landscapeBefore) {
+    throw new Error(
+      'synthesize did not modify notes/00_research_landscape.md — refusing to treat the paper as integrated into the landscape',
+    );
+  }
+
   // capture diff
   try {
     const { stdout } = await execa('git', ['diff', '--', LANDSCAPE], { cwd: ctx.projectRoot });
     ctx.landscapeDiff = stdout;
   } catch {
-    ctx.landscapeDiff = `(diff unavailable; landscape now reads:\n${readFileSync(landscapePath, 'utf8')})`;
+    ctx.landscapeDiff = `(diff unavailable; landscape now reads:\n${landscapeAfter})`;
   }
 }
