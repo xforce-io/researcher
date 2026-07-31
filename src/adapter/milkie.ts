@@ -57,9 +57,10 @@ export class MilkieAdapter implements AgentRuntime {
       const terminal = parseMilkieTerminal(stdout);
       const output = extractMilkieOutput(stdout, terminal);
       const runId = typeof terminal?.runId === 'string' ? terminal.runId : undefined;
-      const parsedTerminalError = parseTerminalError(terminal);
-      const error = terminal?.status === 'error' ? parsedTerminalError : undefined;
-      const processExitCode = result.exitCode;
+      const terminalError = parseMilkieError(terminal?.error);
+      const stderrError = parseMilkieStderrError(stderr);
+      const error = terminal?.status === 'error' ? terminalError ?? stderrError : undefined;
+      const processExitCode = result.exitCode ?? 1;
       const exitCode = processExitCode && processExitCode !== 0
         ? processExitCode
         : terminal?.status === 'error'
@@ -69,7 +70,7 @@ export class MilkieAdapter implements AgentRuntime {
       // exit code or less specific stderr text at the call site.
       const failureDetail = exitCode === 0
         ? ''
-        : extractMilkieErrorMessage(stdout, stderr, parsedTerminalError);
+        : extractMilkieErrorMessage(stdout, stderr, terminalError ?? stderrError);
       return {
         output: exitCode === 0 ? output : (failureDetail || output),
         exitCode,
@@ -96,20 +97,29 @@ function parseMilkieTerminal(stdout: string): MilkieTerminal | undefined {
   }
 }
 
-function parseTerminalError(terminal: MilkieTerminal | undefined): InvokeError | undefined {
-  if (typeof terminal?.error !== 'object' || terminal.error === null || Array.isArray(terminal.error)) {
-    return undefined;
-  }
-  const { code: rawCode, message: rawMessage, details } = terminal.error as {
-    code?: unknown;
-    message?: unknown;
-    details?: unknown;
-  };
+function parseMilkieError(value: unknown): InvokeError | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const rawCode = 'code' in value ? value.code : undefined;
+  const rawMessage = 'message' in value ? value.message : undefined;
+  const details = 'details' in value ? value.details : undefined;
   if (typeof rawMessage !== 'string' || !rawMessage.trim()) return undefined;
 
   const message = rawMessage.trim();
   const code = typeof rawCode === 'string' && rawCode.trim() ? rawCode : undefined;
   return details === undefined ? { code, message } : { code, message, details };
+}
+
+function parseMilkieStderrError(stderr: string): InvokeError | undefined {
+  const last = stderr.trim().split('\n').filter(Boolean).at(-1);
+  if (!last) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(last);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    if (!('error' in parsed)) return undefined;
+    return parseMilkieError(parsed.error);
+  } catch {
+    return undefined;
+  }
 }
 
 function readMilkieFinishReason(cwd: string, runId: string): string | undefined {

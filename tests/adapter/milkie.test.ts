@@ -106,6 +106,53 @@ describe('MilkieAdapter', () => {
     });
   });
 
+  it('reads a terminal error envelope from stderr', async () => {
+    const { execa } = await import('execa');
+    (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        runId: 'run-stderr-error',
+        status: 'error',
+        lastOutput: 'invalid tool arguments',
+      }) + '\n',
+      stderr: JSON.stringify({
+        error: {
+          code: 'AGENT_RUN_ERROR',
+          message: 'The agent could not complete the run.',
+          status: 'error',
+          runId: 'run-stderr-error',
+          contextId: 'ctx-1',
+          details: { kind: 'tool_failure' },
+        },
+      }) + '\n',
+      args: [],
+    });
+
+    const a = new MilkieAdapter();
+    const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
+
+    expect(r.exitCode).toBe(1);
+    expect(r.error).toMatchObject({
+      code: 'AGENT_RUN_ERROR',
+      message: 'The agent could not complete the run.',
+      details: { kind: 'tool_failure' },
+    });
+  });
+
+  it('treats an omitted process exit code as failure', async () => {
+    const { execa } = await import('execa');
+    (execa as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      stdout: JSON.stringify({ status: 'completed', lastOutput: 'partial output' }) + '\n',
+      stderr: '',
+      args: [],
+    });
+
+    const a = new MilkieAdapter();
+    const r = await a.invoke({ cwd: '/tmp/x', systemPrompt: 'S', userPrompt: 'U' });
+
+    expect(r.exitCode).toBe(1);
+  });
+
   it('recovers finishReason from the Milkie run trace', async () => {
     const { execa } = await import('execa');
     const root = mkdtempSync(join(tmpdir(), 'rsw-milkie-trace-'));
