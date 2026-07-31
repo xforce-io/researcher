@@ -213,14 +213,22 @@ Run: `npm test`
 
 Expected: all project tests pass, with the pre-existing opt-in Milkie cross-repository test skipped when its environment variable is absent.
 
-Then run:
+Then execute the compiled factory against the actual active project with a connectivity-only prompt:
 
 ```bash
-RESEARCHER_HOME=/Users/xupeng/.researcher \
-node dist/cli.js run /Users/xupeng/dev/github/research-harness/agentic-model-training
+RESEARCHER_HOME=/Users/xupeng/.researcher node --input-type=module -e '
+  import { createAgentRuntime } from "./dist/adapter/runtime.js";
+  const result = await createAgentRuntime().invoke({
+    cwd: "/Users/xupeng/dev/github/research-harness/agentic-model-training",
+    systemPrompt: "Connectivity probe.",
+    userPrompt: "Reply exactly GROK_PROVIDER_OK.",
+    timeoutMs: 120000,
+  });
+  if (result.exitCode !== 0 || result.output.trim() !== "GROK_PROVIDER_OK") process.exit(1);
+'
 ```
 
-Expected: the run’s agent stage succeeds through `grok -p`; its run artifact has a non-empty output and no Milkie run record is created for that stage. If a full workflow has no actionable work, invoke the selected runtime with the existing connectivity-stage test fixture instead and assert non-empty stdout.
+Expected: the selected runtime is `grok-cli`, the compiled `GrokCliAdapter` executes the real `grok -p` once, and it returns the exact non-empty probe response. This avoids mutating the research workflow merely to test provider connectivity.
 
 - [ ] **Step 4: Mark design implemented and commit documentation**
 

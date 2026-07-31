@@ -1,7 +1,7 @@
 # 【AgentProvider】Grok CLI 执行 Provider
 
 - Issue: #120
-- 状态: Approved
+- 状态: Implemented
 - 最后更新: 2026-07-31
 
 ## 1. 背景
