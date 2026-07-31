@@ -51,7 +51,7 @@ export async function rebalance(ctx: RunContext): Promise<void> {
       n.zone = a.to; // reflect for manifest
       if (ctx.newNoteFilename === n.filename || ctx.newNoteRelPath === n.relPath) {
         ctx.newNoteRelPath = toRel;
-        if (ctx.pendingLibraryIntegration) {
+        if (ctx.pendingLibraryIntegration && a.to !== 'pending') {
           ctx.pendingLibraryIntegration = {
             ...ctx.pendingLibraryIntegration,
             notePath: toRel,
