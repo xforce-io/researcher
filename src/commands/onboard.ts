@@ -31,7 +31,8 @@ export interface OnboardOptions {
 }
 
 export async function runOnboard(opts: OnboardOptions): Promise<void> {
-  preFlight();
+  const runtime = createAgentRuntime();
+  preFlight(runtime);
   const repoRoot = validateRepoRoot(opts.cwd);
 
   const dotR = resolveProjectResearcherDir(repoRoot);
@@ -56,7 +57,6 @@ export async function runOnboard(opts: OnboardOptions): Promise<void> {
   const templateProjectYaml = readFileSync(join(pkg, 'templates/project.yaml'), 'utf8');
   const templateThesisMd = readFileSync(join(pkg, 'templates/thesis.md'), 'utf8');
 
-  const runtime = createAgentRuntime();
   const state = new OnboardingState(onboarding.questions);
 
   // ===== Test path: bypass interactive flow =====
@@ -205,7 +205,10 @@ async function rewriteOrLog(
   }
 }
 
-function preFlight(): void {
+function preFlight(runtime: AgentRuntime): void {
+  if (runtime.id !== 'milkie') {
+    return;
+  }
   // 1. milkie binary
   const bin = process.env.RESEARCHER_MILKIE_BIN ?? 'milkie';
   try {
