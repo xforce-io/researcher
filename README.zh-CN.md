@@ -201,14 +201,31 @@ researcher workspace sync
 researcher workspace sync --pull --push-topics --pointers
 researcher workspace sync --all --dry-run
 
-# 本地 pillar 晋升为带 origin 的 submodule（远程空仓需事先建好）
-researcher workspace publish world-model --remote git@github.com:org/repo.git
+# 本地 pillar 晋升（manifest 必须显式 publish: true）
+# 人工 TTY：先展示计划再确认
+researcher workspace publish world-model --remote git@github.com:org/world-model.git
+
+# CI/agent：仍须 allowlist，并显式确认
+researcher workspace publish world-model \
+  --remote git@github.com:org/world-model.git \
+  --yes
+```
+
+Manifest 放行（默认关闭）：
+
+```yaml
+topics:
+  - path: world-model
+    active: true
+    publish: true
 ```
 
 - `--pull`：有 origin 则 ff；无 origin / 非 git → skipped 或 failed
 - `--push-topics`：推送当前分支到 origin（不开 PR）
 - `--pointers`：仅 bump 已是 submodule 的 gitlink，并在 super-repo 打一次 commit
-- `publish`：加 origin、push、写 `.gitmodules` + gitlink
+- `publish`：默认关闭；仅 `publish: true` 的 topic 可加 origin、push、写 `.gitmodules` + gitlink
+- `--yes`：仅跳过人工确认，不能绕过 topic allowlist
+- `--dry-run`：无写副作用；未授权时输出 `blocked: publish not enabled`
 - 单 topic 失败不中止其余；存在 failed 时 exit 1
 
 详见 `docs/design/130-workspace-sync.md`。
@@ -257,7 +274,7 @@ Notes 存在 `.researcher-workspace/library/notes.jsonl`，force 重跑机器精
 | `researcher methodology edit <name>` | 用 `$EDITOR` 打开某个方法论文件 |
 | `researcher serve [path]` | 本地 web 控制台：Home、Library（精读 + paper notes）、Topics + run |
 | `researcher workspace sync` | 超级仓：pull / push topics / bump submodule pointers（显式；与 delivery 正交） |
-| `researcher workspace publish <path>` | 把本地 pillar 晋升为带 origin 的 submodule |
+| `researcher workspace publish <path>` | 把已 allowlist 的本地 pillar 晋升为带 origin 的 submodule（非交互需 `--yes`） |
 | `researcher version` | 打印版本 |
 
 ## 环境变量

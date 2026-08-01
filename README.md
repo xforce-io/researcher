@@ -248,14 +248,31 @@ researcher workspace sync
 researcher workspace sync --pull --push-topics --pointers
 researcher workspace sync --all --dry-run
 
-# promote a local pillar to a submodule with origin (remote empty repo must exist)
-researcher workspace publish world-model --remote git@github.com:org/repo.git
+# promote a local pillar (manifest must set publish: true)
+# human TTY: prints a plan, then confirms
+researcher workspace publish world-model --remote git@github.com:org/world-model.git
+
+# CI/agent: still needs the topic allowlist, plus explicit confirmation
+researcher workspace publish world-model \
+  --remote git@github.com:org/world-model.git \
+  --yes
+```
+
+Manifest allowlist (default is deny):
+
+```yaml
+topics:
+  - path: world-model
+    active: true
+    publish: true
 ```
 
 - `--pull` — ff when origin exists; skip/fail otherwise
 - `--push-topics` — push current branch to origin (no PR)
 - `--pointers` — bump gitlinks only for existing submodules; one super-repo commit
-- `publish` — add origin, push, write `.gitmodules` + gitlink
+- `publish` — default off; only topics with `publish: true` may add origin, push, write `.gitmodules` + gitlink
+- `--yes` — non-interactive confirmation only; never bypasses the topic allowlist
+- `--dry-run` — no writes; unauthorized topics report `blocked: publish not enabled`
 - one topic failing does not abort the rest; exit 1 if any failed
 
 See `docs/design/130-workspace-sync.md`.
@@ -274,7 +291,7 @@ See `docs/design/130-workspace-sync.md`.
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
 | `researcher serve [path]` | Local web console: workspace home, Library (deep-read + paper notes), topics + run |
 | `researcher workspace sync` | Super-repo: pull / push topics / bump submodule pointers (explicit; orthogonal to delivery) |
-| `researcher workspace publish <path>` | Promote a local pillar to a submodule with origin |
+| `researcher workspace publish <path>` | Promote an allowlisted local pillar to a submodule with origin (`--yes` for non-interactive) |
 | `researcher version` | Print version |
 
 ### `researcher serve [path]`
