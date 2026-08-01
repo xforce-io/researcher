@@ -12,6 +12,7 @@ import { execaSync } from 'execa';
 import { runWorkspaceSync } from '../../src/workspace/sync.js';
 import { publishWorkspaceTopic } from '../../src/workspace/publish.js';
 import { classifyTopicGit } from '../../src/workspace/topic-git.js';
+import { loadWorkspaceManifest } from '../../src/workspace/manifest.js';
 
 function gitInit(dir: string): void {
   mkdirSync(dir, { recursive: true });
@@ -46,12 +47,30 @@ function makeBare(root: string, name: string): string {
   return bare;
 }
 
-function writeManifest(root: string, topics: Array<{ path: string; active?: boolean }>): void {
+function writeManifest(
+  root: string,
+  topics: Array<{ path: string; active?: boolean; publish?: boolean }>,
+): void {
   const body =
     'version: 1\ntopics:\n' +
-    topics.map((t) => `  - { path: ${t.path}, active: ${t.active ?? true} }\n`).join('');
+    topics
+      .map(
+        (t) =>
+          `  - { path: ${t.path}, active: ${t.active ?? true}, publish: ${t.publish ?? false} }\n`,
+      )
+      .join('');
   writeFileSync(join(root, 'researcher.workspace.yml'), body);
 }
+
+it('defaults per-topic publish permission to false', () => {
+  const root = mkdtempSync(join(tmpdir(), 'r-publish-policy-'));
+  writeManifest(root, [{ path: 'topic' }]);
+  expect(loadWorkspaceManifest(join(root, 'researcher.workspace.yml')).topics[0]).toEqual({
+    path: 'topic',
+    active: true,
+    publish: false,
+  });
+});
 
 describe('classifyTopicGit', () => {
   it('classifies missing, local-only, remote, and submodule', () => {
@@ -93,6 +112,16 @@ describe('classifyTopicGit', () => {
     addSubmoduleManual(root, subBare, 'sub', subSrc);
     gitCommitAll(root, 'add submodule');
     expect(classifyTopicGit(root, 'sub').kind).toBe('submodule');
+  });
+  it('does not classify a plain super-repo directory as a topic repo', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-classify-plain-'));
+    gitInit(root);
+    mkdirSync(join(root, 'plain'));
+    writeFileSync(join(root, 'plain', 'file'), 'x');
+    gitCommitAll(root, 'super with plain directory');
+    expect(classifyTopicGit(root, 'plain')).toEqual(
+      expect.objectContaining({ kind: 'not-git', reason: 'not an independent git repository' }),
+    );
   });
 });
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 
@@ -14,11 +14,13 @@ export interface TopicGitInfo {
   reason?: string;
 }
 
-function isGitRepo(dir: string): boolean {
+function isIndependentGitRepo(dir: string): boolean {
   if (!existsSync(dir)) return false;
   try {
-    execaSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: dir });
-    return true;
+    const topLevel = execaSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+    }).stdout.trim();
+    return realpathSync(topLevel) === realpathSync(dir);
   } catch {
     return false;
   }
@@ -75,8 +77,13 @@ export function classifyTopicGit(root: string, relPath: string): TopicGitInfo {
   if (!existsSync(absPath)) {
     return { path: relPath, absPath, kind: 'missing', reason: 'missing directory' };
   }
-  if (!isGitRepo(absPath)) {
-    return { path: relPath, absPath, kind: 'not-git', reason: 'not a git repository' };
+  if (!isIndependentGitRepo(absPath)) {
+    return {
+      path: relPath,
+      absPath,
+      kind: 'not-git',
+      reason: 'not an independent git repository',
+    };
   }
   const originUrl = readOriginUrl(absPath);
   const branch = readBranch(absPath);

@@ -17,6 +17,8 @@ const Topic = z.object({
   path: z.string().min(1),
   /** Whether this topic is actively researched. Dormant topics are never touched. */
   active: z.boolean().default(false),
+  /** Whether this topic may be promoted to a remote submodule. */
+  publish: z.boolean().default(false),
 });
 
 export const WorkspaceManifestSchema = z.object({
@@ -69,7 +71,7 @@ export function activeTopics(manifest: WorkspaceManifest): WorkspaceTopic[] {
 /** Append a topic to the workspace manifest and write it back. */
 export function addTopicToManifest(
   manifestPath: string,
-  topic: { path: string; active?: boolean },
+  topic: { path: string; active?: boolean; publish?: boolean },
 ): WorkspaceManifest {
   const manifest = loadWorkspaceManifest(manifestPath);
   if (manifest.topics.some((t) => t.path === topic.path)) {
@@ -80,7 +82,14 @@ export function addTopicToManifest(
   }
   const next: WorkspaceManifest = {
     version: 1,
-    topics: [...manifest.topics, { path: topic.path, active: topic.active ?? true }],
+    topics: [
+      ...manifest.topics,
+      {
+        path: topic.path,
+        active: topic.active ?? true,
+        publish: topic.publish ?? false,
+      },
+    ],
   };
   writeFileSync(
     manifestPath,
