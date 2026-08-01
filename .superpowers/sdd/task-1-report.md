@@ -65,8 +65,35 @@ Per the task constraint, no formatter, linter, TypeScript build, or project-wide
 - `classifyTopicGit` still checks `missing` before repository classification, and the existing classifier test confirms independent local repositories, remote repositories, and submodules retain their prior kinds.
 - Both paths in the top-level comparison use `realpathSync`, so symlink spelling does not create a false repository boundary.
 - Repository-wide type-usage search found `WorkspaceTopic` consumers only in `manifest.ts` and `sync.ts`; the only direct `WorkspaceManifest` construction affected by the required output field is `addTopicToManifest`, which now supplies `publish`.
-- Changes are limited to `src/workspace/manifest.ts`, `src/workspace/topic-git.ts`, and `tests/workspace/sync.test.ts`; publish execution, CLI behavior, and product documentation were not modified.
+- Production implementation remains limited to `src/workspace/manifest.ts` and `src/workspace/topic-git.ts`; regression coverage is in `tests/workspace/sync.test.ts` and `tests/workspace/manifest.test.ts`. Publish execution, CLI behavior, and product documentation were not modified.
 
 ## Implementation Commit
 
 `00eb1614bad6b9402de95e88679c6805c7fbd855` (`fix: enforce workspace topic git boundaries`)
+
+## Review Corrections
+
+- Updated every exact `WorkspaceTopic` object assertion in `tests/workspace/manifest.test.ts` to include the schema-normalized `publish` value.
+- Added an explicit `publish: true` `addTopicToManifest` round-trip assertion covering both the immediate result and the reloaded YAML.
+- Changed the sync-test manifest helper to omit the `publish` YAML key when its input omits it, so the default-deny test exercises the Zod default rather than an explicitly written `false`.
+- Kept publish execution gating out of scope as required by the Task 2/4 dependency.
+
+Verification command:
+
+```sh
+npx vitest run tests/workspace/manifest.test.ts tests/workspace/sync.test.ts -t "publish|manifest|classify"
+```
+
+Output (exit 0):
+
+```text
+RUN  v3.2.4 /Users/xupeng/dev/github/researcher
+
+Test Files  2 passed (2)
+Tests       8 passed | 12 skipped (20)
+Duration    5.69s (transform 89ms, setup 0ms, collect 226ms, tests 5.27s, environment 0ms, prepare 152ms)
+```
+
+Review-fix commit:
+
+`df696a390ff09e479ebcd29f5742d03ea3e76f70` (`test: cover workspace publish manifest policy`)
