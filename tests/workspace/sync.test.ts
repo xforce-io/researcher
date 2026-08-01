@@ -56,7 +56,9 @@ function writeManifest(
     topics
       .map(
         (t) =>
-          `  - { path: ${t.path}, active: ${t.active ?? true}, publish: ${t.publish ?? false} }\n`,
+          `  - { path: ${t.path}, active: ${t.active ?? true}${
+            t.publish === undefined ? '' : `, publish: ${t.publish}`
+          } }\n`,
       )
       .join('');
   writeFileSync(join(root, 'researcher.workspace.yml'), body);
