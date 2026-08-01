@@ -30,6 +30,7 @@ Workspace 超级仓有两层 git：各 topic 子仓 + super-repo 的 submodule �
   - 可组合：`--pull` / `--push-topics` / `--pointers`；可 `--dry-run`；默认同 active topics，`--all` 含 dormant
   - 与 `delivery.mode` 正交
   - 单 topic 失败隔离；摘要可判定；exit code 反映是否存在 failed
+  - publish 默认关闭；仅 manifest 中显式放行的 topic 可改变远端与 workspace 拓扑
 - **非目标**：
   - 不改 `run` / package 默认自动 bump super-repo
   - 不做非 ff merge / rebase / force push
@@ -54,6 +55,23 @@ researcher workspace publish world-model --remote git@github.com:org/repo.git
 researcher workspace sync --pull --push-topics --pointers --dry-run
 ```
 
+### 4.2 Publish 门禁
+
+`publish` 同时写 topic remote、推送远端、改写 super-repo index 并创建提交，按高危操作处理：
+
+```yaml
+topics:
+  - path: world-model
+    active: true
+    publish: true
+```
+
+- `publish` 默认为 `false`；授权粒度仅到单个 topic，不提供 workspace 总开关。
+- TTY 执行先展示脱敏计划并确认；非 TTY 默认拒绝，调用方必须显式传 `--yes`。
+- `--yes` 只跳过人工确认，不绕过 manifest allowlist、仓库边界或 clean-index 校验；不提供 `--force`。
+- `--dry-run` 始终无写副作用；未授权时仍可展示计划，但必须标记 `blocked: publish not enabled`。
+
+
 ## 5. 设计思路与折衷
 
 候选：
@@ -65,6 +83,8 @@ researcher workspace sync --pull --push-topics --pointers --dry-run
 放弃 1/2：自动副作用过大；纯文档无法验收。
 
 `publish` 与 `sync --pointers` 拆开：前者改变拓扑（remote + submodule 登记），后者只 bump 已有 gitlink。避免 `sync` 隐式 `submodule add`。
+
+`publish` 采用 topic allowlist + 执行确认双门禁。只用确认容易被 agent/CI 的 `--yes` 常态化绕过；只用配置又挡不住人工误触。双门禁将长期授权与单次意图分开，代价是一次 manifest 配置和一次执行确认。
 
 ## 6. 架构设计
 
@@ -83,10 +103,10 @@ flowchart TB
   CLASS --> GIT
 ```
 
-- `manifest`：谁在 workspace、active/dormant
-- `classify`：missing / not-git / local-only / remote / submodule
+- `manifest`：谁在 workspace、active/dormant、哪些 topic 获准 publish
+- `classify`：missing / not-git / local-only / remote / submodule，并确认 topic 是独立仓库而非 super-repo 普通子目录
 - `git ops`：ff-pull、push 当前分支、读 origin、读 HEAD、stage gitlink、commit super-repo、submodule 登记
-- sync/publish：**串行**、收集 per-topic 结果，最后打印 summary
+- sync/publish：**串行**；sync 收集 per-topic 结果，publish 执行授权、计划、确认和可恢复写入
 
 ### 6.2 核心业务流程
 
@@ -104,11 +124,13 @@ flowchart TB
 
 **publish `<path>`**
 
-1. path 必须在 manifest；目录存在且为 git 仓
-2. 若已是 submodule 或已有 origin → 明确错误（非静默）
-3. `git remote add origin <url>` → push 当前分支
-4. 在 super-repo：用安全方式登记 submodule（见 §9，避免 `git submodule add` 要求空目录）
-5. 不修改 topic 的 `delivery.mode`
+1. path 必须在 manifest，且该 topic 显式配置 `publish: true`
+2. 目录必须位于 workspace 内并且是独立 git 仓；普通 super-repo 子目录不算 topic 仓
+3. 若已是 submodule 或已有 origin → 明确错误（非静默）
+4. 展示脱敏执行计划；TTY 要求确认，非 TTY 必须显式 `--yes`
+5. 校验 super-repo index 无本次目标以外的 staged 内容，且 `.gitmodules` 无未提交修改
+6. 新增 origin 后 push 当前分支，再登记 submodule；任一步失败时恢复本次本地 origin、`.gitmodules` 和 index 变更，保持同一命令可重试
+7. 不修改 topic 的 `delivery.mode`
 
 ## 7. 模块设计
 
@@ -138,6 +160,7 @@ researcher workspace publish <path> --remote <git-url> [options]
   --remote <url>      必填 origin URL（调用方已建好空仓）
   --dry-run
   --cwd <path>
+  --yes               非交互确认；不能绕过 topic publish allowlist
 ```
 
 成功摘要示例（stdout）：
@@ -153,28 +176,32 @@ pointers: committed 1 gitlink(s)  # 或 dry-run / no-op
 Exit：
 
 - `0`：无 failed（skipped 允许）
-- `1`：至少一个 failed
-- `2`：用法/非 workspace 根
+- `1`：执行失败
+- `2`：用法/非 workspace 根/publish 未授权或未确认
 
 ## 9. 边界考虑
 
-- **假设**：topic 是独立 git 仓或正规 submodule；super-repo 本身是 git 仓（pointers/publish 需要）
-- **错误**：非 workspace、publish 缺 remote、path 不在 manifest、已有 origin、非 ff → 明确消息
-- **并发**：不做；串行同 orchestrator
-- **权限/安全**：不执行任意 shell；remote URL 原样交给 git；不打印 token
+- **仓库边界**：topic 必须是位于 workspace 内的独立 git 仓或正规 submodule；普通 super-repo 子目录不得继承父仓的 HEAD、branch 或 origin
+- **super-repo 前置**：pointers/publish 要求 super-repo 是 git 仓；自动提交不得包含用户预先 staged 的无关内容；publish 遇到已有 `.gitmodules` 未提交修改时拒绝执行
+- **publish 授权**：manifest 中目标 topic 的 `publish: true` 是必要条件；`--yes`、环境变量和 `--dry-run` 均不能形成写授权
+- **执行确认**：TTY 确认单次计划；非 TTY 仅 `--yes` 可确认。拒绝或缺确认时零写入
+- **凭证**：remote URL 原样作为 git 参数但不进入 shell；stdout/stderr、计划和错误统一移除 URL userinfo，不打印 token
+- **错误**：非 workspace、publish 缺 remote、path 不在 manifest、未授权、已有 origin、非 ff → 明确消息
+- **失败恢复**：publish 任一步失败时恢复本次新增的 origin、`.gitmodules` 和 index 变更；远端已成功接收的 commit 无法回滚，但本地状态须允许幂等重试
 - **submodule 登记**：目录已存在时不能直接 `git submodule add <url> <path>`。采用：
   1. 确保 topic 已 push 到 origin
   2. 写/更新 `.gitmodules` 段
   3. `git update-index --add --cacheinfo 160000 <sha> <path>`（或等价）写入 gitlink
-  4. super-repo commit（publish 自己的 commit message，与 pointers 分开）
+  4. super-repo commit 仅包含 `.gitmodules` 与目标 gitlink（publish 自己的 commit message，与 pointers 分开）
+- **并发**：不做；串行同 orchestrator
 - **dirty tree**：pull/push 不自动 stash；git 失败则该 topic failed
 - **detached HEAD**：push-topics failed（需具名分支）；pull 可对 detached 尝试 ff 当前 HEAD 的上游，若无上游则 skipped/failed 并说明
 
 ## 10. 迁移 / 兼容 / 回滚
 
-- 纯新增命令；无配置迁移
+- manifest topic 新增可选 `publish` 字段，缺省为 `false`；现有 workspace 无需迁移且默认不获得发布权限
 - 不改变既有 `run` / `delivery.mode` 行为
-- 回滚：移除命令即可；已 publish 的 submodule 保留为用户 git 状态
+- 回滚命令实现时保留默认拒绝语义；已成功 publish 的 submodule 保留为用户 git 状态
 
 ## 11. 测试计划
 
@@ -184,11 +211,17 @@ Exit：
   3. topic B：local-only → pull/push skipped
   4. topic A 本地超前 → push-topics 后 bare 有新 tip
   5. 子仓前进后 `--pointers` 产生 1 个 super commit；`--dry-run` 不产生
-  6. local-only topic → `publish --remote <bare>` 后有 origin、`.gitmodules` 含 path、super 有 gitlink
-  7. 故意失败 topic + 成功 topic → 摘要隔离，exit 1
+  6. local-only topic 未授权 → publish exit 2，topic 与 super-repo 零副作用
+  7. 仅目标 topic 配置 `publish: true`；TTY 确认或非 TTY `--yes` 后有 origin、`.gitmodules` 含 path、super 有 gitlink
+  8. `--yes` 不能绕过 allowlist；未授权 dry-run 仅报告 blocked
+  9. push/commit 故意失败后，本地状态可用同一命令重试；既有 staged 内容不进入自动提交，dirty `.gitmodules` 被拒绝
+  10. remote 含 userinfo 时，stdout/stderr 不出现凭证
+  11. 故意失败 topic + 成功 topic → sync 摘要隔离，exit 1
 - **Unit**：
-  - classify 四种形态
+  - classify missing / 普通子目录 / local-only / remote / submodule
   - flag 默认（无动作 → pull）
+  - publish allowlist、TTY/非 TTY 确认和 exit code
+  - remote URL 脱敏
   - exit code 聚合（failed vs skipped）
 
 ## 12. 开放问题 / 决策记录
@@ -196,6 +229,8 @@ Exit：
 - 无动作 flag 时默认 `--pull`：只读安全，避免裸 `sync` 误 push。
 - push 不开 PR：保持 delivery 为唯一自动 PR 入口。
 - publish 不建 GitHub 仓：避免 `gh` 权限与 org 策略耦合。
+- publish 默认关闭并按 topic 放行：避免一次配置扩大整个 workspace 的远端写权限。
+- publish 使用 allowlist + 单次确认：长期授权与本次执行意图必须同时成立。
 
 ## 13. 关联
 
