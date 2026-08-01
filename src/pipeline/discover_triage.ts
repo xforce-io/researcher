@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { extractDiscoverCandidatesJson, parseDiscoverCandidates, type DiscoverCandidates } from '../config/discover-candidates.js';
-import { parseTriaged, type Triaged } from '../config/triaged.js';
+import { parseTriagedOutput, type Triaged } from '../config/triaged.js';
 import { scaffoldMilkieRuntime } from '../commands/init.js';
 import { Seen } from '../state/seen.js';
 import type { RunContext } from './context.js';
@@ -59,9 +59,9 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
 
   let triaged: Triaged;
   try {
-    triaged = parseTriaged(triage.output);
+    triaged = parseTriagedOutput(triage.output);
   } catch (error) {
-    if (triage.finishReason !== 'length') throw error;
+    if (triage.finishReason !== 'length') throw recordTriageParseFailure(ctx, error, triage.output);
 
     triage = await ctx.adapter.invoke({
       cwd: ctx.projectRoot,
@@ -71,7 +71,11 @@ export async function discoverTriage(ctx: RunContext): Promise<void> {
       timeoutMs: RECOVERY_TIMEOUT_MS,
     });
     assertAgentOk(ctx.runDir, 'discover', triage);
-    triaged = parseTriaged(triage.output);
+    try {
+      triaged = parseTriagedOutput(triage.output);
+    } catch (recoveryError) {
+      throw recordTriageParseFailure(ctx, recoveryError, triage.output);
+    }
   }
   writeFileSync(triagedPath, JSON.stringify(triaged, null, 2));
 
@@ -151,9 +155,27 @@ async function loadCollectedCandidates(
     const extracted = extractDiscoverCandidatesJson(result.output ?? '');
     if (extracted) {
       writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+    } else {
+      const errPath = ctx.runDir.recordParseFailure(
+        'discover',
+        'collect agent wrote no discover-candidates.json and stdout contained no valid candidates JSON',
+        result.output ?? '',
+      );
+      throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
     }
   }
   return validateAndCapCandidates(candidatesPath);
+}
+
+/**
+ * Persist the raw triage output next to the run before failing the stage.
+ * A triage parse failure has agent exit code 0, so without this the output
+ * that broke the run is never written anywhere.
+ */
+function recordTriageParseFailure(ctx: RunContext, error: unknown, rawOutput: string): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const errPath = ctx.runDir.recordParseFailure('discover', `triage response rejected: ${message}`, rawOutput);
+  return new Error(`${message} (raw triage output saved to ${errPath})`);
 }
 
 function validateAndCapCandidates(candidatesPath: string): DiscoverCandidates {

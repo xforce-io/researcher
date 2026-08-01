@@ -147,6 +147,65 @@ class CollectStdoutOnlyAdapter implements AgentRuntime {
   }
 }
 
+/** Triage wraps its JSON in narration prose — host must recover it. */
+class TriageNarrationAdapter implements AgentRuntime {
+  id = 'stub-narration-triage';
+  calls: InvokeOptions[] = [];
+
+  constructor(
+    private readonly collected: DiscoverCandidates,
+    private readonly triaged: Triaged,
+  ) {}
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    if (opts.agentId === 'researcher-triage') {
+      return {
+        output: `正在读取完整候选交接，以下是分诊结果。\n\n${JSON.stringify(this.triaged, null, 2)}\n`,
+        modifiedFiles: [],
+        exitCode: 0,
+      };
+    }
+    throw new Error('stub: unexpected agent');
+  }
+}
+
+/** Triage returns narration only, with no recoverable JSON and no length signal. */
+class TriageNarrationOnlyAdapter implements AgentRuntime {
+  id = 'stub-narration-only';
+  calls: InvokeOptions[] = [];
+
+  constructor(private readonly collected: DiscoverCandidates) {}
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(candidatePath, JSON.stringify(this.collected, null, 2));
+      return { output: 'collected', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    return { output: '正在读取完整候选交接', modifiedFiles: [], exitCode: 0 };
+  }
+}
+
+/** Collect neither writes the artifact nor returns any JSON on stdout. */
+class CollectNoArtifactAdapter implements AgentRuntime {
+  id = 'stub-collect-empty';
+  calls: InvokeOptions[] = [];
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    return { output: 'searched around but wrote nothing', modifiedFiles: [], exitCode: 0 };
+  }
+}
+
 class TerminalErrorAdapter implements AgentRuntime {
   id = 'stub-terminal-error';
   calls = 0;
@@ -442,6 +501,41 @@ describe('discover_triage stage', () => {
 
     await expect(discoverTriage(ctx)).rejects.toThrow(/triaged\.json is not valid JSON/);
     expect(adapter.calls).toHaveLength(3);
+    expect(existsSync(rd.path('discover.err'))).toBe(true);
+  });
+
+  it('recovers triaged JSON wrapped in narration prose (2026-07-31 production failure)', async () => {
+    const adapter = new TriageNarrationAdapter(collected(), sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+    expect(readFileSync(rd.path('triaged.json'), 'utf8')).toContain('"candidates"');
+  });
+
+  it('persists the raw triage output to discover.err when parsing fails without a length signal', async () => {
+    const adapter = new TriageNarrationOnlyAdapter(collected());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).rejects.toThrow(/raw triage output saved to/);
+    // No recovery retry: collect + one triage call only.
+    expect(adapter.calls.map((call) => call.agentId)).toEqual(['researcher-collect', 'researcher-triage']);
+    const err = readFileSync(rd.path('discover.err'), 'utf8');
+    expect(err).toContain('parseFailure');
+    expect(err).toContain('正在读取完整候选交接');
+  });
+
+  it('persists collect stdout to discover.err when no candidates artifact can be recovered', async () => {
+    const adapter = new CollectNoArtifactAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).rejects.toThrow(/collect produced no usable discover-candidates\.json/);
+    const err = readFileSync(rd.path('discover.err'), 'utf8');
+    expect(err).toContain('searched around but wrote nothing');
   });
   it('fails on a terminal agent error without triggering recovery', async () => {
     const adapter = new TerminalErrorAdapter();

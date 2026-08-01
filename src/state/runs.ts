@@ -69,4 +69,20 @@ export class RunDir {
     writeFileSync(p, body);
     return p;
   }
+
+  /**
+   * Persist the raw agent output when a stage fails because the response
+   * could not be parsed into the required artifact (agent exit code was 0,
+   * so recordAgentFailure never fires). Without this the offending output
+   * exists nowhere on disk and the failure cannot be diagnosed post-hoc.
+   * Returns the path written.
+   */
+  recordParseFailure(stage: Stage, reason: string, rawOutput: string): string {
+    const body =
+      `parseFailure: ${reason}\n\n` +
+      `--- raw agent output ---\n${rawOutput || '(empty)'}\n`;
+    const p = this.path(`${stage}.err`);
+    writeFileSync(p, body);
+    return p;
+  }
 }

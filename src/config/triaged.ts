@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { extractJsonPayload } from './extract-json.js';
 
 const Axes = z.object({
   relevance: z.number().int().min(0).max(3),
@@ -36,4 +37,32 @@ export function parseTriaged(raw: string): Triaged {
     throw new Error(`triaged.json is not valid JSON: ${(e as Error).message}`);
   }
   return TriagedSchema.parse(json);
+}
+
+/**
+ * Parse a triage agent response that should be pure JSON but may arrive
+ * wrapped in narration or markdown fences.
+ *
+ * Strict parse runs first so a well-formed JSON body that fails the schema
+ * still surfaces the precise zod error. Extraction is attempted only when the
+ * response as a whole is not JSON; if no valid payload can be recovered the
+ * original strict-parse error is thrown (fail fast, no further fallbacks).
+ */
+export function parseTriagedOutput(raw: string): Triaged {
+  try {
+    return parseTriaged(raw);
+  } catch (error) {
+    const extracted = extractJsonPayload(raw, looksLikeTriaged);
+    if (!extracted) throw error;
+    return parseTriaged(extracted);
+  }
+}
+
+function looksLikeTriaged(body: string): boolean {
+  try {
+    parseTriaged(body);
+    return true;
+  } catch {
+    return false;
+  }
 }
