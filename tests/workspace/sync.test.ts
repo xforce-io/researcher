@@ -408,6 +408,62 @@ describe('workspace publish policy', () => {
       expect(String(error)).not.toContain('secret@');
     }
   });
+
+  it('rejects execution when the topic is not authorized', async () => {
+    const { root } = makeLocalPublishFixture({ publish: false });
+    const plan = prepareWorkspacePublish({ cwd: root, path: 'topic', remote: '/tmp/topic.git' });
+    await expect(executeWorkspacePublish(plan)).rejects.toMatchObject({ exitCode: 2 });
+    expect(existsSync(join(root, '.gitmodules'))).toBe(false);
+  });
+
+  it('restores local state after push fails and can be retried', async () => {
+    const { root, topic } = makeLocalPublishFixture({ publish: true });
+    const remote = join(root, 'remote.git');
+    const failedPlan = prepareWorkspacePublish({ cwd: root, path: 'topic', remote });
+    await expect(executeWorkspacePublish(failedPlan)).rejects.toThrow();
+    expect(() => execaSync('git', ['remote', 'get-url', 'origin'], { cwd: topic })).toThrow();
+    expect(existsSync(join(root, '.gitmodules'))).toBe(false);
+
+    execaSync('git', ['init', '--bare', '-b', 'main', remote]);
+    await expect(
+      executeWorkspacePublish(
+        prepareWorkspacePublish({
+          cwd: root,
+          path: 'topic',
+          remote,
+        }),
+      ),
+    ).resolves.toEqual(expect.objectContaining({ dryRun: false }));
+  });
+
+  it('refuses dirty index or dirty .gitmodules without changing either', async () => {
+    const { root } = makeLocalPublishFixture({ publish: true });
+    writeFileSync(join(root, 'unrelated'), 'staged');
+    execaSync('git', ['add', 'unrelated'], { cwd: root });
+    const plan = prepareWorkspacePublish({ cwd: root, path: 'topic', remote: '/tmp/topic.git' });
+    await expect(executeWorkspacePublish(plan)).rejects.toThrow(/staged changes/i);
+    expect(execaSync('git', ['diff', '--cached', '--name-only'], { cwd: root }).stdout.trim()).toBe(
+      'unrelated',
+    );
+  });
+
+  it('refuses dirty tracked .gitmodules without changing bytes', async () => {
+    const { root } = makeLocalPublishFixture({ publish: true });
+    const gmPath = join(root, '.gitmodules');
+    const original = '[submodule "other"]\n\tpath = other\n\turl = /tmp/other.git\n';
+    writeFileSync(gmPath, original);
+    execaSync('git', ['add', '.gitmodules'], { cwd: root });
+    execaSync('git', ['commit', '-m', 'track gitmodules'], { cwd: root });
+    const dirty = original + '# dirty\n';
+    writeFileSync(gmPath, dirty);
+
+    const plan = prepareWorkspacePublish({ cwd: root, path: 'topic', remote: '/tmp/topic.git' });
+    await expect(executeWorkspacePublish(plan)).rejects.toThrow(/\.gitmodules/i);
+    expect(readFileSync(gmPath)).toEqual(Buffer.from(dirty));
+    expect(execaSync('git', ['diff', '--name-only', '--', '.gitmodules'], { cwd: root }).stdout.trim()).toBe(
+      '.gitmodules',
+    );
+  });
 });
 
 describe('workspace publish execution', () => {

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execa, execaSync } from 'execa';
 
@@ -110,4 +110,59 @@ export async function addOrigin(cwd: string, url: string): Promise<void> {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export interface GitmodulesSnapshot {
+  existed: boolean;
+  content?: Buffer;
+}
+
+export function snapshotGitmodules(root: string): GitmodulesSnapshot {
+  const path = join(root, '.gitmodules');
+  return existsSync(path)
+    ? { existed: true, content: readFileSync(path) }
+    : { existed: false };
+}
+
+export function restoreGitmodules(root: string, snapshot: GitmodulesSnapshot): void {
+  const path = join(root, '.gitmodules');
+  if (snapshot.existed) {
+    writeFileSync(path, snapshot.content ?? Buffer.alloc(0));
+    return;
+  }
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+}
+
+/** Reject when `.gitmodules` has unstaged or staged worktree changes. Missing file is clean. */
+export async function assertGitmodulesClean(root: string): Promise<void> {
+  const path = join(root, '.gitmodules');
+  if (!existsSync(path)) return;
+  try {
+    await execa('git', ['diff', '--quiet', '--', '.gitmodules'], { cwd: root });
+    await execa('git', ['diff', '--quiet', '--cached', '--', '.gitmodules'], { cwd: root });
+  } catch (err) {
+    // git diff --quiet exits 1 when differences exist; missing path is already handled.
+    let code: number | undefined;
+    if (err && typeof err === 'object' && 'exitCode' in err) {
+      const raw = err.exitCode;
+      if (typeof raw === 'number') code = raw;
+    }
+    if (code === 1) {
+      throw new Error('super-repo has dirty .gitmodules; commit or discard changes first');
+    }
+    throw err;
+  }
+}
+
+export async function removeOriginIfMatches(cwd: string, expectedUrl: string): Promise<void> {
+  let current: string | undefined;
+  try {
+    current = (await execa('git', ['remote', 'get-url', 'origin'], { cwd })).stdout.trim();
+  } catch {
+    return;
+  }
+  if (current !== expectedUrl) return;
+  await execa('git', ['remote', 'remove', 'origin'], { cwd });
 }

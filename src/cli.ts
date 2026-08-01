@@ -141,15 +141,22 @@ workspace
   .description('Promote a local topic pillar to a submodule with origin')
   .requiredOption('--remote <url>', 'origin git URL (repo must already exist)')
   .option('--dry-run', 'report only')
+  .option('--yes', 'confirm non-interactive publish; does not bypass manifest permission')
   .option('--cwd <path>', 'workspace root (default: cwd)')
-  .action(async (path: string, opts: { remote: string; dryRun?: boolean; cwd?: string }) => {
-    const { runWorkspacePublishCli } = await import('./commands/workspace.js');
-    await runWorkspacePublishCli(path, {
-      cwd: opts.cwd,
-      remote: opts.remote,
-      dryRun: opts.dryRun,
-    });
-  });
+  .action(
+    async (
+      path: string,
+      opts: { remote: string; dryRun?: boolean; yes?: boolean; cwd?: string },
+    ) => {
+      const { runWorkspacePublishCli } = await import('./commands/workspace.js');
+      await runWorkspacePublishCli(path, {
+        cwd: opts.cwd,
+        remote: opts.remote,
+        dryRun: opts.dryRun,
+        yes: opts.yes,
+      });
+    },
+  );
 
 program
   .command('run')

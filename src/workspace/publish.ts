@@ -1,9 +1,16 @@
 import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';
 import {
   addOrigin,
+  assertGitmodulesClean,
+  assertNoStagedChanges,
+  type GitmodulesSnapshot,
   pushHead,
   registerExistingAsSubmodule,
+  removeOriginIfMatches,
+  restoreGitmodules,
+  snapshotGitmodules,
 } from '../git/workspace-ops.js';
+import { execa } from 'execa';
 import {
   hasWorkspaceManifest,
   loadWorkspaceManifest,
@@ -128,14 +135,27 @@ export async function executeWorkspacePublish(plan: PublishPlan): Promise<Publis
     throw new WorkspaceSyncError(`topic "${plan.path}" is not enabled for publish`, 2);
   }
 
-  await addOrigin(plan.absPath, plan.remote);
-  await pushHead(plan.absPath, plan.branch);
-  await registerExistingAsSubmodule({
-    root: plan.cwd,
-    path: plan.path,
-    url: plan.remote,
-    sha: plan.head,
-  });
+  await assertNoStagedChanges(plan.cwd);
+  await assertGitmodulesClean(plan.cwd);
+  const snapshot = snapshotGitmodules(plan.cwd);
+
+  try {
+    await addOrigin(plan.absPath, plan.remote);
+    await pushHead(plan.absPath, plan.branch);
+    await registerExistingAsSubmodule({
+      root: plan.cwd,
+      path: plan.path,
+      url: plan.remote,
+      sha: plan.head,
+    });
+  } catch (err) {
+    try {
+      await resetPublishLocalState(plan, snapshot);
+    } catch {
+      /* best-effort restore; surface original failure */
+    }
+    throw err;
+  }
 
   return {
     path: plan.path,
@@ -144,4 +164,13 @@ export async function executeWorkspacePublish(plan: PublishPlan): Promise<Publis
     head: plan.head,
     dryRun: false,
   };
+}
+
+async function resetPublishLocalState(
+  plan: PublishPlan,
+  snapshot: GitmodulesSnapshot,
+): Promise<void> {
+  await execa('git', ['reset', '--', '.gitmodules', plan.path], { cwd: plan.cwd });
+  restoreGitmodules(plan.cwd, snapshot);
+  await removeOriginIfMatches(plan.absPath, plan.remote);
 }

@@ -1,3 +1,5 @@
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import { resolve } from 'node:path';
 import {
   formatSyncSummary,
@@ -6,8 +8,10 @@ import {
 } from '../workspace/sync.js';
 import {
   executeWorkspacePublish,
+  type PublishPlan,
   prepareWorkspacePublish,
 } from '../workspace/publish.js';
+import { sanitizeRemoteForDisplay } from '../workspace/remote-display.js';
 
 export interface WorkspaceSyncCliOpts {
   cwd?: string;
@@ -22,6 +26,90 @@ export interface WorkspacePublishCliOpts {
   cwd?: string;
   remote: string;
   dryRun?: boolean;
+  yes?: boolean;
+}
+
+export interface WorkspacePublishCliRuntime {
+  isTTY: boolean;
+  confirm(plan: PublishPlan): Promise<boolean>;
+  writeOut(text: string): void;
+  writeErr(text: string): void;
+  setExitCode(code: number): void;
+}
+
+export function formatPublishPlan(plan: PublishPlan): string {
+  const headShort = plan.head.slice(0, 7);
+  const lines = [
+    `workspace publish plan:`,
+    `  path: ${plan.path}`,
+    `  branch: ${plan.branch}`,
+    `  head: ${headShort}`,
+    `  origin: ${plan.displayRemote}`,
+    `  .gitmodules: add submodule ${plan.path}`,
+    `  gitlink: ${plan.path} @ ${headShort}`,
+    `  super-repo: commit submodule registration`,
+  ];
+  if (!plan.authorized) {
+    lines.push(`  status: blocked: publish not enabled`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+async function defaultConfirm(plan: PublishPlan): Promise<boolean> {
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await rl.question(
+      `Publish ${plan.path} → ${plan.displayRemote} (${plan.branch} @ ${plan.head.slice(0, 7)})? [y/N] `,
+    );
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+export const processPublishRuntime: WorkspacePublishCliRuntime = {
+  isTTY: Boolean(process.stdin.isTTY),
+  confirm: defaultConfirm,
+  writeOut: (text: string) => {
+    process.stdout.write(text);
+  },
+  writeErr: (text: string) => {
+    process.stderr.write(text);
+  },
+  setExitCode: (code: number) => {
+    process.exitCode = code;
+  },
+};
+
+function sanitizeErrorMessage(message: string, remote?: string): string {
+  let out = message;
+  if (remote) {
+    const display = sanitizeRemoteForDisplay(remote);
+    if (display !== remote) {
+      // Replace all occurrences of the raw remote (including userinfo) with the redacted form.
+      out = out.split(remote).join(display);
+    }
+    // Also strip common userinfo patterns that git may echo without the full URL.
+    out = out.replace(/https?:\/\/[^/\s:@]+:[^/\s@]+@/gi, (match) => {
+      const scheme = match.startsWith('https') ? 'https://' : 'http://';
+      return scheme;
+    });
+    out = out.replace(/https?:\/\/[^/\s:@]+@/gi, (match) => {
+      const scheme = match.startsWith('https') ? 'https://' : 'http://';
+      return scheme;
+    });
+  } else {
+    out = out.replace(/https?:\/\/[^/\s:@]+:[^/\s@]+@/gi, (match) => {
+      const scheme = match.startsWith('https') ? 'https://' : 'http://';
+      return scheme;
+    });
+    out = out.replace(/https?:\/\/[^/\s:@]+@/gi, (match) => {
+      const scheme = match.startsWith('https') ? 'https://' : 'http://';
+      return scheme;
+    });
+  }
+  return out;
 }
 
 export async function runWorkspaceSyncCli(opts: WorkspaceSyncCliOpts = {}): Promise<void> {
@@ -52,6 +140,7 @@ export async function runWorkspaceSyncCli(opts: WorkspaceSyncCliOpts = {}): Prom
 export async function runWorkspacePublishCli(
   path: string,
   opts: WorkspacePublishCliOpts,
+  runtime: WorkspacePublishCliRuntime = processPublishRuntime,
 ): Promise<void> {
   const cwd = resolve(opts.cwd ?? process.cwd());
   try {
@@ -61,37 +150,39 @@ export async function runWorkspacePublishCli(
       remote: opts.remote,
       dryRun: opts.dryRun,
     });
+    runtime.writeOut(formatPublishPlan(plan));
+
     if (opts.dryRun) {
       if (!plan.authorized) {
-        process.stdout.write(
-          `workspace publish dry-run: ${plan.path} blocked: publish not enabled\n`,
-        );
-        return;
+        runtime.writeOut('blocked: publish not enabled\n');
       }
-      process.stdout.write(
-        `workspace publish dry-run: would add origin ${plan.displayRemote} on ${plan.path} ` +
-          `(${plan.branch} @ ${plan.head.slice(0, 7)}) and register submodule\n`,
-      );
       return;
     }
+
     if (!plan.authorized) {
       throw new WorkspaceSyncError(`topic "${path}" is not enabled for publish`, 2);
     }
+    if (!opts.yes && !runtime.isTTY) {
+      throw new WorkspaceSyncError('non-interactive publish requires --yes', 2);
+    }
+    if (!opts.yes && !(await runtime.confirm(plan))) {
+      throw new WorkspaceSyncError('publish cancelled', 2);
+    }
+
     const res = await executeWorkspacePublish(plan);
-    process.stdout.write(
+    runtime.writeOut(
       `workspace publish: ${res.path} → origin ${res.origin} (${res.branch})\n` +
         `registered submodule and committed gitlink in super-repo\n`,
     );
   } catch (err) {
     if (err instanceof WorkspaceSyncError) {
-      process.stderr.write(`error: ${err.message}\n`);
-      process.exitCode = err.exitCode;
+      runtime.writeErr(`error: ${sanitizeErrorMessage(err.message, opts.remote)}\n`);
+      runtime.setExitCode(err.exitCode);
       return;
     }
-    // normalize plain errors from publish into exit 1
     if (err instanceof Error) {
-      process.stderr.write(`error: ${err.message}\n`);
-      process.exitCode = 1;
+      runtime.writeErr(`error: ${sanitizeErrorMessage(err.message, opts.remote)}\n`);
+      runtime.setExitCode(1);
       return;
     }
     throw err;
