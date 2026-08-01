@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execaSync } from 'execa';
 import { runWorkspaceSync } from '../../src/workspace/sync.js';
+import { runWorkspacePublishCli } from '../../src/commands/workspace.js';
 import {
   executeWorkspacePublish,
   prepareWorkspacePublish,
@@ -446,6 +447,35 @@ describe('workspace publish execution', () => {
 
     prepareWorkspacePublish({ cwd: root, path: 't', remote: bare, dryRun: true });
     expect(() => execaSync('git', ['remote', 'get-url', 'origin'], { cwd: t })).toThrow();
+    expect(existsSync(join(root, '.gitmodules'))).toBe(false);
+  });
+});
+
+describe('workspace publish CLI dry-run gate', () => {
+  it('reports blocked dry-run without writing when publish is disabled', async () => {
+    const { root, topic } = makeLocalPublishFixture({ publish: false });
+    const chunks: string[] = [];
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    const originalExitCode = process.exitCode;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await runWorkspacePublishCli('topic', {
+        cwd: root,
+        remote: 'https://token@example.com/org/topic.git',
+        dryRun: true,
+      });
+    } finally {
+      process.stdout.write = originalWrite;
+      process.exitCode = originalExitCode;
+    }
+    const out = chunks.join('');
+    expect(out).toContain('blocked: publish not enabled');
+    expect(out).not.toContain('would add origin');
+    expect(out).not.toContain('token@');
+    expect(() => execaSync('git', ['remote', 'get-url', 'origin'], { cwd: topic })).toThrow();
     expect(existsSync(join(root, '.gitmodules'))).toBe(false);
   });
 });

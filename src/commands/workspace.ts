@@ -62,11 +62,20 @@ export async function runWorkspacePublishCli(
       dryRun: opts.dryRun,
     });
     if (opts.dryRun) {
+      if (!plan.authorized) {
+        process.stdout.write(
+          `workspace publish dry-run: ${plan.path} blocked: publish not enabled\n`,
+        );
+        return;
+      }
       process.stdout.write(
         `workspace publish dry-run: would add origin ${plan.displayRemote} on ${plan.path} ` +
           `(${plan.branch} @ ${plan.head.slice(0, 7)}) and register submodule\n`,
       );
       return;
+    }
+    if (!plan.authorized) {
+      throw new WorkspaceSyncError(`topic "${path}" is not enabled for publish`, 2);
     }
     const res = await executeWorkspacePublish(plan);
     process.stdout.write(
