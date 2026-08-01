@@ -1,103 +1,96 @@
-# Task 2 report
+# Task 2 Report — workspace publish gate
 
-## RED evidence
+## Status
 
-Before the production routing change, ran:
+完成：只读 publish plan、逐 topic publish 授权、remote 显示脱敏、workspace 越界 path 拒绝、旧 publish API clean cutover。
 
-```sh
-npx vitest run tests/commands/runtime-selection.test.ts
+## Implementation
+
+- 新增 `sanitizeRemoteForDisplay(remote)`：
+  - 清除标准 URL 的 username/password。
+  - 清除 scp-like remote 的 userinfo。
+  - 保持无 pathname URL 不被 `URL#toString()` 增加尾 `/`。
+- 将 `publishWorkspaceTopic` clean cutover 为：
+  - `prepareWorkspacePublish(opts)`：只读校验 manifest/path/repository/origin/branch/HEAD，返回授权状态、blocked reason、HEAD/branch、原始 Git remote 与脱敏显示值。
+  - `executeWorkspacePublish(plan)`：第一条运行时检查拒绝未授权 plan，抛出 exit code 2，随后才可能执行任何 Git 写操作。
+- existing origin 错误仅显示脱敏 remote。
+- 机械迁移 `src/commands/workspace.ts` 和既有 publish tests；未保留旧导出或兼容 shim。
+- 未实现 TTY、`--yes`、rollback/事务恢复或 pointer 行为。
+
+## TDD evidence
+
+### RED 1 — 新接口/模块尚不存在
+
+Command:
+
+```text
+npx vitest run tests/workspace/sync.test.ts -t "blocked plan|redacts remote|outside the workspace"
 ```
 
-Both tests failed for the intended missing-selection mechanism:
+Output:
 
-- The success case could not read `grok-args.json` (`ENOENT`), proving the configured fake Grok executable was never invoked.
-- The failure case resolved with `{ outcome: 'no-queries' }` instead of rejecting, proving the configured non-zero Grok process was bypassed.
-
-The test fixes `RESEARCHER_MILKIE_BIN` to a deterministic successful fake before dynamically importing `runRun`; this makes the RED failure attributable specifically to the hard-coded default adapter rather than an unavailable local Milkie installation.
-
-## GREEN evidence
-
-After replacing production defaults with `createAgentRuntime()`, ran:
-
-```sh
-npx vitest run tests/commands/runtime-selection.test.ts
+```text
+FAIL  tests/workspace/sync.test.ts
+Error: Cannot find module '../../src/workspace/remote-display.js'
+Test Files  1 failed (1)
 ```
 
-Result: 1 file, 2 tests passed. The success test verifies exactly one Grok `-p` invocation and returns `no-queries`; the failure test verifies `soul.err` contains `GROK_CLI_EXIT`.
+### GREEN 1 — policy/path/redaction/authorization gate
 
-Also ran the required focused regression suite:
-
-```sh
-npx vitest run tests/commands/runtime-selection.test.ts tests/commands/run.test.ts tests/commands/add.test.ts tests/commands/read.test.ts tests/commands/onboard.test.ts tests/web/topic-setup.test.ts
+```text
+Test Files  1 passed (1)
+Tests  7 passed | 12 skipped (19)
+Duration  3.06s
 ```
 
-Result: 6 files, 20 tests passed.
+### RED 2 — URL display stability
 
-## Changes
+增加无 pathname URL 精确契约后：
 
-- Replaced default `MilkieAdapter` construction with `createAgentRuntime()` in `run`, `add`, `read`, `onboard`, and web topic setup.
-- Kept `runRun` and web topic setup's explicit injected runtime paths unchanged.
-- Left `src/web/library-read.ts` on its independent `OpenAITextAdapter` provider.
-- Added deterministic production `runRun` integration coverage for configured Grok CLI success and failure artifacts.
+```text
+FAIL workspace publish policy > redacts remote userinfo from https://token@example.com
+Expected: "https://example.com"
+Received: "https://example.com/"
+Test Files  1 failed (1)
+```
+
+### Final GREEN
+
+Command:
+
+```text
+npx vitest run tests/workspace/sync.test.ts -t "blocked plan|redacts remote|outside the workspace"
+```
+
+Output:
+
+```text
+RUN  v3.2.4 /Users/xupeng/dev/github/researcher
+Test Files  1 passed (1)
+Tests  8 passed | 12 skipped (20)
+Duration  2.91s
+```
+
+按 brief 约束未运行 formatter、lint 或项目全量测试。
+
+## Self-check
+
+- [x] `prepareWorkspacePublish` 不执行 Git 写操作。
+- [x] path 拒绝 NUL、POSIX/Windows absolute path、`..` segment，并通过 `resolve` + `relative` 二次确认 workspace containment。
+- [x] path 必须精确存在于 manifest。
+- [x] 复用独立 topic repository classification；拒绝 missing/not-git/submodule/existing origin/detached HEAD/no HEAD。
+- [x] `publish: false` 生成 `authorized: false` 和 `blockedReason: 'publish not enabled'`，prepare 不抛授权错误。
+- [x] `executeWorkspacePublish` 的首条运行时检查拒绝未授权 plan，exitCode 为 2；定向测试确认 origin 和 `.gitmodules` 均未写入。
+- [x] 原始 remote 仅传入 Git 操作；plan/CLI/error 的显示路径使用脱敏值。
+- [x] existing origin 错误不包含 userinfo。
+- [x] `publishWorkspaceTopic` 在 `src`/`tests` 无调用或导出残留。
+- [x] command 与既有 tests 已迁移到 prepare/execute。
+- [x] 未加入 Task 4 范围的 TTY、`--yes`、rollback 或 pointer。
 
 ## Commit
 
-`7110c0c feat: select configured agent runtime`
+`4b13a93436be52565a32475a800e6d5a6654ef45` — `feat: require per-topic publish authorization`
 
 ## Concerns
 
-None. The new test deliberately imports `runRun` after setting its fallback Milkie environment because `MilkieAdapter` resolves its executable at module load; this isolates and proves the runtime-factory selection behavior.
-
-## Grok-only onboarding preflight repair
-
-### RED evidence
-
-With `runtime: grok-cli`, a fake Grok adapter, and `RESEARCHER_MILKIE_BIN=__researcher_missing_milkie__`, ran:
-
-```sh
-npm test -- tests/commands/onboard.test.ts
-```
-
-Result: 1 failed test. `runOnboard` threw `milkie CLI not found` from `preFlight` before the fake Grok adapter could invoke.
-
-### GREEN evidence
-
-After constructing the configured runtime before preflight and restricting the existing `milkie --help` check to the Milkie runtime, reran:
-
-```sh
-npm test -- tests/commands/onboard.test.ts
-```
-
-Result: 1 file, 4 tests passed. The new Grok-only case reached exactly one fake Grok invocation with no Milkie binary; the new default-runtime case still rejects when Milkie is unavailable.
-
-### Files and commit
-
-- `src/commands/onboard.ts`
-- `tests/commands/onboard.test.ts`
-- `8ae94f9 fix: skip Milkie preflight for Grok onboarding`
-
-## Grok methodology preflight boundary
-
-### RED evidence
-
-With `runtime: grok-cli`, no Milkie binary, and the installed onboarding methodology removed, ran:
-
-```sh
-npm test -- tests/commands/onboard.test.ts
-```
-
-Result: the new test failed as expected because `runOnboard` scaffolded first and then threw `ENOENT` reading `methodology/onboarding.md`, rather than the actionable methodology-preflight error.
-
-### GREEN evidence
-
-Made only the Milkie binary probe conditional on `runtime.id === 'milkie'`; methodology presence remains checked for every runtime. Reran:
-
-```sh
-npm test -- tests/commands/onboard.test.ts
-```
-
-Result: 1 file, 5 tests passed. The new test verifies the original actionable methodology error occurs before `.researcher` is scaffolded and before Grok invocation.
-
-### Commit
-
-`9a3ed1b fix: validate onboarding methodology for every runtime`
+无已知阻塞。按任务约束仅执行 brief 指定的定向 policy 测试，未执行全量回归。
