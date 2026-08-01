@@ -77,7 +77,7 @@ describe('createWorkspaceTopic', () => {
 
     const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(root));
     expect(manifest.topics.map((t) => t.path)).toEqual(['trace', 'probe-topic']);
-    expect(manifest.topics.at(-1)).toEqual({ path: 'probe-topic', active: true });
+    expect(manifest.topics.at(-1)).toEqual({ path: 'probe-topic', active: true, publish: false });
   });
 
   it('supports nested paths', () => {

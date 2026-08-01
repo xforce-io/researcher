@@ -30,8 +30,8 @@ describe('loadWorkspaceManifest', () => {
   it('parses a valid manifest and defaults active to false', () => {
     const m = loadWorkspaceManifest(writeManifest(VALID));
     expect(m.topics).toHaveLength(3);
-    expect(m.topics[0]).toEqual({ path: 'trace', active: true });
-    expect(m.topics[2]).toEqual({ path: 'ontology', active: false });
+    expect(m.topics[0]).toEqual({ path: 'trace', active: true, publish: false });
+    expect(m.topics[2]).toEqual({ path: 'ontology', active: false, publish: false });
   });
 
   it('activeTopics returns only active:true, in order', () => {
@@ -67,12 +67,16 @@ topics:
 });
 
 describe('addTopicToManifest', () => {
-  it('appends an active topic and round-trips through load', () => {
+  it('round-trips an explicit per-topic publish permission', () => {
     const p = writeManifest(VALID);
-    const m = addTopicToManifest(p, { path: 'probe', active: true });
+    const m = addTopicToManifest(p, { path: 'probe', active: true, publish: true });
     expect(m.topics.map((t) => t.path)).toEqual(['trace', 'decision', 'ontology', 'probe']);
-    expect(m.topics.at(-1)).toEqual({ path: 'probe', active: true });
-    expect(loadWorkspaceManifest(p).topics.at(-1)).toEqual({ path: 'probe', active: true });
+    expect(m.topics.at(-1)).toEqual({ path: 'probe', active: true, publish: true });
+    expect(loadWorkspaceManifest(p).topics.at(-1)).toEqual({
+      path: 'probe',
+      active: true,
+      publish: true,
+    });
   });
 
   it('rejects a duplicate path without writing a second entry', () => {

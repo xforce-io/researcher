@@ -236,6 +236,48 @@ Each active pillar advances one tick (charter synced first) and opens its own
 PR in its own submodule repo. Dormant pillars (`active: false`) are untouched.
 A pillar failing does not abort the rest — errors are collected in the summary.
 
+### `researcher workspace sync` / `publish`
+
+Explicitly align a workspace with GitHub. Does **not** change `run` defaults and
+does **not** depend on `delivery.mode` (delivery still only gates package
+push+PR).
+
+```bash
+# default: fetch + ff-only pull on active topics that have origin
+researcher workspace sync
+researcher workspace sync --pull --push-topics --pointers
+researcher workspace sync --all --dry-run
+
+# promote a local pillar (manifest must set publish: true)
+# human TTY: prints a plan, then confirms
+researcher workspace publish world-model --remote git@github.com:org/world-model.git
+
+# CI/agent: still needs the topic allowlist, plus explicit confirmation
+researcher workspace publish world-model \
+  --remote git@github.com:org/world-model.git \
+  --yes
+```
+
+Manifest allowlist (default is deny):
+
+```yaml
+topics:
+  - path: world-model
+    active: true
+    publish: true
+```
+
+- `--pull` — ff when origin exists; skip/fail otherwise
+- `--push-topics` — push current branch to origin (no PR)
+- `--pointers` — bump gitlinks only for existing submodules; one super-repo commit
+- `publish` — default off; only topics with `publish: true` may add origin, push, write `.gitmodules` + gitlink
+- `--yes` — non-interactive confirmation only; never bypasses the topic allowlist
+- `--dry-run` — no writes; unauthorized topics report `blocked: publish not enabled`
+- one topic failing does not abort the rest; exit 1 if any failed
+
+See `docs/design/130-workspace-sync.md`.
+
+
 ## Commands
 
 | Command | What it does |
@@ -248,6 +290,8 @@ A pillar failing does not abort the rest — errors are collected in the summary
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
 | `researcher serve [path]` | Local web console: workspace home, Library (deep-read + paper notes), topics + run |
+| `researcher workspace sync` | Super-repo: pull / push topics / bump submodule pointers (explicit; orthogonal to delivery) |
+| `researcher workspace publish <path>` | Promote an allowlisted local pillar to a submodule with origin (`--yes` for non-interactive) |
 | `researcher version` | Print version |
 
 ### `researcher serve [path]`

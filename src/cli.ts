@@ -108,6 +108,56 @@ program
     await runMigrateNotes({ root });
   });
 
+const workspace = program.command('workspace').description('Workspace super-repo git alignment');
+workspace
+  .command('sync')
+  .description('Pull / push topics / bump submodule pointers (explicit; orthogonal to delivery.mode)')
+  .option('--pull', 'fetch + ff-only current branch on topics with origin')
+  .option('--push-topics', 'push current branch to origin')
+  .option('--pointers', 'commit submodule gitlink bumps in the super-repo')
+  .option('--all', 'include dormant topics')
+  .option('--dry-run', 'report only; no push/commit/gitmodules writes')
+  .option('--cwd <path>', 'workspace root (default: cwd)')
+  .action(async (opts: {
+    pull?: boolean;
+    pushTopics?: boolean;
+    pointers?: boolean;
+    all?: boolean;
+    dryRun?: boolean;
+    cwd?: string;
+  }) => {
+    const { runWorkspaceSyncCli } = await import('./commands/workspace.js');
+    await runWorkspaceSyncCli({
+      cwd: opts.cwd,
+      pull: opts.pull,
+      pushTopics: opts.pushTopics,
+      pointers: opts.pointers,
+      all: opts.all,
+      dryRun: opts.dryRun,
+    });
+  });
+workspace
+  .command('publish <path>')
+  .description('Promote a local topic pillar to a submodule with origin')
+  .requiredOption('--remote <url>', 'origin git URL (repo must already exist)')
+  .option('--dry-run', 'report only')
+  .option('--yes', 'confirm non-interactive publish; does not bypass manifest permission')
+  .option('--cwd <path>', 'workspace root (default: cwd)')
+  .action(
+    async (
+      path: string,
+      opts: { remote: string; dryRun?: boolean; yes?: boolean; cwd?: string },
+    ) => {
+      const { runWorkspacePublishCli } = await import('./commands/workspace.js');
+      await runWorkspacePublishCli(path, {
+        cwd: opts.cwd,
+        remote: opts.remote,
+        dryRun: opts.dryRun,
+        yes: opts.yes,
+      });
+    },
+  );
+
 program
   .command('run')
   .description('Autonomous tick (topic repo), or workspace orchestration (super-repo with researcher.workspace.yml)')
