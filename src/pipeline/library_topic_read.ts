@@ -6,6 +6,7 @@ import type { Paper, PaperRead } from '../library/model.js';
 import { nextNoteNumber } from '../state/note_index.js';
 import { DEFAULT_FM, serializeNote } from '../state/zone.js';
 import { runLibraryRead, type LibraryReadRunner } from '../web/library-read.js';
+import { libraryReadEmbedBody } from '../markdown/frontmatter.js';
 import type { RunContext } from './context.js';
 
 export interface LibraryTopicReadOptions {
@@ -164,7 +165,7 @@ function writeTopicIntegrationNote(opts: {
     '',
     '## Library read',
     '',
-    opts.artifact.trim(),
+    libraryReadEmbedBody(opts.artifact, title),
     '',
   ].join('\n');
   const content = serializeNote({ ...DEFAULT_FM, zone: 'active', tags: [] }, body);

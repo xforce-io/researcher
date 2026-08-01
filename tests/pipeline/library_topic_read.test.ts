@@ -36,6 +36,31 @@ describe('libraryTopicRead integration timing', () => {
     };
   }
 
+  const fullLibraryArtifact = [
+    '---',
+    'title: "Timing Paper"',
+    'authors: ["Ada"]',
+    'paper_id: "paper_arxiv_2401_55555"',
+    'source_kind: "arxiv"',
+    'source_id: "arxiv:2401.55555"',
+    'source_url: "https://arxiv.org/abs/2401.55555"',
+    'pdf_url: "https://arxiv.org/pdf/2401.55555"',
+    'read_id: "read_paper_arxiv_2401_55555"',
+    'kind: library-read',
+    'doc_type: "paper"',
+    'tags: []',
+    '---',
+    '',
+    '# Timing Paper',
+    '',
+    '> frame lede',
+    '',
+    '## Essence',
+    '',
+    'body',
+    '',
+  ].join('\n');
+
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'r-ltr-'));
     topic = join(root, 'trace');
@@ -81,12 +106,24 @@ describe('libraryTopicRead integration timing', () => {
     await libraryTopicRead(ctx, {
       workspaceRoot: root,
       topicPath: 'trace',
-      libraryReadRunner: fakeLibraryRead(),
+      libraryReadRunner: fakeLibraryRead(fullLibraryArtifact),
     });
 
     expect(ctx.newNoteRelPath).toMatch(/^notes\/active\/\d+_timing_paper\.md$/);
     expect(existsSync(join(topic, ctx.newNoteRelPath!))).toBe(true);
     expect(readFileSync(join(topic, ctx.newNoteRelPath!), 'utf8')).toContain('body');
+    const noteMd = readFileSync(join(topic, ctx.newNoteRelPath!), 'utf8');
+    expect(noteMd).toContain('## Library read');
+    expect(noteMd).toContain('> frame lede');
+    expect(noteMd).toContain('## Essence');
+    // Embedded library-read system frontmatter must not appear in the note body.
+    expect(noteMd).not.toContain('paper_id');
+    expect(noteMd).not.toContain('read_id');
+    expect(noteMd).not.toContain('kind: library-read');
+    expect(noteMd).not.toContain('source_kind');
+    // Only the outer note fence + title once (no second H1 under Library read).
+    expect(noteMd.match(/^---$/gm)?.length).toBe(2);
+    expect(noteMd.match(/^# Timing Paper$/gm)?.length).toBe(1);
 
     const after = new PaperLibrary(root);
     expect(after.listIntegrations(paperId)).toEqual([]);

@@ -154,6 +154,99 @@ describe('renderDoc', () => {
     expect(html).toContain('href="https://arxiv.org/abs/2606.29957"');
     expect(html).toContain('<blockquote>');
   });
+  it('lifts nested library-read frontmatter under ## Library read into compact identity (#132)', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'tags: []',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# TRACE: Turn-level Reward Assignment',
+      '',
+      '> Topic integration note derived from Library read artifact `library/papers/p/reads/r.md`.',
+      '',
+      '## Library read',
+      '',
+      '---',
+      'title: "TRACE: Turn-level Reward Assignment"',
+      'authors: ["Leitian Tao","Baolin Peng"]',
+      'paper_id: "paper_arxiv_2607_13988"',
+      'source_kind: "arxiv"',
+      'source_id: "arxiv:2607.13988"',
+      'source_url: "https://arxiv.org/abs/2607.13988"',
+      'pdf_url: "https://arxiv.org/pdf/2607.13988"',
+      'read_id: "read_paper_arxiv_2607_13988"',
+      'kind: library-read',
+      'doc_type: "paper"',
+      'tags: []',
+      '---',
+      '',
+      '# TRACE: Turn-level Reward Assignment',
+      '',
+      '> 长轨迹只靠终点对错给同一 advantage',
+      '',
+      '## Essence',
+      '',
+      'dense turn credit',
+    ].join('\n');
+    const html = renderDoc(md);
+    // No raw system metadata dump.
+    expect(html).not.toContain('paper_id');
+    expect(html).not.toContain('read_id');
+    expect(html).not.toContain('doc_type');
+    expect(html).not.toContain('source_kind');
+    expect(html).not.toContain('kind: library-read');
+    expect(html).not.toContain('title: "TRACE');
+    // Title once (page H1), not repeated after Library read.
+    expect(html.match(/TRACE: Turn-level Reward Assignment/g)).toHaveLength(1);
+    // Compact identity only.
+    expect(html).toContain('library-read-identity-fm');
+    expect(html).toContain('<dt>authors</dt>');
+    expect(html).toContain('Leitian Tao');
+    expect(html).toContain('<dt>arxiv</dt>');
+    expect(html).toContain('2607.13988');
+    expect(html).toContain('<dt>pdf</dt>');
+    expect(html).toContain('https://arxiv.org/pdf/2607.13988');
+    // Reading body preserved.
+    expect(html).toContain('长轨迹只靠终点对错');
+    expect(html).toContain('<h2>Essence</h2>');
+    expect(html).toContain('dense turn credit');
+    expect(html).toContain('<h2>Library read</h2>');
+  });
+
+  it('renders a clean integration note body without nested library frontmatter (#132)', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'tags: []',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# TRACE: Turn-level Reward Assignment',
+      '',
+      '> Topic integration note derived from Library read artifact `r.md`.',
+      '',
+      '## Library read',
+      '',
+      '> 长轨迹只靠终点对错给同一 advantage',
+      '',
+      '## Essence',
+      '',
+      'dense turn credit',
+    ].join('\n');
+    const html = renderDoc(md);
+    expect(html).toContain('<h1>TRACE: Turn-level Reward Assignment</h1>');
+    expect(html).toContain('<h2>Library read</h2>');
+    expect(html).toContain('长轨迹只靠终点对错');
+    expect(html).toContain('<h2>Essence</h2>');
+    expect(html).not.toContain('paper_id');
+    expect(html).not.toContain('library-read-identity-fm');
+  });
 });
 
 describe('renderWorkspaceHome', () => {

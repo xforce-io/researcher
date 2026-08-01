@@ -4,6 +4,14 @@ import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, Libra
 import { displayLibraryReadMarkdown } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
+import {
+  isLibraryReadFrontmatter,
+  splitFrontmatter,
+  stripDuplicateLeadingH1,
+  unquoteFm,
+} from '../markdown/frontmatter.js';
+
+
 
 /** marked → HTML with XSS hardening for untrusted note/report/read bodies (#77). */
 function markedHtml(markdown: string): string {
@@ -62,7 +70,7 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, '').trim();
+const unquote = unquoteFm;
 
 // TOC display title: per-paper note headings share a fixed "…笔记：《title》" shell.
 // Strip the repetitive prefix and the 《》 brackets, keeping the inner title plus any
@@ -72,20 +80,6 @@ export function tocTitle(full: string): string {
   return m ? (m[1] + m[2]).trim() : full.trim();
 }
 
-// Split a leading YAML frontmatter block from the markdown body. Returns fm=null
-// when there is no `---` fence so plain docs (thesis, report, H1-titled notes)
-// render untouched.
-function splitFrontmatter(md: string): { fm: Record<string, string> | null; body: string } {
-  if (!md.startsWith('---')) return { fm: null, body: md };
-  const end = md.indexOf('\n---', 3);
-  if (end < 0) return { fm: null, body: md };
-  const fm: Record<string, string> = {};
-  for (const line of md.slice(3, end).split('\n')) {
-    const m = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
-    if (m) fm[m[1]] = m[2].trim();
-  }
-  return { fm, body: md.slice(end + 4).replace(/^\s*\n/, '') };
-}
 
 const FM_TITLE_KEYS = new Set(['paper', 'title']);
 const INTERNAL_FM_KEYS = new Set(['zone', 'tags', 'pin', 'score', 'dwell']);
@@ -144,13 +138,6 @@ function noteMasthead(fm: Record<string, string>): string {
     (rows ? `<dl class="fm">${rows}</dl>` : '');
 }
 
-function stripDuplicateLeadingH1(body: string, title: string): string {
-  if (!title) return body;
-  const m = /^#[ \t]+([^\n]+)\n?/.exec(body);
-  if (!m) return body;
-  const norm = (s: string) => unquote(s).replace(/\s+/g, ' ').trim();
-  return norm(m[1]) === norm(title) ? body.slice(m[0].length).replace(/^\s*\n/, '') : body;
-}
 
 // A leading `# H1` + a `> **Key:** value` blockquote (report.md / H1-titled notes)
 // is really a masthead — markdown collapses the lines into one flowing paragraph.
@@ -212,9 +199,20 @@ export function renderMarkdown(markdown: string): string {
 
 export function renderDoc(markdown: string): string {
   const { fm, body } = splitFrontmatter(markdown);
+  if (fm && isLibraryReadFrontmatter(fm)) {
+    // Top-level library-read artifact opened as a doc: compact identity, no system keys.
+    const title = unquote(fm.paper ?? fm.title ?? '');
+    let displayBody = stripDuplicateLeadingH1(body, title);
+    displayBody = displayLibraryReadMarkdown(displayBody);
+    const head =
+      (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
+      renderLibraryReadIdentityFm(fm);
+    return head + markedHtml(displayBody);
+  }
   if (fm) {
     const title = unquote(fm.paper ?? fm.title ?? '');
-    const displayBody = stripDuplicateLeadingH1(body, title);
+    let displayBody = stripDuplicateLeadingH1(body, title);
+    displayBody = liftNestedLibraryReadFrontmatter(displayBody);
     const mast = leadingMetaParagraph(displayBody);
     const head = noteMasthead(fm);
     if (mast) {
@@ -223,9 +221,69 @@ export function renderDoc(markdown: string): string {
     }
     return head + markedHtml(displayBody);
   }
-  const mast = mastheadBlockquote(body);
+  const lifted = liftNestedLibraryReadFrontmatter(body);
+  const mast = mastheadBlockquote(lifted);
   if (mast) return mast.html + markedHtml(mast.rest);
-  return markedHtml(body);
+  return markedHtml(lifted);
+}
+
+/**
+ * Human-useful identity rows for a library-read FM block.
+ * Never emits paper_id / read_id / kind / doc_type / empty tags.
+ */
+function renderLibraryReadIdentityFm(fm: Record<string, string>): string {
+  const rows: string[] = [];
+  const add = (key: string, value: string) => {
+    if (!value) return;
+    rows.push(`<div><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`);
+  };
+
+  if (fm.authors) add('authors', fmValue('authors', fm.authors));
+
+  const sourceId = unquote(fm.source_id ?? '');
+  let hasArxiv = false;
+  if (sourceId.startsWith('arxiv:')) {
+    const id = sourceId.slice('arxiv:'.length);
+    add('arxiv', fmValue('arxiv', id));
+    hasArxiv = Boolean(id);
+  } else {
+    const sourceUrl = unquote(fm.source_url ?? '');
+    const m = /arxiv\.org\/abs\/([^?\s#]+)/i.exec(sourceUrl);
+    if (m) {
+      add('arxiv', fmValue('arxiv', decodeURIComponent(m[1])));
+      hasArxiv = true;
+    }
+  }
+
+  if (fm.pdf_url) add('pdf', fmValue('pdf_url', fm.pdf_url));
+  if (!hasArxiv && fm.source_url) add('source', fmValue('source_url', fm.source_url));
+
+  return rows.length ? `<dl class="fm library-read-identity-fm">${rows.join('')}</dl>` : '';
+}
+
+/**
+ * Legacy topic integration notes embedded the full library-read artifact (with
+ * system frontmatter) under `## Library read`. Lift that fence into a compact
+ * identity table and leave the reading body — never dump raw key: value prose.
+ */
+function liftNestedLibraryReadFrontmatter(md: string): string {
+  return md.replace(
+    /(^##[ \t]+Library read[ \t]*\n)(?:[ \t]*\n)*(---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$))(?:[ \t]*\n)*(#[ \t]+[^\n]+\n)?/gm,
+    (all, heading: string, fence: string, maybeH1: string | undefined) => {
+      const { fm } = splitFrontmatter(fence);
+      if (!fm || !isLibraryReadFrontmatter(fm)) return all;
+      const title = unquote(fm.paper ?? fm.title ?? '');
+      const identity = renderLibraryReadIdentityFm(fm);
+      let keptH1 = '';
+      if (maybeH1) {
+        const stripped = stripDuplicateLeadingH1(maybeH1, title);
+        if (stripped.trim()) keptH1 = stripped.endsWith('\n') ? stripped : `${stripped}\n`;
+      }
+      // Body after the optional H1 stays outside this match; only replace the
+      // heading + system fence (+ duplicate title) with heading + identity.
+      return `${heading}${identity ? `${identity}\n\n` : ''}${keptH1}`;
+    },
+  );
 }
 
 /** Body of a Library read artifact: strip duplicate title; no system frontmatter table. */
