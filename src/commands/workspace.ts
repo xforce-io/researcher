@@ -11,7 +11,7 @@ import {
   type PublishPlan,
   prepareWorkspacePublish,
 } from '../workspace/publish.js';
-import { sanitizeRemoteForDisplay } from '../workspace/remote-display.js';
+import { sanitizeErrorText } from '../workspace/remote-display.js';
 
 export interface WorkspaceSyncCliOpts {
   cwd?: string;
@@ -82,35 +82,6 @@ export const processPublishRuntime: WorkspacePublishCliRuntime = {
   },
 };
 
-function sanitizeErrorMessage(message: string, remote?: string): string {
-  let out = message;
-  if (remote) {
-    const display = sanitizeRemoteForDisplay(remote);
-    if (display !== remote) {
-      // Replace all occurrences of the raw remote (including userinfo) with the redacted form.
-      out = out.split(remote).join(display);
-    }
-    // Also strip common userinfo patterns that git may echo without the full URL.
-    out = out.replace(/https?:\/\/[^/\s:@]+:[^/\s@]+@/gi, (match) => {
-      const scheme = match.startsWith('https') ? 'https://' : 'http://';
-      return scheme;
-    });
-    out = out.replace(/https?:\/\/[^/\s:@]+@/gi, (match) => {
-      const scheme = match.startsWith('https') ? 'https://' : 'http://';
-      return scheme;
-    });
-  } else {
-    out = out.replace(/https?:\/\/[^/\s:@]+:[^/\s@]+@/gi, (match) => {
-      const scheme = match.startsWith('https') ? 'https://' : 'http://';
-      return scheme;
-    });
-    out = out.replace(/https?:\/\/[^/\s:@]+@/gi, (match) => {
-      const scheme = match.startsWith('https') ? 'https://' : 'http://';
-      return scheme;
-    });
-  }
-  return out;
-}
 
 export async function runWorkspaceSyncCli(opts: WorkspaceSyncCliOpts = {}): Promise<void> {
   const cwd = resolve(opts.cwd ?? process.cwd());
@@ -176,12 +147,12 @@ export async function runWorkspacePublishCli(
     );
   } catch (err) {
     if (err instanceof WorkspaceSyncError) {
-      runtime.writeErr(`error: ${sanitizeErrorMessage(err.message, opts.remote)}\n`);
+      runtime.writeErr(`error: ${sanitizeErrorText(err.message, opts.remote)}\n`);
       runtime.setExitCode(err.exitCode);
       return;
     }
     if (err instanceof Error) {
-      runtime.writeErr(`error: ${sanitizeErrorMessage(err.message, opts.remote)}\n`);
+      runtime.writeErr(`error: ${sanitizeErrorText(err.message, opts.remote)}\n`);
       runtime.setExitCode(1);
       return;
     }

@@ -15,7 +15,8 @@ import {
   executeWorkspacePublish,
   prepareWorkspacePublish,
 } from '../../src/workspace/publish.js';
-import { sanitizeRemoteForDisplay } from '../../src/workspace/remote-display.js';
+import { sanitizeErrorText, sanitizeRemoteForDisplay } from '../../src/workspace/remote-display.js';
+import { formatSyncSummary, type WorkspaceSyncResult } from '../../src/workspace/sync.js';
 import { classifyTopicGit } from '../../src/workspace/topic-git.js';
 import { loadWorkspaceManifest } from '../../src/workspace/manifest.js';
 
@@ -369,6 +370,33 @@ describe('workspace publish policy', () => {
     ['git@example.com:org/repo.git', 'example.com:org/repo.git'],
   ])('redacts remote userinfo from %s', (input, expected) => {
     expect(sanitizeRemoteForDisplay(input)).toBe(expected);
+  });
+
+  
+  it('redacts credentials from free-form error text and sync summaries', () => {
+    expect(
+      sanitizeErrorText('fatal: could not read from remote https://token@example.com/org/repo.git'),
+    ).toBe('fatal: could not read from remote https://example.com/org/repo.git');
+    expect(sanitizeErrorText('auth failed for https://user:secret@host/path')).not.toContain('secret');
+    expect(sanitizeRemoteForDisplay('user@example.com/org/repo.git')).toBe('example.com/org/repo.git');
+
+    const summary = formatSyncSummary({
+      actions: { pull: true, pushTopics: false, pointers: false },
+      topics: [
+        {
+          path: 'topic',
+          kind: 'remote',
+          pull: {
+            status: 'failed',
+            message: 'fatal: Authentication failed for \'https://token@example.com/org/topic.git/\'',
+          },
+        },
+      ],
+      dormant: [],
+      failed: 1,
+    } satisfies WorkspaceSyncResult);
+    expect(summary).toContain('https://example.com/org/topic.git');
+    expect(summary).not.toContain('token@');
   });
 
   it('rejects a manifest topic that resolves outside the workspace', () => {

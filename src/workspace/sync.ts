@@ -15,6 +15,7 @@ import {
   resolveWorkspaceManifestPath,
   type WorkspaceTopic,
 } from './manifest.js';
+import { sanitizeErrorText } from './remote-display.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed' | 'dry-run';
 
@@ -141,11 +142,14 @@ async function doPush(
 }
 
 function errMsg(err: unknown): string {
+  let raw = '';
   if (err && typeof err === 'object' && 'stderr' in err) {
-    const s = String((err as { stderr?: unknown }).stderr ?? '');
-    if (s.trim()) return s.trim().split('\n').slice(-3).join(' | ');
+    const stderr = err.stderr;
+    const s = typeof stderr === 'string' ? stderr : stderr == null ? '' : String(stderr);
+    if (s.trim()) raw = s.trim().split('\n').slice(-3).join(' | ');
   }
-  return err instanceof Error ? err.message : String(err);
+  if (!raw) raw = err instanceof Error ? err.message : String(err);
+  return sanitizeErrorText(raw);
 }
 
 export async function runWorkspaceSync(opts: WorkspaceSyncOptions): Promise<WorkspaceSyncResult> {
@@ -257,8 +261,8 @@ export function formatSyncSummary(res: WorkspaceSyncResult): string {
       t.path.padEnd(24),
       `kind=${t.kind}`,
     ];
-    if (t.pull) parts.push(`pull=${t.pull.status}${t.pull.message ? `(${t.pull.message})` : ''}`);
-    if (t.push) parts.push(`push=${t.push.status}${t.push.message ? `(${t.push.message})` : ''}`);
+    if (t.pull) parts.push(`pull=${t.pull.status}${t.pull.message ? `(${sanitizeErrorText(t.pull.message)})` : ''}`);
+    if (t.push) parts.push(`push=${t.push.status}${t.push.message ? `(${sanitizeErrorText(t.push.message)})` : ''}`);
     lines.push('  ' + parts.join('  '));
   }
   if (res.dormant.length) {
@@ -268,7 +272,7 @@ export function formatSyncSummary(res: WorkspaceSyncResult): string {
     lines.push(
       `pointers: ${res.pointers.status}` +
         (res.pointers.count ? ` count=${res.pointers.count}` : '') +
-        (res.pointers.message ? ` (${res.pointers.message})` : ''),
+        (res.pointers.message ? ` (${sanitizeErrorText(res.pointers.message)})` : ''),
     );
   }
   return lines.join('\n');
