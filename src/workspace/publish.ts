@@ -1,3 +1,4 @@
+import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';
 import {
   addOrigin,
   pushHead,
@@ -8,6 +9,7 @@ import {
   loadWorkspaceManifest,
   resolveWorkspaceManifestPath,
 } from './manifest.js';
+import { sanitizeRemoteForDisplay } from './remote-display.js';
 import { classifyTopicGit, isSubmodulePath } from './topic-git.js';
 import { WorkspaceSyncError } from './sync.js';
 
@@ -18,6 +20,18 @@ export interface PublishOptions {
   dryRun?: boolean;
 }
 
+export interface PublishPlan {
+  cwd: string;
+  path: string;
+  absPath: string;
+  remote: string;
+  displayRemote: string;
+  branch: string;
+  head: string;
+  authorized: boolean;
+  blockedReason?: 'publish not enabled';
+}
+
 export interface PublishResult {
   path: string;
   origin: string;
@@ -26,7 +40,7 @@ export interface PublishResult {
   dryRun: boolean;
 }
 
-export async function publishWorkspaceTopic(opts: PublishOptions): Promise<PublishResult> {
+export function prepareWorkspacePublish(opts: PublishOptions): PublishPlan {
   if (!hasWorkspaceManifest(opts.cwd)) {
     throw new WorkspaceSyncError(
       `not a workspace root: missing researcher.workspace.yml in ${opts.cwd}`,
@@ -39,29 +53,41 @@ export async function publishWorkspaceTopic(opts: PublishOptions): Promise<Publi
   if (
     !opts.path ||
     opts.path.includes('\0') ||
-    opts.path.startsWith('/') ||
-    opts.path.split(/[/\\]/).some((s) => s === '..')
+    isAbsolute(opts.path) ||
+    win32.isAbsolute(opts.path) ||
+    opts.path.split(/[/\\]/).some((segment) => segment === '..')
   ) {
-    throw new WorkspaceSyncError(`invalid topic path: ${opts.path}`, 2);
+    throw new WorkspaceSyncError(`topic path must be inside workspace: ${opts.path}`, 2);
   }
 
+  const cwd = resolve(opts.cwd);
+  const absPath = resolve(cwd, opts.path);
+  const relativePath = relative(cwd, absPath);
+  if (
+    relativePath === '..' ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    throw new WorkspaceSyncError(`topic path must be inside workspace: ${opts.path}`, 2);
+  }
 
-  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(opts.cwd));
-  if (!manifest.topics.some((t) => t.path === opts.path)) {
+  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(cwd));
+  const topic = manifest.topics.find((candidate) => candidate.path === opts.path);
+  if (!topic) {
     throw new WorkspaceSyncError(
       `path "${opts.path}" is not in workspace manifest`,
       2,
     );
   }
 
-  const info = classifyTopicGit(opts.cwd, opts.path);
+  const info = classifyTopicGit(cwd, opts.path);
   if (info.kind === 'missing') {
     throw new WorkspaceSyncError(`topic directory missing: ${opts.path}`, 2);
   }
   if (info.kind === 'not-git') {
     throw new WorkspaceSyncError(`topic is not a git repo: ${opts.path}`, 2);
   }
-  if (isSubmodulePath(opts.cwd, opts.path) || info.kind === 'submodule') {
+  if (isSubmodulePath(cwd, opts.path) || info.kind === 'submodule') {
     throw new WorkspaceSyncError(
       `topic "${opts.path}" is already a submodule`,
       1,
@@ -69,7 +95,7 @@ export async function publishWorkspaceTopic(opts: PublishOptions): Promise<Publi
   }
   if (info.originUrl) {
     throw new WorkspaceSyncError(
-      `topic "${opts.path}" already has origin (${info.originUrl})`,
+      `topic "${opts.path}" already has origin (${sanitizeRemoteForDisplay(info.originUrl)})`,
       1,
     );
   }
@@ -83,30 +109,39 @@ export async function publishWorkspaceTopic(opts: PublishOptions): Promise<Publi
     throw new WorkspaceSyncError(`topic "${opts.path}" has no HEAD commit`, 1);
   }
 
-  if (opts.dryRun) {
-    return {
-      path: opts.path,
-      origin: opts.remote,
-      branch: info.branch,
-      head: info.head,
-      dryRun: true,
-    };
+  const authorized = topic.publish;
+  return {
+    cwd,
+    path: opts.path,
+    absPath,
+    remote: opts.remote,
+    displayRemote: sanitizeRemoteForDisplay(opts.remote),
+    branch: info.branch,
+    head: info.head,
+    authorized,
+    ...(authorized ? {} : { blockedReason: 'publish not enabled' as const }),
+  };
+}
+
+export async function executeWorkspacePublish(plan: PublishPlan): Promise<PublishResult> {
+  if (!plan.authorized) {
+    throw new WorkspaceSyncError(`topic "${plan.path}" is not enabled for publish`, 2);
   }
 
-  await addOrigin(info.absPath, opts.remote);
-  await pushHead(info.absPath, info.branch);
+  await addOrigin(plan.absPath, plan.remote);
+  await pushHead(plan.absPath, plan.branch);
   await registerExistingAsSubmodule({
-    root: opts.cwd,
-    path: opts.path,
-    url: opts.remote,
-    sha: info.head,
+    root: plan.cwd,
+    path: plan.path,
+    url: plan.remote,
+    sha: plan.head,
   });
 
   return {
-    path: opts.path,
-    origin: opts.remote,
-    branch: info.branch,
-    head: info.head,
+    path: plan.path,
+    origin: plan.displayRemote,
+    branch: plan.branch,
+    head: plan.head,
     dryRun: false,
   };
 }

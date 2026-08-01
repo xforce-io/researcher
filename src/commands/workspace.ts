@@ -4,7 +4,10 @@ import {
   runWorkspaceSync,
   WorkspaceSyncError,
 } from '../workspace/sync.js';
-import { publishWorkspaceTopic } from '../workspace/publish.js';
+import {
+  executeWorkspacePublish,
+  prepareWorkspacePublish,
+} from '../workspace/publish.js';
 
 export interface WorkspaceSyncCliOpts {
   cwd?: string;
@@ -52,19 +55,20 @@ export async function runWorkspacePublishCli(
 ): Promise<void> {
   const cwd = resolve(opts.cwd ?? process.cwd());
   try {
-    const res = await publishWorkspaceTopic({
+    const plan = prepareWorkspacePublish({
       cwd,
       path,
       remote: opts.remote,
       dryRun: opts.dryRun,
     });
-    if (res.dryRun) {
+    if (opts.dryRun) {
       process.stdout.write(
-        `workspace publish dry-run: would add origin ${res.origin} on ${res.path} ` +
-          `(${res.branch} @ ${res.head.slice(0, 7)}) and register submodule\n`,
+        `workspace publish dry-run: would add origin ${plan.displayRemote} on ${plan.path} ` +
+          `(${plan.branch} @ ${plan.head.slice(0, 7)}) and register submodule\n`,
       );
       return;
     }
+    const res = await executeWorkspacePublish(plan);
     process.stdout.write(
       `workspace publish: ${res.path} → origin ${res.origin} (${res.branch})\n` +
         `registered submodule and committed gitlink in super-repo\n`,

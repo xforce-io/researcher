@@ -7,10 +7,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { execaSync } from 'execa';
 import { runWorkspaceSync } from '../../src/workspace/sync.js';
-import { publishWorkspaceTopic } from '../../src/workspace/publish.js';
+import {
+  executeWorkspacePublish,
+  prepareWorkspacePublish,
+} from '../../src/workspace/publish.js';
+import { sanitizeRemoteForDisplay } from '../../src/workspace/remote-display.js';
 import { classifyTopicGit } from '../../src/workspace/topic-git.js';
 import { loadWorkspaceManifest } from '../../src/workspace/manifest.js';
 
@@ -62,6 +66,27 @@ function writeManifest(
       )
       .join('');
   writeFileSync(join(root, 'researcher.workspace.yml'), body);
+}
+
+function makeLocalPublishFixture({
+  path = 'topic',
+  publish,
+}: {
+  path?: string;
+  publish: boolean;
+}): { root: string; topic: string } {
+  const fixture = mkdtempSync(join(tmpdir(), 'r-publish-policy-'));
+  const root = join(fixture, 'workspace');
+  gitInit(root);
+  writeManifest(root, [{ path, publish }]);
+  gitCommitAll(root, 'manifest');
+
+  const topic = resolve(root, path);
+  gitInit(topic);
+  writeFileSync(join(topic, 'a'), '1');
+  gitCommitAll(topic, 'init topic');
+
+  return { root, topic };
 }
 
 it('defaults per-topic publish permission to false', () => {
@@ -283,11 +308,76 @@ describe('runWorkspaceSync', () => {
   });
 });
 
-describe('publishWorkspaceTopic', () => {
+describe('workspace publish policy', () => {
+  it('prepares a blocked plan when publish is not enabled', () => {
+    const { root } = makeLocalPublishFixture({ publish: false });
+    const plan = prepareWorkspacePublish({
+      cwd: root,
+      path: 'topic',
+      remote: 'https://secret@example.com/org/topic.git',
+    });
+    expect(plan).toEqual(
+      expect.objectContaining({
+        authorized: false,
+        blockedReason: 'publish not enabled',
+        displayRemote: 'https://example.com/org/topic.git',
+      }),
+    );
+  });
+
+  it.each([
+    ['https://token@example.com/org/repo.git', 'https://example.com/org/repo.git'],
+    ['https://user:token@example.com/org/repo.git', 'https://example.com/org/repo.git'],
+    ['https://token@example.com', 'https://example.com'],
+    ['git@example.com:org/repo.git', 'example.com:org/repo.git'],
+  ])('redacts remote userinfo from %s', (input, expected) => {
+    expect(sanitizeRemoteForDisplay(input)).toBe(expected);
+  });
+
+  it('rejects a manifest topic that resolves outside the workspace', () => {
+    const { root } = makeLocalPublishFixture({ path: '../outside', publish: true });
+    expect(() =>
+      prepareWorkspacePublish({ cwd: root, path: '../outside', remote: '/tmp/topic.git' }),
+    ).toThrow(/inside workspace/i);
+  });
+
+  it('blocks execution before writes when the blocked plan is not authorized', async () => {
+    const { root, topic } = makeLocalPublishFixture({ publish: false });
+    const plan = prepareWorkspacePublish({
+      cwd: root,
+      path: 'topic',
+      remote: '/tmp/topic.git',
+    });
+
+    await expect(executeWorkspacePublish(plan)).rejects.toMatchObject({ exitCode: 2 });
+    expect(() => execaSync('git', ['remote', 'get-url', 'origin'], { cwd: topic })).toThrow();
+    expect(existsSync(join(root, '.gitmodules'))).toBe(false);
+  });
+
+  it('redacts remote userinfo from an existing origin error', () => {
+    const { root, topic } = makeLocalPublishFixture({ publish: true });
+    execaSync(
+      'git',
+      ['remote', 'add', 'origin', 'https://secret@example.com/org/topic.git'],
+      { cwd: topic },
+    );
+
+    expect(() =>
+      prepareWorkspacePublish({ cwd: root, path: 'topic', remote: '/tmp/topic.git' }),
+    ).toThrow('already has origin (https://example.com/org/topic.git)');
+    try {
+      prepareWorkspacePublish({ cwd: root, path: 'topic', remote: '/tmp/topic.git' });
+    } catch (error) {
+      expect(String(error)).not.toContain('secret@');
+    }
+  });
+});
+
+describe('workspace publish execution', () => {
   it('adds origin, pushes, and registers submodule', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-pub-'));
     gitInit(root);
-    writeManifest(root, [{ path: 'world-model' }]);
+    writeManifest(root, [{ path: 'world-model', publish: true }]);
     gitCommitAll(root, 'manifest');
 
     const topic = join(root, 'world-model');
@@ -297,11 +387,12 @@ describe('publishWorkspaceTopic', () => {
 
     // ensure super sees the directory as untracked content before publish
     const bare = makeBare(root, 'world-model');
-    const res = await publishWorkspaceTopic({
+    const plan = prepareWorkspacePublish({
       cwd: root,
       path: 'world-model',
       remote: bare,
     });
+    const res = await executeWorkspacePublish(plan);
     expect(res.path).toBe('world-model');
     expect(res.origin).toBe(bare);
 
@@ -323,12 +414,12 @@ describe('publishWorkspaceTopic', () => {
   it('rejects missing manifest path and existing origin', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-pub-err-'));
     gitInit(root);
-    writeManifest(root, [{ path: 't' }]);
+    writeManifest(root, [{ path: 't', publish: true }]);
     gitCommitAll(root, 'm');
 
-    await expect(
-      publishWorkspaceTopic({ cwd: root, path: 'nope', remote: '/tmp/x.git' }),
-    ).rejects.toThrow(/manifest/i);
+    expect(() =>
+      prepareWorkspacePublish({ cwd: root, path: 'nope', remote: '/tmp/x.git' }),
+    ).toThrow(/manifest/i);
 
     const t = join(root, 't');
     gitInit(t);
@@ -337,15 +428,15 @@ describe('publishWorkspaceTopic', () => {
     const bare = makeBare(root, 't');
     execaSync('git', ['remote', 'add', 'origin', bare], { cwd: t });
 
-    await expect(
-      publishWorkspaceTopic({ cwd: root, path: 't', remote: bare }),
-    ).rejects.toThrow(/origin/i);
+    expect(() =>
+      prepareWorkspacePublish({ cwd: root, path: 't', remote: bare }),
+    ).toThrow(/origin/i);
   });
 
   it('dry-run does not write remotes or gitmodules', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-pub-dry-'));
     gitInit(root);
-    writeManifest(root, [{ path: 't' }]);
+    writeManifest(root, [{ path: 't', publish: true }]);
     gitCommitAll(root, 'm');
     const t = join(root, 't');
     gitInit(t);
@@ -353,7 +444,7 @@ describe('publishWorkspaceTopic', () => {
     gitCommitAll(t, 'init');
     const bare = makeBare(root, 't');
 
-    await publishWorkspaceTopic({ cwd: root, path: 't', remote: bare, dryRun: true });
+    prepareWorkspacePublish({ cwd: root, path: 't', remote: bare, dryRun: true });
     expect(() => execaSync('git', ['remote', 'get-url', 'origin'], { cwd: t })).toThrow();
     expect(existsSync(join(root, '.gitmodules'))).toBe(false);
   });
