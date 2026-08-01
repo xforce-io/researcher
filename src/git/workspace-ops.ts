@@ -45,6 +45,18 @@ export async function commitIfStaged(
   return { committed: true };
 }
 
+export async function listStagedPaths(root: string): Promise<string[]> {
+  const { stdout } = await execa('git', ['diff', '--cached', '--name-only', '-z'], { cwd: root });
+  return stdout.split('\0').filter(Boolean);
+}
+
+export async function assertNoStagedChanges(root: string): Promise<void> {
+  const paths = await listStagedPaths(root);
+  if (paths.length > 0) {
+    throw new Error(`super-repo has staged changes: ${paths.join(', ')}`);
+  }
+}
+
 /**
  * Register an already-populated topic directory as a submodule of the super-repo.
  * Does not require the directory to be empty (unlike `git submodule add`).

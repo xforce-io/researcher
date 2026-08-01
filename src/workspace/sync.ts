@@ -1,4 +1,5 @@
 import {
+  assertNoStagedChanges,
   commitIfStaged,
   fetchOrigin,
   getGitlinkSha,
@@ -234,6 +235,7 @@ async function bumpPointers(o: {
   }
 
   try {
+    await assertNoStagedChanges(o.root);
     for (const p of pending) {
       await stageGitlink(o.root, p.path, p.sha);
     }

@@ -289,6 +289,42 @@ describe('runWorkspaceSync', () => {
     expect(msg).toMatch(/workspace sync: bump submodule pointers/i);
   });
 
+  it('pointers refuses to commit when index has staged content', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-ptr-staged-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 'sub' }]);
+    gitCommitAll(root, 'manifest');
+
+    const bare = makeBare(root, 'sub');
+    const src = join(root, '_src');
+    gitInit(src);
+    writeFileSync(join(src, 'a'), 'v1');
+    gitCommitAll(src, 'v1');
+    execaSync('git', ['remote', 'add', 'origin', bare], { cwd: src });
+    execaSync('git', ['push', '-u', 'origin', 'main'], { cwd: src });
+    addSubmoduleManual(root, bare, 'sub', src);
+    gitCommitAll(root, 'add sub');
+
+    // advance submodule
+    writeFileSync(join(root, 'sub', 'a'), 'v2');
+    execaSync('git', ['config', 'user.email', 't@t'], { cwd: join(root, 'sub') });
+    execaSync('git', ['config', 'user.name', 't'], { cwd: join(root, 'sub') });
+    gitCommitAll(join(root, 'sub'), 'v2');
+
+    writeFileSync(join(root, 'unrelated.txt'), 'staged');
+    execaSync('git', ['add', 'unrelated.txt'], { cwd: root });
+
+    const before = execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim();
+    const res = await runWorkspaceSync({ cwd: root, pull: false, pointers: true });
+    expect(res.pointers).toEqual(
+      expect.objectContaining({ status: 'failed', message: expect.stringContaining('unrelated.txt') }),
+    );
+    expect(execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim()).toBe(before);
+    expect(execaSync('git', ['diff', '--cached', '--name-only'], { cwd: root }).stdout.trim()).toBe(
+      'unrelated.txt',
+    );
+  });
+
   it('includes dormant topics when all=true', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-sync-all-'));
     gitInit(root);
