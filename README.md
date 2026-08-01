@@ -236,6 +236,31 @@ Each active pillar advances one tick (charter synced first) and opens its own
 PR in its own submodule repo. Dormant pillars (`active: false`) are untouched.
 A pillar failing does not abort the rest — errors are collected in the summary.
 
+### `researcher workspace sync` / `publish`
+
+Explicitly align a workspace with GitHub. Does **not** change `run` defaults and
+does **not** depend on `delivery.mode` (delivery still only gates package
+push+PR).
+
+```bash
+# default: fetch + ff-only pull on active topics that have origin
+researcher workspace sync
+researcher workspace sync --pull --push-topics --pointers
+researcher workspace sync --all --dry-run
+
+# promote a local pillar to a submodule with origin (remote empty repo must exist)
+researcher workspace publish world-model --remote git@github.com:org/repo.git
+```
+
+- `--pull` — ff when origin exists; skip/fail otherwise
+- `--push-topics` — push current branch to origin (no PR)
+- `--pointers` — bump gitlinks only for existing submodules; one super-repo commit
+- `publish` — add origin, push, write `.gitmodules` + gitlink
+- one topic failing does not abort the rest; exit 1 if any failed
+
+See `docs/design/130-workspace-sync.md`.
+
+
 ## Commands
 
 | Command | What it does |
@@ -248,6 +273,8 @@ A pillar failing does not abort the rest — errors are collected in the summary
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
 | `researcher serve [path]` | Local web console: workspace home, Library (deep-read + paper notes), topics + run |
+| `researcher workspace sync` | Super-repo: pull / push topics / bump submodule pointers (explicit; orthogonal to delivery) |
+| `researcher workspace publish <path>` | Promote a local pillar to a submodule with origin |
 | `researcher version` | Print version |
 
 ### `researcher serve [path]`

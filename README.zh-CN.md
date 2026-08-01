@@ -190,6 +190,29 @@ researcher run
 PR。Dormant（`active: false`）支柱完全不碰。某个支柱失败不会中断其余 ——
 错误会汇总在 summary 里。
 
+### `researcher workspace sync` / `publish`
+
+显式把 workspace 与 GitHub 对齐，**不**改 `run` 默认行为，也**不**依赖
+`delivery.mode`（投递仍只管 package 是否 push+PR）。
+
+```bash
+# 默认：对 active topics 做 fetch + ff-only pull（有 origin 的）
+researcher workspace sync
+researcher workspace sync --pull --push-topics --pointers
+researcher workspace sync --all --dry-run
+
+# 本地 pillar 晋升为带 origin 的 submodule（远程空仓需事先建好）
+researcher workspace publish world-model --remote git@github.com:org/repo.git
+```
+
+- `--pull`：有 origin 则 ff；无 origin / 非 git → skipped 或 failed
+- `--push-topics`：推送当前分支到 origin（不开 PR）
+- `--pointers`：仅 bump 已是 submodule 的 gitlink，并在 super-repo 打一次 commit
+- `publish`：加 origin、push、写 `.gitmodules` + gitlink
+- 单 topic 失败不中止其余；存在 failed 时 exit 1
+
+详见 `docs/design/130-workspace-sync.md`。
+
 ### `researcher serve [path]`
 
 在工作区超级仓（含 `researcher.workspace.yml` 的目录）上启动本地 web 控制台。
@@ -233,6 +256,8 @@ Notes 存在 `.researcher-workspace/library/notes.jsonl`，force 重跑机器精
 | `researcher methodology show` | 打印当前已装的方法论 |
 | `researcher methodology edit <name>` | 用 `$EDITOR` 打开某个方法论文件 |
 | `researcher serve [path]` | 本地 web 控制台：Home、Library（精读 + paper notes）、Topics + run |
+| `researcher workspace sync` | 超级仓：pull / push topics / bump submodule pointers（显式；与 delivery 正交） |
+| `researcher workspace publish <path>` | 把本地 pillar 晋升为带 origin 的 submodule |
 | `researcher version` | 打印版本 |
 
 ## 环境变量
