@@ -96,6 +96,14 @@ class TruncatedStubAdapter implements AgentRuntime {
   }
 }
 
+class FailedCliAdapter implements AgentRuntime {
+  id = 'failed-cli';
+  constructor(private readonly result: InvokeResult) {}
+  async invoke(): Promise<InvokeResult> {
+    return this.result;
+  }
+}
+
 const COMPLETE_PAPER_BODY = [
   '# Library Read Paper',
   '',
@@ -280,6 +288,25 @@ describe('runLibraryRead', () => {
       readId: 'read_paper_arxiv_2401_12345',
       adapter: new EmptyStubAdapter(),
     })).rejects.toThrow('produced no Library read content');
+  });
+
+  it('surfaces adapter error code/message when stderr is empty (#136)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-exit-detail-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new FailedCliAdapter({
+        output: 'Grok CLI timed out.',
+        modifiedFiles: [],
+        exitCode: 1,
+        stderr: '',
+        error: { code: 'GROK_CLI_TIMEOUT', message: 'Grok CLI timed out.' },
+      }),
+    })).rejects.toThrow(/GROK_CLI_TIMEOUT|Grok CLI timed out/i);
   });
 
   it('fails clearly when the model output is truncated with no usable body', async () => {

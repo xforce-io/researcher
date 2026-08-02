@@ -6,7 +6,7 @@ import { loadSourceMaterial } from '../pipeline/read.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { resolveResearcherHome } from '../paths.js';
 import { scaffoldMilkieRuntime } from '../commands/init.js';
-import type { AgentRuntime } from '../adapter/interface.js';
+import type { AgentRuntime, InvokeResult } from '../adapter/interface.js';
 import { defaultDocTypeForSource, isPaperDocType, type DocType } from '../library/doc-type.js';
 import type { Paper } from '../library/model.js';
 import type { RunEvent } from '../pipeline/events.js';
@@ -121,8 +121,9 @@ export async function runLibraryRead(
   }
 
   if (result.exitCode !== 0) {
-    throw new Error(`library read agent exited ${result.exitCode}${result.stderr ? `: ${result.stderr}` : ''}`);
+    throw new Error(formatLibraryReadAgentFailure(result));
   }
+
 
   const requiredSections = isPaperDocType(material.docType) ? PAPER_READ_SECTIONS : DOC_READ_SECTIONS;
   let body = normalizeLibraryReadBody(result.output);
@@ -150,9 +151,10 @@ export async function runLibraryRead(
         maxTokens: LIBRARY_READ_MAX_TOKENS,
       });
       if (recovery.exitCode !== 0) {
-        throw new Error(
-          `library read recovery exited ${recovery.exitCode}${recovery.stderr ? `: ${recovery.stderr}` : ''}`,
-        );
+        throw new Error(formatLibraryReadAgentFailure(recovery).replace(
+          'library read agent exited',
+          'library read recovery exited',
+        ));
       }
       body = normalizeLibraryReadBody(recovery.output);
       if (!libraryReadBodyHasRequiredSections(body, requiredSections)) {
@@ -247,6 +249,22 @@ function normalizeLibraryReadBody(output: string): string {
   body = body.replace(/^\s*---[\s\S]*?---\s*/, '').trim();
   body = body.replace(/\n+FILES_MODIFIED:\s*\n[\s\S]*$/i, '').trim();
   return body;
+}
+
+/** Prefer structured adapter error / stderr over a bare exit code. */
+export function formatLibraryReadAgentFailure(result: InvokeResult): string {
+  const code = result.error?.code?.trim();
+  const message =
+    result.error?.message?.trim() ||
+    result.stderr?.trim() ||
+    (result.output?.trim() && result.output.trim().length < 400 ? result.output.trim() : '') ||
+    `exit code ${result.exitCode}`;
+  const codePart = code ? ` [${code}]` : '';
+  // Avoid duplicating "library read agent exited 1: exit code 1"
+  if (!code && message === `exit code ${result.exitCode}`) {
+    return `library read agent exited ${result.exitCode}`;
+  }
+  return `library read agent exited ${result.exitCode}${codePart}: ${message}`;
 }
 
 function readMethodology(file: string): string {
