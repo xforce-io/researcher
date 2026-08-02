@@ -81,7 +81,42 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
           ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir });
         },
       },
-      { name: 'soul',     fn: async () => soulBootstrap(ctx!) },
+    ]);
+
+    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
+    // silently skip paper discovery because an x-inbox source is present.
+    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
+    const feedSource = mode === 'feed'
+      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
+      : undefined;
+
+    // Paper mode + discover off: empty linked queue exits before soul (no LLM).
+    if (!feedSource && opts.discover !== true) {
+      const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
+      const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
+      const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
+      if (!linkedId) {
+        emitEvent({ type: 'plan', stages: ['bootstrap'] });
+        const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath });
+        if (empty === 'all-integrated') {
+          process.stdout.write(
+            `autonomous tick: all linked Library papers already integrated — discover off. (${runDir.id})\n` +
+            `Link another paper, or re-run with --discover to search arxiv.\n`,
+          );
+          setOutcome('all-integrated');
+        } else {
+          process.stdout.write(
+            `autonomous tick: nothing to run — no pending linked paper and discover off. (${runDir.id})\n` +
+            `Link a Library paper, or re-run with --discover to search arxiv.\n`,
+          );
+          setOutcome('nothing-to-run');
+        }
+        return;
+      }
+    }
+
+    await runStages(runDir, [
+      { name: 'soul', fn: async () => soulBootstrap(ctx!) },
     ]);
 
     if (ctx!.needsHumanInput) {
@@ -93,12 +128,6 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       return;
     }
 
-    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
-    // silently skip paper discovery because an x-inbox source is present.
-    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
-    const feedSource = mode === 'feed'
-      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
-      : undefined;
     if (feedSource) {
       const inboxDir = resolveInboxDir(feedSource.inbox_dir);
       if (!inboxDir) {
@@ -142,7 +171,6 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     const hasRealQueries = ctx!.projectYaml.sources.some(
       (s) => s.queries && s.queries.some((q) => q.trim() !== '' && q !== 'your topic keyword')
     );
-    const allowDiscover = opts.discover === true;
 
     // Prefer Library papers already linked to this topic but not yet integrated —
     // users see them under Related papers and expect Run to consume them.
@@ -160,24 +188,8 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       process.stdout.write(
         `autonomous tick: using library-linked candidate ${linkedId} (skip discover). (${runDir.id})\n`,
       );
-    } else if (!allowDiscover) {
-      emitEvent({ type: 'plan', stages: ['bootstrap', 'soul'] });
-      const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath });
-      if (empty === 'all-integrated') {
-        process.stdout.write(
-          `autonomous tick: all linked Library papers already integrated — discover off. (${runDir.id})\n` +
-          `Link another paper, or re-run with --discover to search arxiv.\n`,
-        );
-        setOutcome('all-integrated');
-      } else {
-        process.stdout.write(
-          `autonomous tick: nothing to run — no pending linked paper and discover off. (${runDir.id})\n` +
-          `Link a Library paper, or re-run with --discover to search arxiv.\n`,
-        );
-        setOutcome('nothing-to-run');
-      }
-      return;
     } else {
+      // discover requested (empty-queue fast path already returned above when off)
       emitEvent({
         type: 'plan',
         stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],

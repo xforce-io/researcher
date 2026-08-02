@@ -66,7 +66,8 @@ describe('production runtime selection', () => {
 
     // Import after setting the fallback binary so this test can prove it is unused.
     const { runRun } = await import('../../src/commands/run.js');
-    await expect(runRun({ cwd: project })).resolves.toMatchObject({ outcome: 'nothing-to-run' });
+    // discover on so we reach soul (empty linked queue would otherwise exit first).
+    await expect(runRun({ cwd: project, discover: true })).resolves.toMatchObject({ outcome: 'no-queries' });
 
     const args = JSON.parse(readFileSync(argsPath, 'utf8')) as string[];
     expect(args.filter((arg) => arg === '-p')).toHaveLength(1);
@@ -82,7 +83,7 @@ describe('production runtime selection', () => {
 
     // Import after setting the fallback binary so this test can prove it is unused.
     const { runRun } = await import('../../src/commands/run.js');
-    await expect(runRun({ cwd: project })).rejects.toThrow(/soul stage agent exited 1/);
+    await expect(runRun({ cwd: project, discover: true })).rejects.toThrow(/soul stage agent exited 1/);
 
     const runsDir = join(project, '.researcher', 'state', 'runs');
     const runDir = readdirSync(runsDir).find((entry) => entry.startsWith('r-'));

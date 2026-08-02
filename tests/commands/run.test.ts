@@ -296,9 +296,9 @@ describe('researcher run (autonomous)', () => {
       (process as { send?: unknown }).send = orig;
     }
     expect(res.outcome).toBe('nothing-to-run');
-    expect(adapter.callCount).toBe(1); // soul only — no collect/triage
+    expect(adapter.callCount).toBe(0); // no soul/collect — empty queue before LLM
     expect(sent).toContainEqual({ type: 'outcome', outcome: 'nothing-to-run' });
-    expect(sent.find((e) => e.type === 'plan')?.stages).toEqual(['bootstrap', 'soul']);
+    expect(sent.find((e) => e.type === 'plan')?.stages).toEqual(['bootstrap']);
   });
 
   it('exits all-integrated when linked papers are done and discover is off (#140)', async () => {
@@ -334,7 +334,7 @@ describe('researcher run (autonomous)', () => {
       adapter,
     });
     expect(res.outcome).toBe('all-integrated');
-    expect(adapter.callCount).toBe(1);
+    expect(adapter.callCount).toBe(0);
   });
 
   it('migrates legacy managed contracts during a normal autonomous run', async () => {
@@ -400,7 +400,8 @@ describe('researcher run (autonomous)', () => {
       },
     ]);
     const { runRun } = await import('../../src/commands/run.js');
-    await runRun({ cwd: proj, adapter });
+    // discover on (or any non-empty path) so soul still runs; empty queue would skip soul.
+    await runRun({ cwd: proj, adapter, discover: true });
 
     expect(adapter.callCount).toBe(1); // only soul ran
     expect(existsSync(join(proj, '.researcher/open_questions.md'))).toBe(true);
