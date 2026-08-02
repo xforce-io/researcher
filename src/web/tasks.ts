@@ -10,6 +10,7 @@ export type Runner = (
   onLine: (line: string) => void,
   onEvent: (ev: RunEvent) => void,
   workspaceRoot?: string,
+  opts?: { discover?: boolean },
 ) => Promise<number>;
 
 export type TaskJob = (
@@ -70,7 +71,7 @@ export function resolveCliEntry(metaUrl: string = import.meta.url): string {
  * never collide and need no ordering guarantee.
  */
 export function defaultRunner(cliEntry: string = resolveCliEntry()): Runner {
-  return (cwd, onLine, onEvent, workspaceRoot) =>
+  return (cwd, onLine, onEvent, workspaceRoot, opts) =>
     new Promise<number>((resolve) => {
       if (!cliEntry || !existsSync(cliEntry)) {
         onLine(`runner error: CLI entry not found: ${cliEntry || '(empty)'}`);
@@ -80,9 +81,11 @@ export function defaultRunner(cliEntry: string = resolveCliEntry()): Runner {
       }
       const env: NodeJS.ProcessEnv = { ...process.env, [RUN_IPC_ENV]: '1' };
       if (workspaceRoot) env.RESEARCHER_WORKSPACE_ROOT = workspaceRoot;
+      const args = ['run'];
+      if (opts?.discover) args.push('--discover');
       let child: ReturnType<typeof fork>;
       try {
-        child = fork(cliEntry, ['run'], { cwd, silent: true, env });
+        child = fork(cliEntry, args, { cwd, silent: true, env });
       } catch (err) {
         onLine(`runner error: failed to fork: ${err instanceof Error ? err.message : String(err)}`);
         resolve(1);
@@ -135,8 +138,8 @@ export class TaskRegistry {
     return undefined;
   }
 
-  start(slug: string, cwd: string, workspaceRoot?: string): RunTask {
-    return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent, workspaceRoot));
+  start(slug: string, cwd: string, workspaceRoot?: string, opts?: { discover?: boolean }): RunTask {
+    return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent, workspaceRoot, opts));
   }
 
   startJob(slug: string, job: TaskJob): RunTask {

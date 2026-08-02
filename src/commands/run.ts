@@ -40,14 +40,21 @@ export interface RunOptions {
   /** Injectable for tests. Production: configured runtime factory. */
   adapter?: AgentRuntime;
   libraryReadRunner?: LibraryReadRunner;
+  /**
+   * When true, allow arxiv discover/collect+triage if no pending linked paper.
+   * Default false: Run only integrates Library-linked queue (#140).
+   */
+  discover?: boolean;
 }
 
 /** What a single autonomous tick concluded — surfaced for workspace summaries. */
 export type RunOutcome =
-  | 'completed'      // deep-read a paper + synthesized + packaged (PR opened)
-  | 'no-candidate'   // discover ran but nothing worth deep-reading this tick
-  | 'thin-signal'    // soul too thin to draft; punted to open_questions.md
-  | 'no-queries';    // no arxiv queries configured; discover skipped
+  | 'completed'       // deep-read a paper + synthesized + packaged (PR opened)
+  | 'no-candidate'    // discover ran but nothing worth deep-reading this tick
+  | 'thin-signal'     // soul too thin to draft; punted to open_questions.md
+  | 'no-queries'      // discover requested but no arxiv queries configured
+  | 'all-integrated'  // linked papers exist and all are integrated; discover off
+  | 'nothing-to-run'; // no pending linked paper and discover off
 
 export interface RunResult {
   outcome: RunOutcome;
@@ -74,7 +81,42 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
           ctx = await bootstrap({ projectRoot: opts.cwd, adapter, runDir });
         },
       },
-      { name: 'soul',     fn: async () => soulBootstrap(ctx!) },
+    ]);
+
+    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
+    // silently skip paper discovery because an x-inbox source is present.
+    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
+    const feedSource = mode === 'feed'
+      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
+      : undefined;
+
+    // Paper mode + discover off: empty linked queue exits before soul (no LLM).
+    if (!feedSource && opts.discover !== true) {
+      const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
+      const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
+      const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
+      if (!linkedId) {
+        emitEvent({ type: 'plan', stages: ['bootstrap'] });
+        const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath });
+        if (empty === 'all-integrated') {
+          process.stdout.write(
+            `autonomous tick: all linked Library papers already integrated — discover off. (${runDir.id})\n` +
+            `Link another paper, or re-run with --discover to search arxiv.\n`,
+          );
+          setOutcome('all-integrated');
+        } else {
+          process.stdout.write(
+            `autonomous tick: nothing to run — no pending linked paper and discover off. (${runDir.id})\n` +
+            `Link a Library paper, or re-run with --discover to search arxiv.\n`,
+          );
+          setOutcome('nothing-to-run');
+        }
+        return;
+      }
+    }
+
+    await runStages(runDir, [
+      { name: 'soul', fn: async () => soulBootstrap(ctx!) },
     ]);
 
     if (ctx!.needsHumanInput) {
@@ -86,12 +128,6 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       return;
     }
 
-    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
-    // silently skip paper discovery because an x-inbox source is present.
-    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
-    const feedSource = mode === 'feed'
-      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
-      : undefined;
     if (feedSource) {
       const inboxDir = resolveInboxDir(feedSource.inbox_dir);
       if (!inboxDir) {
@@ -142,20 +178,22 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
     const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
 
-    emitEvent({
-      type: 'plan',
-      stages: linkedId
-        ? ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package']
-        : ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
-    });
-
     if (linkedId) {
+      emitEvent({
+        type: 'plan',
+        stages: ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package'],
+      });
       ctx!.addSourceId = linkedId;
       ctx!.triageReason = 'library-linked candidate (not yet in landscape)';
       process.stdout.write(
         `autonomous tick: using library-linked candidate ${linkedId} (skip discover). (${runDir.id})\n`,
       );
     } else {
+      // discover requested (empty-queue fast path already returned above when off)
+      emitEvent({
+        type: 'plan',
+        stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
+      });
       if (!hasRealQueries) {
         process.stdout.write(
           `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
@@ -237,6 +275,29 @@ export function pickLinkedLibraryCandidate(opts: {
     if (!fallback) fallback = id;
   }
   return fallback;
+}
+
+/** When discover is off and no pending linked paper: distinguish empty vs all done. */
+export function classifyEmptyLinkedQueue(opts: {
+  workspaceRoot: string;
+  topicPath: string;
+}): 'all-integrated' | 'nothing-to-run' {
+  if (!opts.topicPath) return 'nothing-to-run';
+  let lib: PaperLibrary;
+  try {
+    lib = new PaperLibrary(opts.workspaceRoot);
+  } catch {
+    return 'nothing-to-run';
+  }
+  // Only count work that was or is part of the integrate queue.
+  const hasIntegration = lib.listIntegrations().some((i) => i.topicId === opts.topicPath);
+  const hasIntegratedLink = lib.listLinks().some(
+    (l) =>
+      l.surfaceType === 'topic' &&
+      l.surfaceId === opts.topicPath &&
+      l.relation === 'integrated',
+  );
+  return hasIntegration || hasIntegratedLink ? 'all-integrated' : 'nothing-to-run';
 }
 
 function inferTopicPath(workspaceRoot: string, topicDir: string): string {

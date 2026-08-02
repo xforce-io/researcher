@@ -408,7 +408,22 @@ async function handle(
           JSON.stringify({ error: 'setup_required', reasons: soul.reasons }),
         );
       }
-      const task = registry.start(decoded, topicDir, root);
+      const rawBody = await readBody(req).catch(() => '');
+      let discover = false;
+      const ctype = req.headers['content-type'] ?? '';
+      if (ctype.includes('application/json') && rawBody) {
+        try {
+          const body = JSON.parse(rawBody) as { discover?: unknown };
+          discover = body.discover === true || body.discover === 1 || body.discover === '1';
+        } catch {
+          discover = false;
+        }
+      } else if (rawBody) {
+        const form = new URLSearchParams(rawBody);
+        const v = form.get('discover');
+        discover = v === '1' || v === 'true' || v === 'on';
+      }
+      const task = registry.start(decoded, topicDir, root, { discover });
       return send(res, 200, 'application/json', JSON.stringify({ taskId: task.id }));
     }
     // GET /t/:slug/run/:taskId/stream  (SSE)

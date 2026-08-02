@@ -83,7 +83,6 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 }
 .nav-link:hover, .secondary:hover { text-decoration:none; border-color:var(--accent); }
 .panel-toggle {
-  margin-left:auto;
   font:600 12px var(--mono); letter-spacing:.04em;
   padding:6px 12px; border:1px solid var(--line);
   background:var(--paper); color:var(--ink-soft); border-radius:6px; cursor:pointer;
@@ -93,7 +92,34 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .panel-toggle[aria-expanded="true"] {
   background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);
 }
-.run-wrap { position:relative; }
+/* Topic page: Info + Run cluster. Top-align so Info lines up with Run, not the discover row. */
+.topbar-actions {
+  margin-left:auto;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+.run-wrap {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+}
+.run-discover-opt {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font:500 11px var(--sans);
+  color:var(--ink-soft);
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+  line-height:1.2;
+  opacity:.88;
+}
+.run-discover-opt:hover { color:var(--ink); opacity:1; }
+.run-discover-opt input { margin:0; accent-color:var(--accent); width:13px; height:13px; }
 #run-btn {
   font:600 13px var(--sans);
   padding:7px 16px; border:1px solid var(--accent);

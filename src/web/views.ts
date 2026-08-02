@@ -1369,6 +1369,9 @@ export function renderTopic(
   const runWrap =
     `<div class="run-wrap" id="run-wrap">` +
     `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}${runDisabled}>Run</button>` +
+    `<label class="run-discover-opt" title="When off, Run only integrates Library-linked papers">` +
+      `<input id="run-discover" type="checkbox"> Discover new papers` +
+    `</label>` +
     `<div id="run-pop" class="run-pop" hidden>` +
       `<div id="run-bar" class="run-bar">` +
         `<span id="run-status" class="run-status">idle</span>` +
@@ -1383,8 +1386,10 @@ export function renderTopic(
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
     `<h1 class="sr-only">Topic: ${escapeHtml(v.path)}</h1>` +
-    `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
-    `${runWrap}</header>` +
+    `<div class="topbar-actions">` +
+      `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
+      `${runWrap}` +
+    `</div></header>` +
     setupNotice +
     `<main class="three-col${related.length ? ' right-open' : ''}" id="cols" data-default-right-open="${related.length ? '1' : '0'}">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
@@ -1677,6 +1682,20 @@ function subscribe(taskId, t0) {
           '   Landscape was NOT updated.\\n');
         return;
       }
+      if (outcome === 'all-integrated') {
+        settle('all integrated', 'warn',
+          '\\n\\u25cb All linked integrated.\\n' +
+          '   Landscape was NOT updated.\\n' +
+          '   Link another paper, or check Discover new papers and Run again.\\n');
+        return;
+      }
+      if (outcome === 'nothing-to-run') {
+        settle('nothing to run', 'warn',
+          '\\n\\u25cb Nothing to run.\\n' +
+          '   No pending linked Library paper and Discover is off.\\n' +
+          '   Link a paper, or check Discover new papers and Run again.\\n');
+        return;
+      }
       settle('done', 'ok', '\\n\\u2713 run finished' + (outcome ? ' (' + outcome + ')' : '') + '.\\n');
       if (outcome === 'completed' || /deep-read:/i.test(log)) {
         setTimeout(() => { location.reload(); }, 800);
@@ -1701,7 +1720,12 @@ async function startRun() {
   statusEl.textContent = 'starting'; statusEl.className = 'run-status running';
   setBtnLabel();
   try {
-    const res = await fetch('/t/' + slug + '/run', { method: 'POST' });
+    const discover = document.getElementById('run-discover')?.checked === true;
+    const res = await fetch('/t/' + slug + '/run', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ discover }),
+    });
     if (res.status === 409) {
       let body = {};
       try { body = await res.json(); } catch {}
