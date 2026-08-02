@@ -66,7 +66,7 @@ describe('production runtime selection', () => {
 
     // Import after setting the fallback binary so this test can prove it is unused.
     const { runRun } = await import('../../src/commands/run.js');
-    await expect(runRun({ cwd: project })).resolves.toMatchObject({ outcome: 'no-queries' });
+    await expect(runRun({ cwd: project })).resolves.toMatchObject({ outcome: 'nothing-to-run' });
 
     const args = JSON.parse(readFileSync(argsPath, 'utf8')) as string[];
     expect(args.filter((arg) => arg === '-p')).toHaveLength(1);

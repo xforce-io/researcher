@@ -40,14 +40,21 @@ export interface RunOptions {
   /** Injectable for tests. Production: configured runtime factory. */
   adapter?: AgentRuntime;
   libraryReadRunner?: LibraryReadRunner;
+  /**
+   * When true, allow arxiv discover/collect+triage if no pending linked paper.
+   * Default false: Run only integrates Library-linked queue (#140).
+   */
+  discover?: boolean;
 }
 
 /** What a single autonomous tick concluded — surfaced for workspace summaries. */
 export type RunOutcome =
-  | 'completed'      // deep-read a paper + synthesized + packaged (PR opened)
-  | 'no-candidate'   // discover ran but nothing worth deep-reading this tick
-  | 'thin-signal'    // soul too thin to draft; punted to open_questions.md
-  | 'no-queries';    // no arxiv queries configured; discover skipped
+  | 'completed'       // deep-read a paper + synthesized + packaged (PR opened)
+  | 'no-candidate'    // discover ran but nothing worth deep-reading this tick
+  | 'thin-signal'     // soul too thin to draft; punted to open_questions.md
+  | 'no-queries'      // discover requested but no arxiv queries configured
+  | 'all-integrated'  // linked papers exist and all are integrated; discover off
+  | 'nothing-to-run'; // no pending linked paper and discover off
 
 export interface RunResult {
   outcome: RunOutcome;
@@ -135,6 +142,7 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     const hasRealQueries = ctx!.projectYaml.sources.some(
       (s) => s.queries && s.queries.some((q) => q.trim() !== '' && q !== 'your topic keyword')
     );
+    const allowDiscover = opts.discover === true;
 
     // Prefer Library papers already linked to this topic but not yet integrated —
     // users see them under Related papers and expect Run to consume them.
@@ -142,20 +150,38 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
     const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
 
-    emitEvent({
-      type: 'plan',
-      stages: linkedId
-        ? ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package']
-        : ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
-    });
-
     if (linkedId) {
+      emitEvent({
+        type: 'plan',
+        stages: ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package'],
+      });
       ctx!.addSourceId = linkedId;
       ctx!.triageReason = 'library-linked candidate (not yet in landscape)';
       process.stdout.write(
         `autonomous tick: using library-linked candidate ${linkedId} (skip discover). (${runDir.id})\n`,
       );
+    } else if (!allowDiscover) {
+      emitEvent({ type: 'plan', stages: ['bootstrap', 'soul'] });
+      const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath });
+      if (empty === 'all-integrated') {
+        process.stdout.write(
+          `autonomous tick: all linked Library papers already integrated — discover off. (${runDir.id})\n` +
+          `Link another paper, or re-run with --discover to search arxiv.\n`,
+        );
+        setOutcome('all-integrated');
+      } else {
+        process.stdout.write(
+          `autonomous tick: nothing to run — no pending linked paper and discover off. (${runDir.id})\n` +
+          `Link a Library paper, or re-run with --discover to search arxiv.\n`,
+        );
+        setOutcome('nothing-to-run');
+      }
+      return;
     } else {
+      emitEvent({
+        type: 'plan',
+        stages: ['bootstrap', 'soul', 'discover', 'read', 'rebalance', 'synthesize', 'package'],
+      });
       if (!hasRealQueries) {
         process.stdout.write(
           `autonomous tick: no arxiv keywords configured — skipping discover stage.\n` +
@@ -237,6 +263,25 @@ export function pickLinkedLibraryCandidate(opts: {
     if (!fallback) fallback = id;
   }
   return fallback;
+}
+
+/** When discover is off and no pending linked paper: distinguish empty vs all done. */
+export function classifyEmptyLinkedQueue(opts: {
+  workspaceRoot: string;
+  topicPath: string;
+}): 'all-integrated' | 'nothing-to-run' {
+  if (!opts.topicPath) return 'nothing-to-run';
+  let lib: PaperLibrary;
+  try {
+    lib = new PaperLibrary(opts.workspaceRoot);
+  } catch {
+    return 'nothing-to-run';
+  }
+  const hasLink = lib.listLinks().some(
+    (l) => l.surfaceType === 'topic' && l.surfaceId === opts.topicPath,
+  );
+  const hasIntegration = lib.listIntegrations().some((i) => i.topicId === opts.topicPath);
+  return hasLink || hasIntegration ? 'all-integrated' : 'nothing-to-run';
 }
 
 function inferTopicPath(workspaceRoot: string, topicDir: string): string {

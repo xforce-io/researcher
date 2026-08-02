@@ -389,13 +389,6 @@ async function handle(
       if (!abs) return send(res, 404, 'text/plain', 'not found');
       return send(res, 200, 'text/html; charset=utf-8', renderDoc(readFileSync(abs, 'utf8')));
     }
-    // GET /t/:slug/paper?id=...
-    if (req.method === 'GET' && sub === '/paper') {
-      const id = url.searchParams.get('id') ?? '';
-      const abs = safePaperPath(topicDir, id);
-      if (!abs) return send(res, 404, 'text/plain', 'not found');
-      return send(res, 200, 'application/pdf', readFileSync(abs));
-    }
     // POST /t/:slug/run
     if (req.method === 'POST' && sub === '/run') {
       if (registry.isBusy(decoded)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
@@ -408,7 +401,22 @@ async function handle(
           JSON.stringify({ error: 'setup_required', reasons: soul.reasons }),
         );
       }
-      const task = registry.start(decoded, topicDir, root);
+      const rawBody = await readBody(req).catch(() => '');
+      let discover = false;
+      const ctype = req.headers['content-type'] ?? '';
+      if (ctype.includes('application/json') && rawBody) {
+        try {
+          const body = JSON.parse(rawBody) as { discover?: unknown };
+          discover = body.discover === true || body.discover === 1 || body.discover === '1';
+        } catch {
+          discover = false;
+        }
+      } else if (rawBody) {
+        const form = new URLSearchParams(rawBody);
+        const v = form.get('discover');
+        discover = v === '1' || v === 'true' || v === 'on';
+      }
+      const task = registry.start(decoded, topicDir, root, { discover });
       return send(res, 200, 'application/json', JSON.stringify({ taskId: task.id }));
     }
     // GET /t/:slug/run/:taskId/stream  (SSE)

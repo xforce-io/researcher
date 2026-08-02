@@ -28,6 +28,8 @@ export interface WorkspaceRunOptions {
   adapter?: AgentRuntime;
   /** Injectable for tests; defaults to the real per-topic runRun. */
   runTopic?: (opts: RunOptions) => Promise<RunResult>;
+  /** Forwarded to each topic run (#140). Default off. */
+  discover?: boolean;
 }
 
 /**
@@ -77,7 +79,13 @@ export async function runWorkspace(opts: WorkspaceRunOptions): Promise<Workspace
 
     process.stdout.write(`\n=== [${t.path}] tick${charterSynced ? ' (charter synced)' : ''} ===\n`);
     try {
-      const res = await runTopic({ cwd: topicDir, workspaceRoot: opts.cwd, topicPath: t.path, adapter: opts.adapter });
+      const res = await runTopic({
+        cwd: topicDir,
+        workspaceRoot: opts.cwd,
+        topicPath: t.path,
+        adapter: opts.adapter,
+        discover: opts.discover,
+      });
       results.push({ path: t.path, status: 'ok', outcome: res.outcome, charterSynced });
     } catch (err) {
       results.push({ path: t.path, status: 'error', charterSynced, message: errMsg(err) });

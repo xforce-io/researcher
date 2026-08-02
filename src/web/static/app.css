@@ -93,7 +93,13 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .panel-toggle[aria-expanded="true"] {
   background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);
 }
-.run-wrap { position:relative; }
+.run-wrap { position:relative; display:flex; align-items:center; gap:10px; }
+.run-discover-opt {
+  display:inline-flex; align-items:center; gap:6px;
+  font:500 12px var(--sans); color:var(--ink-soft); cursor:pointer;
+  user-select:none; white-space:nowrap;
+}
+.run-discover-opt input { margin:0; accent-color:var(--accent); }
 #run-btn {
   font:600 13px var(--sans);
   padding:7px 16px; border:1px solid var(--accent);

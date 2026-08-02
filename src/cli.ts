@@ -161,19 +161,25 @@ workspace
 program
   .command('run')
   .description('Autonomous tick (topic repo), or workspace orchestration (super-repo with researcher.workspace.yml)')
-  .action(async () => {
+  .option('--discover', 'allow arxiv discover when no pending linked Library paper (default: off)', false)
+  .action(async (opts: { discover?: boolean }) => {
     const cwd = process.cwd();
     const { existsSync } = await import('node:fs');
     const { resolveProjectResearcherDir } = await import('./paths.js');
     const { hasWorkspaceManifest } = await import('./workspace/manifest.js');
+    const discover = opts.discover === true;
     // A topic repo (.researcher/ present) always runs single-topic; only a
     // super-repo without its own .researcher/ enters workspace orchestration.
     if (!existsSync(resolveProjectResearcherDir(cwd)) && hasWorkspaceManifest(cwd)) {
       const { runWorkspace } = await import('./workspace/orchestrator.js');
-      await runWorkspace({ cwd });
+      await runWorkspace({ cwd, discover });
     } else {
       const { runRun } = await import('./commands/run.js');
-      await runRun({ cwd, workspaceRoot: process.env.RESEARCHER_WORKSPACE_ROOT });
+      await runRun({
+        cwd,
+        workspaceRoot: process.env.RESEARCHER_WORKSPACE_ROOT,
+        discover,
+      });
     }
   });
 
