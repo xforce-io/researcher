@@ -277,11 +277,15 @@ export function classifyEmptyLinkedQueue(opts: {
   } catch {
     return 'nothing-to-run';
   }
-  const hasLink = lib.listLinks().some(
-    (l) => l.surfaceType === 'topic' && l.surfaceId === opts.topicPath,
-  );
+  // Only count work that was or is part of the integrate queue.
   const hasIntegration = lib.listIntegrations().some((i) => i.topicId === opts.topicPath);
-  return hasLink || hasIntegration ? 'all-integrated' : 'nothing-to-run';
+  const hasIntegratedLink = lib.listLinks().some(
+    (l) =>
+      l.surfaceType === 'topic' &&
+      l.surfaceId === opts.topicPath &&
+      l.relation === 'integrated',
+  );
+  return hasIntegration || hasIntegratedLink ? 'all-integrated' : 'nothing-to-run';
 }
 
 function inferTopicPath(workspaceRoot: string, topicDir: string): string {

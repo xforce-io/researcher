@@ -389,6 +389,13 @@ async function handle(
       if (!abs) return send(res, 404, 'text/plain', 'not found');
       return send(res, 200, 'text/html; charset=utf-8', renderDoc(readFileSync(abs, 'utf8')));
     }
+    // GET /t/:slug/paper?id=...
+    if (req.method === 'GET' && sub === '/paper') {
+      const id = url.searchParams.get('id') ?? '';
+      const abs = safePaperPath(topicDir, id);
+      if (!abs) return send(res, 404, 'text/plain', 'not found');
+      return send(res, 200, 'application/pdf', readFileSync(abs));
+    }
     // POST /t/:slug/run
     if (req.method === 'POST' && sub === '/run') {
       if (registry.isBusy(decoded)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
