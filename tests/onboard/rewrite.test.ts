@@ -177,6 +177,51 @@ Agentic model training is advancing via ...
     expect(r.thesisMd).toContain('Working thesis');
     expect(r.thesisMd).not.toMatch(/^```/);
   });
+
+  it('rejects thesis that is still instructional scaffold / template echo', async () => {
+    const hollowThesis = [
+      '# Thesis',
+      '',
+      '## Working thesis',
+      '',
+      'Write one paragraph per major claim — typically one per research question.',
+      '',
+      '<!-- TODO: revisit after first few papers — working hypotheses for RQ1/RQ2 not yet stated -->',
+      '',
+      '## Taste',
+      '',
+      'What counts as a good paper here? What does a bad one look like?',
+      '',
+      '## Anti-patterns',
+      '',
+      'What do you intentionally reject? Examples:',
+      '',
+      '## Examples',
+      '',
+      'Pointers to existing notes that exemplify good or bad inclusion decisions.',
+      '',
+    ].join('\n');
+    const hollow = [
+      '<<<PROJECT_YAML>>>',
+      'meta:',
+      '  topic_oneline: "model inference"',
+      'research_questions: []',
+      '<<<END_PROJECT_YAML>>>',
+      '',
+      '<<<THESIS_MD>>>',
+      hollowThesis,
+      '<<<END_THESIS_MD>>>',
+      '',
+    ].join('\n');
+    const rt = fakeRuntime(hollow);
+    await expect(
+      rewriteAnswers({
+        runtime: rt, cwd: '/tmp', methodologyBody: 's',
+        onboarding: ONBOARDING, answers: [],
+        templateProjectYaml: '', templateThesisMd: '',
+      }),
+    ).rejects.toThrow(/template\/hollow/i);
+  });
 });
 
 describe('stripOuterMarkdownFence', () => {

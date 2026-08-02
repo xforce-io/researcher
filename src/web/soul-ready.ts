@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadProjectYaml, type ProjectYaml } from '../config/project-yaml.js';
 import { isThesisTemplate } from '../onboard/all-templates-check.js';
+import { isThesisBodyHollow } from '../onboard/thesis-hollow.js';
 import { loadThesis } from '../config/thesis-md.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 
@@ -17,18 +18,7 @@ const PLACEHOLDER_QUERIES = new Set([
   'your topic keyword',
   'your topic keywords',
 ]);
-
-/**
- * Instructional anchors that remain after a weak onboard which only
- * normalizes punctuation / drops Design Context but never writes a real thesis.
- */
-const THESIS_HOLLOW_ANCHORS = [
-  'Write one paragraph per major claim',
-  'TODO: revisit after first few papers',
-  'What counts as a good paper here?',
-  'What do you intentionally reject?',
-  'Pointers to existing notes that exemplify good or bad inclusion decisions',
-];
+export { isThesisBodyHollow } from '../onboard/thesis-hollow.js';
 
 /**
  * Assess whether a topic has enough soul for autonomous `run`.
@@ -91,13 +81,7 @@ function isThesisHollow(topicDir: string): boolean {
   } catch {
     return true;
   }
-  if (!body.trim()) return true;
-  // Count instructional anchors; one leftover example phrase is fine, several mean hollow.
-  let hits = 0;
-  for (const a of THESIS_HOLLOW_ANCHORS) {
-    if (body.includes(a)) hits++;
-  }
-  return hits >= 2;
+  return isThesisBodyHollow(body);
 }
 
 function hasUsableSource(yaml: ProjectYaml): boolean {
