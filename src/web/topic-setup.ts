@@ -10,6 +10,7 @@ import {
 } from '../onboard/rewrite.js';
 import { parseOnboardingMd } from '../onboard/schema.js';
 import { isSoulReady } from './soul-ready.js';
+import { isThesisBodyHollow } from '../onboard/thesis-hollow.js';
 import {
   makeSlug,
   writeOnboardArtifacts,
@@ -74,6 +75,15 @@ export function defaultResearchQuestionsFromOneline(oneline: string): string {
   ].join('\n');
 }
 
+/** Starter working hypotheses so Complete setup is not skip-only on thesis body. */
+export function defaultWorkingHypothesesFromOneline(oneline: string): string {
+  const t = oneline.trim();
+  return [
+    `Current progress on "${t}" is best tracked by mechanism-level gains (systems, algorithms, or evaluation protocols) rather than leaderboard deltas alone. Falsifier: a widely adopted ranking that predicts real deployment outcomes without mechanism claims.`,
+    `The binding constraints on "${t}" are evaluation criteria and systems bottlenecks more than raw model scale. Falsifier: scale-only work that consistently dominates mechanism/systems papers on production-relevant metrics.`,
+  ].join('\n\n');
+}
+
 /** Pull ASCII-ish keyword phrases from free text for seed queries. */
 export function defaultSeedsFromOneline(oneline: string): string {
   const words = oneline
@@ -90,9 +100,9 @@ export function defaultSeedsFromOneline(oneline: string): string {
 /**
  * Map the Web setup form onto onboard question ids.
  * Q1 = oneline (required). Q8 = stake/design anchor. Q6 = seed keywords.
- * When seeds/RQs are empty we auto-seed from oneline so the rewrite agent is not
- * stuck with only SKIPPED fields (which previously caused endless deliberation
- * and empty marker blocks).
+ * When seeds/RQs/hypotheses are empty we auto-seed from oneline so the rewrite
+ * agent is not stuck with only SKIPPED fields (which previously caused endless
+ * deliberation, empty marker blocks, or template-echo thesis).
  */
 export function buildSetupAnswers(
   form: TopicSetupForm,
@@ -126,6 +136,15 @@ export function buildSetupAnswers(
     }
     if (q.fieldId === 'research_questions' || q.id === 'Q2') {
       answers.push({ questionId: q.id, fieldId: q.fieldId, kind: 'text', text: rqs });
+      continue;
+    }
+    if (q.fieldId === 'working_hypotheses' || q.id === 'Q7') {
+      answers.push({
+        questionId: q.id,
+        fieldId: q.fieldId,
+        kind: 'text',
+        text: defaultWorkingHypothesesFromOneline(oneline),
+      });
       continue;
     }
     answers.push({ questionId: q.id, fieldId: q.fieldId, kind: 'skipped' });
@@ -229,6 +248,11 @@ export async function applyTopicSetup(input: ApplyTopicSetupInput): Promise<void
   if (!oneline) throw new Error('missing one-line');
   if (!input.projectYaml.trim()) throw new Error('missing project.yaml');
   if (!input.thesisMd.trim()) throw new Error('missing thesis.md');
+  if (isThesisBodyHollow(input.thesisMd)) {
+    throw new Error(
+      'thesis.md is still template/hollow — regenerate with real Working thesis claims before apply',
+    );
+  }
 
   // Soft validate YAML shape (full ProjectYamlSchema may fail on partial agent output).
   try {

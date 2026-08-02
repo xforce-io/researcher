@@ -2,6 +2,7 @@ import { load as parseYaml } from 'js-yaml';
 import type { AgentRuntime } from '../adapter/interface.js';
 import type { Onboarding } from './schema.js';
 import type { SerializedAnswer } from './state.js';
+import { isThesisBodyHollow } from './thesis-hollow.js';
 
 export interface RewriteOptions {
   runtime: AgentRuntime;
@@ -44,6 +45,7 @@ export async function rewriteAnswers(opts: RewriteOptions): Promise<RewriteResul
   }
   try {
     const parsed = parseResponse(result.output);
+    assertThesisNotHollow(parsed.thesisMd);
     return { ...parsed, rawOutput: result.output };
   } catch (err) {
     const raw = (result.output || '').trim();
@@ -74,8 +76,17 @@ export function composeSystemPrompt(methodologyBody: string): string {
     '  (no ```yaml / ```markdown / ```). The first line after <<<PROJECT_YAML>>> must be',
     '  valid YAML (usually a comment or a key like `meta:`), never a fence.',
     '- Do not write long preambles, debates, or process notes in the final answer — emit the blocks.',
-    '- If most questions were skipped: preserve template defaults + TODO comments; still emit BOTH full files.',
-    '',
+    '- thesis.md MUST be a real research soul, not the instructional scaffold.',
+    '  Never keep phrases like "Write one paragraph per major claim",',
+    '  "What counts as a good paper here?", "What do you intentionally reject?",',
+    '  or "Pointers to existing notes that exemplify".',
+    '- When working_hypotheses (Q7) is answered: fully replace `## Working thesis` with',
+    '  substantive claim paragraphs (claim + mechanism + falsifier). Do not leave TODOs there.',
+    '- When taste / anti-patterns are skipped: write 2–4 concrete bullets derived from the',
+    '  topic/oneline — still no instructional questions. Optional `# TODO` only on YAML lines.',
+    '- If most questions were skipped: still emit BOTH full files; YAML may keep template',
+    '  defaults + TODO comments, but thesis sections above must not remain scaffold text.',
+
     'Directory exploration: only if references/, docs/, or root design .md files exist.',
     'If the topic is a fresh scaffold with no design docs, skip exploration and draft immediately from answers.',
     '',
@@ -162,4 +173,14 @@ export function parseResponse(output: string): { projectYaml: string; thesisMd: 
     throw new Error(`rewrite response: project.yaml is not valid yaml — ${(e as Error).message}`);
   }
   return { projectYaml, thesisMd };
+}
+
+/** Reject template-echo / instructional scaffold thesis from the model. */
+export function assertThesisNotHollow(thesisMd: string): void {
+  if (isThesisBodyHollow(thesisMd)) {
+    throw new Error(
+      'rewrite response: thesis.md is still template/hollow — Working thesis must state real claims ' +
+        '(not instructional scaffold). Regenerate; add Stake if the draft stays empty.',
+    );
+  }
 }
