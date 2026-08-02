@@ -5,7 +5,7 @@ import { PaperLibrary } from '../library/store.js';
 import type { Paper, PaperRead } from '../library/model.js';
 import { nextNoteNumber } from '../state/note_index.js';
 import { DEFAULT_FM, serializeNote } from '../state/zone.js';
-import { runLibraryRead, type LibraryReadRunner } from '../web/library-read.js';
+import { defaultLibraryReadRunner, type LibraryReadRunner } from '../web/library-read.js';
 import { libraryReadEmbedBody } from '../markdown/frontmatter.js';
 import type { RunContext } from './context.js';
 
@@ -122,8 +122,10 @@ async function ensureLibraryRead(opts: {
   if (existing) return existing;
 
   const readId = `read_${opts.paper.id}`;
-  opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'reading' });
-  const runner = opts.runner ?? ((runnerOpts) => runLibraryRead({ ...runnerOpts, adapter: opts.ctx.adapter }));
+  opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'reading', lastError: undefined });
+  // Library-read is content generation — always OpenAI-compatible text path (#69/#120),
+  // never the topic runtime (milkie/grok-cli) used for discover/synthesize agents.
+  const runner = opts.runner ?? defaultLibraryReadRunner;
   try {
     const result = await runner({
       workspaceRoot: opts.workspaceRoot,
@@ -135,7 +137,8 @@ async function ensureLibraryRead(opts: {
     }
     return opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'read', artifactPath: result.artifactPath });
   } catch (err) {
-    opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'failed' });
+    const message = err instanceof Error ? err.message : String(err);
+    opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'failed', lastError: message });
     throw err;
   }
 }

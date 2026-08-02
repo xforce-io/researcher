@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,25 @@ import { newRunId, RunDir } from '../../src/state/runs.js';
 import { PaperLibrary } from '../../src/library/store.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 import type { LibraryReadRunner } from '../../src/web/library-read.js';
+
+const defaultLibraryReadRunner = vi.hoisted(() =>
+  vi.fn<LibraryReadRunner>(async ({ workspaceRoot, paper, readId }) => {
+    const artifactPath = `.researcher-workspace/library/papers/${paper.id}/reads/${readId}.md`;
+    mkdirSync(join(workspaceRoot, '.researcher-workspace/library/papers', paper.id, 'reads'), {
+      recursive: true,
+    });
+    writeFileSync(join(workspaceRoot, artifactPath), '# Lib\n\nbody\n');
+    return { artifactPath, title: 'Timing Paper' };
+  }),
+);
+
+vi.mock('../../src/web/library-read.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/web/library-read.js')>();
+  return {
+    ...actual,
+    defaultLibraryReadRunner,
+  };
+});
 
 class SilentAdapter implements AgentRuntime {
   id = 'silent';
@@ -179,5 +198,78 @@ describe('libraryTopicRead integration timing', () => {
     expect(after.listLinks(paperId)).toEqual([
       expect.objectContaining({ surfaceId: 'trace', relation: 'integrated' }),
     ]);
+  });
+
+  it('defaults library-read to OpenAI runner, not topic runtime adapter (#136)', async () => {
+    defaultLibraryReadRunner.mockClear();
+    let topicAdapterCalls = 0;
+    class TopicRuntimeAdapter implements AgentRuntime {
+      id = 'topic-runtime-spy';
+      async invoke(_opts: InvokeOptions): Promise<InvokeResult> {
+        topicAdapterCalls += 1;
+        throw new Error('topic runtime must not run library-read');
+      }
+    }
+
+    const lib = new PaperLibrary(root);
+    lib.upsertPaper({
+      id: paperId,
+      canonicalSource: { kind: 'arxiv', id: sourceId, url: 'https://arxiv.org/abs/2401.55555' },
+      sources: [{ kind: 'arxiv', id: sourceId, url: 'https://arxiv.org/abs/2401.55555' }],
+      identifiers: { arxiv: '2401.55555' },
+      title: 'Timing Paper',
+      tags: [],
+    });
+
+    const rd = new RunDir(join(topic, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({
+      projectRoot: topic,
+      adapter: new TopicRuntimeAdapter(),
+      runDir: rd,
+      addSourceId: sourceId,
+    });
+
+    await libraryTopicRead(ctx, {
+      workspaceRoot: root,
+      topicPath: 'trace',
+      // no libraryReadRunner — production default path
+    });
+
+    expect(topicAdapterCalls).toBe(0);
+    expect(defaultLibraryReadRunner).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(topic, ctx.newNoteRelPath!))).toBe(true);
+  });
+
+  it('persists lastError when library-read fails (#136)', async () => {
+    const lib = new PaperLibrary(root);
+    lib.upsertPaper({
+      id: paperId,
+      canonicalSource: { kind: 'arxiv', id: sourceId, url: 'https://arxiv.org/abs/2401.55555' },
+      sources: [{ kind: 'arxiv', id: sourceId, url: 'https://arxiv.org/abs/2401.55555' }],
+      identifiers: { arxiv: '2401.55555' },
+      title: 'Timing Paper',
+      tags: [],
+    });
+
+    const rd = new RunDir(join(topic, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({
+      projectRoot: topic,
+      adapter: new SilentAdapter(),
+      runDir: rd,
+      addSourceId: sourceId,
+    });
+
+    await expect(
+      libraryTopicRead(ctx, {
+        workspaceRoot: root,
+        topicPath: 'trace',
+        libraryReadRunner: async () => {
+          throw new Error('library read agent exited 1 [GROK_CLI_TIMEOUT]: Grok CLI timed out.');
+        },
+      }),
+    ).rejects.toThrow(/GROK_CLI_TIMEOUT|timed out/i);
+
+    const failed = new PaperLibrary(root).listReads(paperId).find((r) => r.status === 'failed');
+    expect(failed?.lastError).toMatch(/GROK_CLI_TIMEOUT|timed out/i);
   });
 });
