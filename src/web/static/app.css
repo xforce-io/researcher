@@ -83,7 +83,6 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 }
 .nav-link:hover, .secondary:hover { text-decoration:none; border-color:var(--accent); }
 .panel-toggle {
-  margin-left:auto;
   font:600 12px var(--mono); letter-spacing:.04em;
   padding:6px 12px; border:1px solid var(--line);
   background:var(--paper); color:var(--ink-soft); border-radius:6px; cursor:pointer;
@@ -93,14 +92,19 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .panel-toggle[aria-expanded="true"] {
   background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);
 }
+/* Topic page: Info + Run cluster. Top-align so Info lines up with Run, not the discover row. */
+.topbar-actions {
+  margin-left:auto;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
 .run-wrap {
   position:relative;
   display:flex;
   flex-direction:column;
   align-items:flex-start;
   gap:4px;
-  /* Sit beside Info; only Info carries margin-left:auto so the pair stays tight. */
-  margin-left:0;
 }
 .run-discover-opt {
   display:inline-flex;

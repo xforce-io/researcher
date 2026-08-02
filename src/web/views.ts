@@ -1386,8 +1386,10 @@ export function renderTopic(
     `<header class="topbar"><a class="brand" href="/">researcher</a>` +
     `<span class="root">${escapeHtml(v.path)}</span>` +
     `<h1 class="sr-only">Topic: ${escapeHtml(v.path)}</h1>` +
-    `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
-    `${runWrap}</header>` +
+    `<div class="topbar-actions">` +
+      `<button id="right-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="right-panel" title="Toggle info panel">Info</button>` +
+      `${runWrap}` +
+    `</div></header>` +
     setupNotice +
     `<main class="three-col${related.length ? ' right-open' : ''}" id="cols" data-default-right-open="${related.length ? '1' : '0'}">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
