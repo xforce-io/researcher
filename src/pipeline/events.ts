@@ -5,7 +5,9 @@ export type RunOutcomeEvent =
   | 'completed'
   | 'no-candidate'
   | 'thin-signal'
-  | 'no-queries';
+  | 'no-queries'
+  | 'all-integrated'
+  | 'nothing-to-run';
 
 /**
  * Structured progress events emitted by a run subprocess over the Node IPC

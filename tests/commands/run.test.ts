@@ -177,7 +177,7 @@ describe('researcher run (autonomous)', () => {
     writeFileSync(join(proj, 'notes/00_research_landscape.md'), '# Empty\n');
   });
 
-  it('runs the full discover→read→synth→package chain when discover finds a deep-read pick', async () => {
+  it('runs the full discover→read→synth→package chain when discover is explicitly enabled', async () => {
     const adapter = new ScriptedAdapter([
       soulStep(),
       collectStep(),
@@ -185,13 +185,19 @@ describe('researcher run (autonomous)', () => {
       synthesizeStep('Fresh library artifact body.'),
       packageStep(),
     ]);
-    const sent: Array<{ type: string; stages?: string[]; name?: string }> = [];
+    const sent: Array<{ type: string; stages?: string[]; name?: string; outcome?: string }> = [];
     const orig = process.send;
     process.env[RUN_IPC_ENV] = '1';
     (process as { send?: unknown }).send = (m: unknown) => { sent.push(m as never); return true; };
     const { runRun } = await import('../../src/commands/run.js');
     try {
-      await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
+      await runRun({
+        cwd: proj,
+        workspaceRoot: proj,
+        adapter,
+        libraryReadRunner: fakeLibraryRead(),
+        discover: true,
+      });
     } finally {
       (process as { send?: unknown }).send = orig;
     }
@@ -230,6 +236,7 @@ describe('researcher run (autonomous)', () => {
       cwd: proj,
       workspaceRoot: proj,
       adapter,
+      discover: true,
       libraryReadRunner: async () => {
         throw new Error('Library read runner should not run when a read artifact already exists');
       },
@@ -266,12 +273,68 @@ describe('researcher run (autonomous)', () => {
   it('exits cleanly when discover returns no deep-read candidate (no commits, no branch)', async () => {
     const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedEmpty)]);
     const { runRun } = await import('../../src/commands/run.js');
-    await runRun({ cwd: proj, adapter });
+    const res = await runRun({ cwd: proj, adapter, discover: true });
 
+    expect(res.outcome).toBe('no-candidate');
     expect(adapter.callCount).toBe(3); // soul + collect + tool-free triage
     expect(execaSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: proj }).stdout.trim()).toBe('main');
     const log = execaSync('git', ['log', '--oneline'], { cwd: proj }).stdout.trim().split('\n');
     expect(log.length).toBe(1); // only the init commit
+  });
+
+  it('defaults to no discover and exits nothing-to-run without linked papers (#140)', async () => {
+    const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedDeepRead)]);
+    const sent: Array<{ type: string; stages?: string[]; outcome?: string }> = [];
+    const orig = process.send;
+    process.env[RUN_IPC_ENV] = '1';
+    (process as { send?: unknown }).send = (m: unknown) => { sent.push(m as never); return true; };
+    const { runRun } = await import('../../src/commands/run.js');
+    let res: { outcome: string };
+    try {
+      res = await runRun({ cwd: proj, workspaceRoot: proj, adapter });
+    } finally {
+      (process as { send?: unknown }).send = orig;
+    }
+    expect(res.outcome).toBe('nothing-to-run');
+    expect(adapter.callCount).toBe(0); // no soul/collect — empty queue before LLM
+    expect(sent).toContainEqual({ type: 'outcome', outcome: 'nothing-to-run' });
+    expect(sent.find((e) => e.type === 'plan')?.stages).toEqual(['bootstrap']);
+  });
+
+  it('exits all-integrated when linked papers are done and discover is off (#140)', async () => {
+    const lib = new PaperLibrary(proj, { now: () => '2026-08-02T00:00:00.000Z' });
+    lib.upsertPaper({
+      id: libraryPaperId,
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.55555', url: 'https://arxiv.org/abs/2401.55555' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.55555', url: 'https://arxiv.org/abs/2401.55555' }],
+      identifiers: { arxiv: '2401.55555' },
+      title: 'Already integrated',
+      tags: [],
+    });
+    lib.upsertLink({
+      paperId: libraryPaperId,
+      surfaceType: 'topic',
+      surfaceId: 'topic',
+      relation: 'integrated',
+    });
+    lib.upsertIntegration({
+      paperId: libraryPaperId,
+      topicId: 'topic',
+      notePath: 'notes/active/01_x.md',
+      zone: 'active',
+      integratedAt: '2026-08-02T00:00:00.000Z',
+    });
+
+    const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedDeepRead)]);
+    const { runRun } = await import('../../src/commands/run.js');
+    const res = await runRun({
+      cwd: proj,
+      workspaceRoot: proj,
+      topicPath: 'topic',
+      adapter,
+    });
+    expect(res.outcome).toBe('all-integrated');
+    expect(adapter.callCount).toBe(0);
   });
 
   it('migrates legacy managed contracts during a normal autonomous run', async () => {
@@ -284,7 +347,7 @@ describe('researcher run (autonomous)', () => {
     const adapter = new ScriptedAdapter([soulStep(), collectStep(), triageStep(triagedEmpty)]);
     const { runRun } = await import('../../src/commands/run.js');
 
-    await runRun({ cwd: proj, adapter });
+    await runRun({ cwd: proj, adapter, discover: true });
 
     expect(existsSync(join(proj, 'agents/researcher-collect.md'))).toBe(true);
     expect(existsSync(join(proj, 'agents/researcher-triage.md'))).toBe(true);
@@ -310,7 +373,13 @@ describe('researcher run (autonomous)', () => {
     ]);
     const { runRun } = await import('../../src/commands/run.js');
 
-    await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
+    await runRun({
+      cwd: proj,
+      workspaceRoot: proj,
+      adapter,
+      libraryReadRunner: fakeLibraryRead(),
+      discover: true,
+    });
 
     expect(execaSync('git', ['show', 'HEAD:agents/researcher-collect.md'], { cwd: proj }).stdout)
       .toContain('agentId: researcher-collect');
@@ -331,7 +400,8 @@ describe('researcher run (autonomous)', () => {
       },
     ]);
     const { runRun } = await import('../../src/commands/run.js');
-    await runRun({ cwd: proj, adapter });
+    // discover on (or any non-empty path) so soul still runs; empty queue would skip soul.
+    await runRun({ cwd: proj, adapter, discover: true });
 
     expect(adapter.callCount).toBe(1); // only soul ran
     expect(existsSync(join(proj, '.researcher/open_questions.md'))).toBe(true);
@@ -347,7 +417,13 @@ describe('researcher run (autonomous)', () => {
       packageStep(),
     ]);
     const { runRun } = await import('../../src/commands/run.js');
-    await runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() });
+    await runRun({
+      cwd: proj,
+      workspaceRoot: proj,
+      adapter,
+      libraryReadRunner: fakeLibraryRead(),
+      discover: true,
+    });
 
     const lib = new PaperLibrary(proj);
     expect(lib.listIntegrations(libraryPaperId)).toEqual([
@@ -372,7 +448,13 @@ describe('researcher run (autonomous)', () => {
     ]);
     const { runRun } = await import('../../src/commands/run.js');
     await expect(
-      runRun({ cwd: proj, workspaceRoot: proj, adapter, libraryReadRunner: fakeLibraryRead() }),
+      runRun({
+        cwd: proj,
+        workspaceRoot: proj,
+        adapter,
+        libraryReadRunner: fakeLibraryRead(),
+        discover: true,
+      }),
     ).rejects.toThrow(/did not modify.*00_research_landscape/i);
 
     const lib = new PaperLibrary(proj);
