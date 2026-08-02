@@ -97,9 +97,10 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
   position:relative;
   display:flex;
   flex-direction:column;
-  align-items:flex-end;
+  align-items:flex-start;
   gap:4px;
-  margin-left:auto;
+  /* Sit beside Info; only Info carries margin-left:auto so the pair stays tight. */
+  margin-left:0;
 }
 .run-discover-opt {
   display:inline-flex;
