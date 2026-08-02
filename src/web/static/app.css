@@ -93,13 +93,28 @@ a:hover { text-decoration:underline; text-underline-offset:2px; }
 .panel-toggle[aria-expanded="true"] {
   background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);
 }
-.run-wrap { position:relative; display:flex; align-items:center; gap:10px; }
-.run-discover-opt {
-  display:inline-flex; align-items:center; gap:6px;
-  font:500 12px var(--sans); color:var(--ink-soft); cursor:pointer;
-  user-select:none; white-space:nowrap;
+.run-wrap {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:4px;
+  margin-left:auto;
 }
-.run-discover-opt input { margin:0; accent-color:var(--accent); }
+.run-discover-opt {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font:500 11px var(--sans);
+  color:var(--ink-soft);
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+  line-height:1.2;
+  opacity:.88;
+}
+.run-discover-opt:hover { color:var(--ink); opacity:1; }
+.run-discover-opt input { margin:0; accent-color:var(--accent); width:13px; height:13px; }
 #run-btn {
   font:600 13px var(--sans);
   padding:7px 16px; border:1px solid var(--accent);

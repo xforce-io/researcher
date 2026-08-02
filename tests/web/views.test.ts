@@ -911,12 +911,14 @@ describe('renderTopic landscape / related UX (#111)', () => {
     expect(html).toContain('no candidate');
   });
 
-  it('offers discover checkbox default off and new empty-queue outcomes (#140)', () => {
+  it('offers discover checkbox default off under Run and new empty-queue outcomes (#140)', () => {
     const html = renderTopic({ ...base, landscapeEmpty: false, pendingRelatedCount: 0, relatedPapers: [] });
     expect(html).toContain('id="run-discover"');
     expect(html).toMatch(/id="run-discover"[^>]*type="checkbox"/);
     expect(html).not.toMatch(/id="run-discover"[^>]*checked/);
     expect(html).toContain('Discover new papers');
+    // Run primary, discover option stacked under it.
+    expect(html.indexOf('id="run-btn"')).toBeLessThan(html.indexOf('id="run-discover"'));
     expect(html).toContain("outcome === 'all-integrated'");
     expect(html).toContain('All linked integrated');
     expect(html).toContain("outcome === 'nothing-to-run'");

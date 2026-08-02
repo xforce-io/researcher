@@ -1368,10 +1368,10 @@ export function renderTopic(
     : '';
   const runWrap =
     `<div class="run-wrap" id="run-wrap">` +
+    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}${runDisabled}>Run</button>` +
     `<label class="run-discover-opt" title="When off, Run only integrates Library-linked papers">` +
       `<input id="run-discover" type="checkbox"> Discover new papers` +
     `</label>` +
-    `<button id="run-btn" data-slug="${v.slug}" data-run="/t/${v.slug}/run" aria-expanded="false"${runAttrs}${runDisabled}>Run</button>` +
     `<div id="run-pop" class="run-pop" hidden>` +
       `<div id="run-bar" class="run-bar">` +
         `<span id="run-status" class="run-status">idle</span>` +
