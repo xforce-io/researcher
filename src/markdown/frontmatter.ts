@@ -30,19 +30,58 @@ export function stripDuplicateLeadingH1(body: string, title: string): string {
 }
 
 /**
+ * Human-useful identity keys retained when embedding a library-read into a
+ * Topic integration note. System keys (paper_id / read_id / kind: library-read /
+ * doc_type / source_kind / tags) are never copied.
+ */
+const IDENTITY_FM_KEYS = ['authors', 'source_id', 'source_url', 'pdf_url'] as const;
+
+/** Compact identity FM from a full library-read fence; null when nothing useful. */
+export function compactLibraryReadIdentityFm(
+  fm: Record<string, string> | null | undefined,
+): Record<string, string> | null {
+  if (!fm) return null;
+  const out: Record<string, string> = { kind: 'library-read-identity' };
+  let useful = false;
+  for (const key of IDENTITY_FM_KEYS) {
+    const raw = fm[key]?.trim();
+    if (!raw) continue;
+    out[key] = raw;
+    useful = true;
+  }
+  return useful ? out : null;
+}
+
+/** Serialize a compact identity fence (trailing newline after closing ---). */
+export function serializeLibraryReadIdentityFm(fm: Record<string, string>): string {
+  const lines = ['---', `kind: ${unquoteFm(fm.kind ?? 'library-read-identity') || 'library-read-identity'}`];
+  for (const key of IDENTITY_FM_KEYS) {
+    if (fm[key] != null && String(fm[key]).trim() !== '') lines.push(`${key}: ${fm[key]}`);
+  }
+  lines.push('---', '');
+  return lines.join('\n');
+}
+
+/**
  * Body to embed under a Topic integration note's `## Library read`.
- * Drops system frontmatter and a leading H1 that repeats the paper title.
+ * Keeps a compact human-useful identity fence; drops system frontmatter and a
+ * leading H1 that repeats the paper title.
  */
 export function libraryReadEmbedBody(artifact: string, paperTitle: string): string {
   const trimmed = artifact.trim();
-  const { body } = splitFrontmatter(trimmed);
-  return stripDuplicateLeadingH1(body, paperTitle).trim();
+  const { fm, body } = splitFrontmatter(trimmed);
+  const reading = stripDuplicateLeadingH1(body, paperTitle).trim();
+  const identity = compactLibraryReadIdentityFm(fm);
+  if (!identity) return reading;
+  return `${serializeLibraryReadIdentityFm(identity)}${reading}`;
 }
 
-/** True when fm looks like a library-read system block (not a human note masthead). */
+/** True when fm looks like a library-read system or compact-identity block. */
 export function isLibraryReadFrontmatter(fm: Record<string, string>): boolean {
   const kind = unquoteFm(fm.kind ?? '');
-  if (kind === 'library-read' || kind === 'legacy-topic-read') return true;
+  if (kind === 'library-read' || kind === 'legacy-topic-read' || kind === 'library-read-identity') {
+    return true;
+  }
   return Boolean(fm.paper_id || fm.read_id || fm.doc_type || fm.source_kind);
 }
 

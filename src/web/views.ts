@@ -5,7 +5,9 @@ import { displayLibraryReadMarkdown } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
 import {
+  compactLibraryReadIdentityFm,
   isLibraryReadFrontmatter,
+  serializeLibraryReadIdentityFm,
   splitFrontmatter,
   stripDuplicateLeadingH1,
   unquoteFm,
@@ -197,7 +199,16 @@ export function renderMarkdown(markdown: string): string {
   return markedHtml(markdown ?? '');
 }
 
-export function renderDoc(markdown: string): string {
+export interface RenderDocOptions {
+  /**
+   * Resolve a Library read artifact path referenced by a Topic integration note
+   * (e.g. `.researcher-workspace/library/papers/.../read_….md`). Used to hydrate
+   * compact identity for notes written after #132 stripped all metadata.
+   */
+  resolveLibraryReadArtifact?: (relPath: string) => string | null | undefined;
+}
+
+export function renderDoc(markdown: string, opts: RenderDocOptions = {}): string {
   const { fm, body } = splitFrontmatter(markdown);
   if (fm && isLibraryReadFrontmatter(fm)) {
     // Top-level library-read artifact opened as a doc: compact identity, no system keys.
@@ -212,6 +223,7 @@ export function renderDoc(markdown: string): string {
   if (fm) {
     const title = unquote(fm.paper ?? fm.title ?? '');
     let displayBody = stripDuplicateLeadingH1(body, title);
+    displayBody = hydrateLibraryReadIdentityFromArtifact(displayBody, opts.resolveLibraryReadArtifact);
     displayBody = liftNestedLibraryReadFrontmatter(displayBody);
     const mast = leadingMetaParagraph(displayBody);
     const head = noteMasthead(fm);
@@ -221,10 +233,39 @@ export function renderDoc(markdown: string): string {
     }
     return head + markedHtml(displayBody);
   }
-  const lifted = liftNestedLibraryReadFrontmatter(body);
+  let lifted = hydrateLibraryReadIdentityFromArtifact(body, opts.resolveLibraryReadArtifact);
+  lifted = liftNestedLibraryReadFrontmatter(lifted);
   const mast = mastheadBlockquote(lifted);
   if (mast) return mast.html + markedHtml(mast.rest);
   return markedHtml(lifted);
+}
+
+/**
+ * When `## Library read` has no nested identity fence, try the integration-note
+ * artifact path and inject a compact identity fence before lift/render.
+ */
+function hydrateLibraryReadIdentityFromArtifact(
+  md: string,
+  resolve?: (relPath: string) => string | null | undefined,
+): string {
+  if (!resolve) return md;
+  if (/(^##[ \t]+Library read[ \t]*\n)(?:[ \t]*\n)*---/m.test(md)) return md;
+  const pathMatch = /Library read artifact `([^`]+)`/.exec(md);
+  if (!pathMatch) return md;
+  let artifact: string | null | undefined;
+  try {
+    artifact = resolve(pathMatch[1]);
+  } catch {
+    return md;
+  }
+  if (!artifact) return md;
+  const identity = compactLibraryReadIdentityFm(splitFrontmatter(artifact.trim()).fm);
+  if (!identity) return md;
+  const fence = serializeLibraryReadIdentityFm(identity);
+  return md.replace(
+    /(^##[ \t]+Library read[ \t]*\n)(?:[ \t]*\n)*/m,
+    `$1\n${fence}`,
+  );
 }
 
 /**
