@@ -135,13 +135,18 @@ describe('libraryTopicRead integration timing', () => {
     expect(noteMd).toContain('## Library read');
     expect(noteMd).toContain('> frame lede');
     expect(noteMd).toContain('## Essence');
-    // Embedded library-read system frontmatter must not appear in the note body.
+    // Compact identity kept; system frontmatter keys must not appear.
+    expect(noteMd).toContain('kind: library-read-identity');
+    expect(noteMd).toContain('authors: ["Ada"]');
+    expect(noteMd).toContain('source_id: "arxiv:2401.55555"');
+    expect(noteMd).toContain('pdf_url: "https://arxiv.org/pdf/2401.55555"');
     expect(noteMd).not.toContain('paper_id');
     expect(noteMd).not.toContain('read_id');
-    expect(noteMd).not.toContain('kind: library-read');
+    expect(noteMd).not.toContain('kind: library-read\n');
     expect(noteMd).not.toContain('source_kind');
-    // Only the outer note fence + title once (no second H1 under Library read).
-    expect(noteMd.match(/^---$/gm)?.length).toBe(2);
+    expect(noteMd).not.toContain('doc_type');
+    // Outer note fence + compact identity fence; title once.
+    expect(noteMd.match(/^---$/gm)?.length).toBe(4);
     expect(noteMd.match(/^# Timing Paper$/gm)?.length).toBe(1);
 
     const after = new PaperLibrary(root);

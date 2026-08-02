@@ -217,6 +217,104 @@ describe('renderDoc', () => {
     expect(html).toContain('<h2>Library read</h2>');
   });
 
+  it('renders compact library-read-identity fence under ## Library read (#138)', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'tags: []',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# TRACE: Turn-level Reward Assignment',
+      '',
+      '> Topic integration note derived from Library read artifact `library/papers/p/reads/r.md`.',
+      '',
+      '## Library read',
+      '',
+      '---',
+      'kind: library-read-identity',
+      'authors: ["Leitian Tao","Baolin Peng"]',
+      'source_id: "arxiv:2607.13988"',
+      'source_url: "https://arxiv.org/abs/2607.13988"',
+      'pdf_url: "https://arxiv.org/pdf/2607.13988"',
+      '---',
+      '',
+      '> 长轨迹只靠终点对错给同一 advantage',
+      '',
+      '## Essence',
+      '',
+      'dense turn credit',
+    ].join('\n');
+    const html = renderDoc(md);
+    expect(html).toContain('library-read-identity-fm');
+    expect(html).toContain('<dt>authors</dt>');
+    expect(html).toContain('Leitian Tao');
+    expect(html).toContain('<dt>arxiv</dt>');
+    expect(html).toContain('2607.13988');
+    expect(html).toContain('<dt>pdf</dt>');
+    expect(html).toContain('https://arxiv.org/pdf/2607.13988');
+    expect(html).not.toContain('paper_id');
+    expect(html).not.toContain('kind: library-read-identity');
+    expect(html).toContain('长轨迹只靠终点对错');
+    expect(html).toContain('<h2>Essence</h2>');
+  });
+
+  it('hydrates identity from Library read artifact path when note body is clean (#138)', () => {
+    const md = [
+      '---',
+      'zone: active',
+      'tags: []',
+      'pin: false',
+      'score: 0',
+      'dwell: 0',
+      '---',
+      '',
+      '# LOCKS: Page-Local Compact Key Summaries',
+      '',
+      '> Topic integration note derived from Library read artifact `.researcher-workspace/library/papers/p/reads/r.md`.',
+      '',
+      '## Library read',
+      '',
+      '> 旧做法用全局低秩基',
+      '',
+      '## Essence',
+      '',
+      'page-local keys',
+    ].join('\n');
+    const html = renderDoc(md, {
+      resolveLibraryReadArtifact: (rel) => {
+        expect(rel).toBe('.researcher-workspace/library/papers/p/reads/r.md');
+        return [
+          '---',
+          'title: "LOCKS"',
+          'authors: ["Junsung Hwang"]',
+          'paper_id: "paper_arxiv_2607_24555"',
+          'source_kind: "arxiv"',
+          'source_id: "arxiv:2607.24555"',
+          'source_url: "https://arxiv.org/abs/2607.24555"',
+          'pdf_url: "https://arxiv.org/pdf/2607.24555"',
+          'read_id: "read_x"',
+          'kind: library-read',
+          'doc_type: "paper"',
+          '---',
+          '',
+          '# LOCKS',
+          '',
+          '> ignored body',
+        ].join('\n');
+      },
+    });
+    expect(html).toContain('library-read-identity-fm');
+    expect(html).toContain('Junsung Hwang');
+    expect(html).toContain('2607.24555');
+    expect(html).toContain('https://arxiv.org/pdf/2607.24555');
+    expect(html).not.toContain('paper_id');
+    expect(html).not.toContain('read_id');
+    expect(html).toContain('旧做法用全局低秩基');
+  });
+
   it('renders a clean integration note body without nested library frontmatter (#132)', () => {
     const md = [
       '---',
@@ -245,6 +343,7 @@ describe('renderDoc', () => {
     expect(html).toContain('长轨迹只靠终点对错');
     expect(html).toContain('<h2>Essence</h2>');
     expect(html).not.toContain('paper_id');
+    // No resolvable artifact → no fabricated identity.
     expect(html).not.toContain('library-read-identity-fm');
   });
 });

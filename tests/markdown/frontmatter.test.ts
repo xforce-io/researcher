@@ -60,6 +60,14 @@ describe('isLibraryReadFrontmatter', () => {
     expect(isLibraryReadFrontmatter({ kind: 'library-read', title: '"T"' })).toBe(true);
   });
 
+  it('detects kind: library-read-identity compact fence', () => {
+    expect(isLibraryReadFrontmatter({
+      kind: 'library-read-identity',
+      authors: '["A"]',
+      source_id: '"arxiv:2607.13988"',
+    })).toBe(true);
+  });
+
   it('detects paper_id / read_id system keys', () => {
     expect(isLibraryReadFrontmatter({ paper_id: '"p"', title: '"T"' })).toBe(true);
   });
@@ -75,15 +83,24 @@ describe('isLibraryReadFrontmatter', () => {
 });
 
 describe('libraryReadEmbedBody', () => {
-  it('drops system frontmatter and duplicate title for topic integration notes', () => {
+  it('embeds compact identity and reading body without system keys (#138)', () => {
     const embed = libraryReadEmbedBody(SAMPLE_ARTIFACT, 'TRACE: Turn-level Reward');
     expect(embed).toContain('> one-line essence');
     expect(embed).toContain('## Essence');
     expect(embed).toContain('body text');
-    expect(embed).not.toMatch(/^---/m);
+    // Compact identity fence (not full system FM).
+    expect(embed).toMatch(/^---\n/);
+    expect(embed).toContain('kind: library-read-identity');
+    expect(embed).toContain('authors: ["A", "B"]');
+    expect(embed).toContain('source_id: "arxiv:2607.13988"');
+    expect(embed).toContain('source_url: "https://arxiv.org/abs/2607.13988"');
+    expect(embed).toContain('pdf_url: "https://arxiv.org/pdf/2607.13988"');
+    // System keys never embedded.
     expect(embed).not.toContain('paper_id');
     expect(embed).not.toContain('read_id');
-    expect(embed).not.toContain('kind: library-read');
+    expect(embed).not.toContain('kind: library-read\n');
+    expect(embed).not.toContain('doc_type');
+    expect(embed).not.toContain('source_kind');
     expect(embed).not.toContain('# TRACE: Turn-level Reward');
   });
 

@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
 import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
@@ -387,7 +387,14 @@ async function handle(
       const rel = url.searchParams.get('path') ?? '';
       const abs = safeDocPath(topicDir, rel);
       if (!abs) return send(res, 404, 'text/plain', 'not found');
-      return send(res, 200, 'text/html; charset=utf-8', renderDoc(readFileSync(abs, 'utf8')));
+      return send(
+        res,
+        200,
+        'text/html; charset=utf-8',
+        renderDoc(readFileSync(abs, 'utf8'), {
+          resolveLibraryReadArtifact: (artifactRel) => readWorkspaceLibraryArtifact(root, artifactRel),
+        }),
+      );
     }
     // GET /t/:slug/paper?id=...
     if (req.method === 'GET' && sub === '/paper') {
@@ -451,6 +458,21 @@ async function handle(
   }
 
   send(res, 404, 'text/plain', 'not found');
+}
+
+/** Read a workspace-relative Library read artifact for identity hydration (#138). */
+function readWorkspaceLibraryArtifact(workspaceRoot: string, relPath: string): string | null {
+  const cleaned = relPath.trim().replace(/^\.\//, '');
+  if (!cleaned || cleaned.includes('\0')) return null;
+  const abs = resolve(workspaceRoot, cleaned);
+  const base = resolve(workspaceRoot);
+  if (abs !== base && !abs.startsWith(base + sep)) return null;
+  if (!abs.endsWith('.md') || !existsSync(abs)) return null;
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
