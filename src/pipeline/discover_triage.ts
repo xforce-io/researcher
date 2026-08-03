@@ -7,6 +7,7 @@ import { scaffoldMilkieRuntime } from '../commands/init.js';
 import { Seen } from '../state/seen.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
+import { seedDiscoverCandidates, type DiscoverSeedReport } from './discover_seed.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 const RECOVERY_TIMEOUT_MS = 8 * 60 * 1000;
@@ -135,9 +136,18 @@ async function loadCollectedCandidates(
     }
   }
 
+  const seedReport = await seedDiscoverCandidates({
+    projectYamlPath: join(ctx.researcherDir, 'project.yaml'),
+    candidatesPath,
+    seenIds: listSeenIds(join(ctx.researcherDir, 'state/seen.jsonl')),
+    language: values.language,
+  });
+  const seed_status = formatSeedStatus(seedReport, values.language);
+
   const collectPrompt = renderTemplate(loadPromptTemplate('stage-discover-collect.md'), {
     ...values,
     candidates_path: candidatesPath,
+    seed_status,
   });
   const result = await ctx.adapter.invoke({
     cwd: ctx.projectRoot,
@@ -208,4 +218,20 @@ function listSeenIds(path: string): string[] {
       }
     })
     .filter(Boolean);
+}
+
+function formatSeedStatus(report: DiscoverSeedReport, language: string): string {
+  if (!report.attempted) {
+    return language === 'zh'
+      ? '宿主未执行 pwc 种子（无有效 queries）。按原发现预算自行检索。'
+      : 'No host pwc seed (no real queries). Discover under the normal budget.';
+  }
+  if (!report.available) {
+    return language === 'zh'
+      ? `宿主 pwc 不可用（软降级）。queries: ${report.queries.join(' | ') || '（无）'}。按原预算自行检索。`
+      : `Host pwc unavailable (soft-degraded). queries: ${report.queries.join(' | ') || '(none)'}. Discover under the normal budget.`;
+  }
+  return language === 'zh'
+    ? `宿主 pwc 种子已写入 ${report.candidateCount} 条。queries: ${report.queries.join(' | ')}。警告: ${report.warnings.join('; ') || '无'}。合并种子，勿重复同一 query。`
+    : `Host pwc seed wrote ${report.candidateCount} candidates. queries: ${report.queries.join(' | ')}. warnings: ${report.warnings.join('; ') || 'none'}. Merge the seed; do not repeat those queries.`;
 }

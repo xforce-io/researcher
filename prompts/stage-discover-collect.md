@@ -51,6 +51,17 @@ Use the landscape only to identify coverage gaps and form focused discovery quer
 - Project soul / thesis / landscape / seen IDs are already in this prompt — do **not** re-cat them.
 - Reserve enough budget to emit the final JSON. A partial valid list is better than another search.
 
+## Host seed status
+
+{{seed_status}}
+
+Rules when a host seed is present:
+- Start from the existing candidates already written at `{{candidates_path}}` (host pwc seed). Merge; do not discard them.
+- Do **not** re-run `pwc search` or equivalent arXiv search for the same queries the host already seeded.
+- Prefer: fill missing abstracts via `pwc paper info <id> --json` when useful; add **new** mechanism-specific queries only for thesis/landscape gaps not covered by the seed.
+- Still obey the discovery budget and final JSON shape. Final candidates must remain schema-valid.
+- If the seed is empty or pwc was unavailable, behave as before (plan 3–5 queries and search).
+
 ## Output
 
 Deliver **exactly one** JSON object with this shape (keys exact):
