@@ -80,7 +80,7 @@ export async function pwcSearch(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(result.stdout || '');
+    parsed = JSON.parse(typeof result.stdout === 'string' ? result.stdout : String(result.stdout ?? ''));
   } catch (error) {
     throw new PwcError('pwc search returned non-JSON stdout', 'PWC_BAD_JSON', error);
   }
