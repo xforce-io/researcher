@@ -73,6 +73,7 @@ Requires:
   (for `git push` + `gh pr create`). Topics default to local (commit only), so a
   local-only repo needs neither a remote nor `gh`.
 - `pdftotext` (poppler) for PDF extraction. Falls back to abstract if missing.
+- Optional: `pwc` CLI on `PATH` ([pwc-cli](https://github.com/huggingface/pwc-cli)) — host-side discover seed via `pwc search --json`. Without it, discover collect behaves as before.
 
 ## Quick start
 

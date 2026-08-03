@@ -18,6 +18,8 @@ These five sources are active on every project unless `project.yaml: sources` ov
 
 **arXiv.** Each query string is matched against title and abstract text. Use specific noun phrases over broad terms — `"trajectory triage agent"` over `"agent evaluation"`. The researcher runs queries on the daily listing for the configured categories and also on the full-text search API for historical coverage.
 
+**Host seed (optional).** When the `pwc` CLI ([paperswithcode/pwc-cli](https://github.com/huggingface/pwc-cli)) is on `PATH`, the Researcher host runs `pwc search <query> --json` for each real `sources[].queries` entry (cap 5 queries, 10 hits each, 20 seeded candidates) **before** the collect agent starts. Only hits with an arXiv id become seed candidates. If `pwc` is missing or fails, discover soft-degrades and the collect agent searches as before. The collect agent must not repeat the same seeded queries; it may add gap-filling queries and enrich abstracts.
+
 **Semantic Scholar.** Queries here are seed paper IDs (arXiv IDs or DOIs), not keyword strings. The researcher follows forward citations (papers that cite the seed) and backward references (papers the seed cites) up to depth 2. Depth 1 is always read; depth 2 is filtered at triage before deep-reading. Example entry in `project.yaml`:
 ```yaml
 sources:

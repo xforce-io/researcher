@@ -67,6 +67,7 @@ researcher methodology install   # 一次性，把方法论装到 ~/.researcher/
   `git push` + `gh pr create`）。主题默认本地（只 commit），纯本地仓库无需
   remote 也无需 `gh`。
 - `pdftotext`（poppler）做 PDF 抽取。缺失时会回退到 abstract。
+- 可选：`PATH` 上的 `pwc` CLI（[pwc-cli](https://github.com/huggingface/pwc-cli)）——宿主在 discover 阶段用 `pwc search --json` 预置候选。缺失时 collect 行为与原来一致（软降级）。
 
 ## 快速开始
 

@@ -7,6 +7,7 @@ import { scaffoldMilkieRuntime } from '../commands/init.js';
 import { Seen } from '../state/seen.js';
 import type { RunContext } from './context.js';
 import { assertAgentOk } from './runner.js';
+import { seedDiscoverCandidates, type DiscoverSeedReport } from './discover_seed.js';
 
 const TIMEOUT_MS = 15 * 60 * 1000;
 const RECOVERY_TIMEOUT_MS = 8 * 60 * 1000;
@@ -127,17 +128,37 @@ async function loadCollectedCandidates(
     methodology_source: string;
   },
 ): Promise<DiscoverCandidates> {
+  // Resume only on a non-empty valid handoff. An empty seed (or corrupt file)
+  // must not skip seed+collect on retry, and must not look like collect success.
   if (existsSync(candidatesPath)) {
     try {
-      return validateAndCapCandidates(candidatesPath);
+      const existing = validateAndCapCandidates(candidatesPath);
+      if (existing.candidates.length > 0) {
+        return existing;
+      }
     } catch {
       // A partial or corrupt artifact is not a valid handoff; collect replaces it.
     }
   }
 
+  const seedReport = await seedDiscoverCandidates({
+    projectYamlPath: join(ctx.researcherDir, 'project.yaml'),
+    candidatesPath,
+    seenIds: listSeenIds(join(ctx.researcherDir, 'state/seen.jsonl')),
+    language: values.language,
+  });
+  const seed_status = formatSeedStatus(seedReport, values.language);
+
+  // Snapshot after seed so we can tell whether collect produced anything.
+  // Empty seed leaves a parseable file; silent collect must not inherit it as success.
+  const preCollectSnapshot = existsSync(candidatesPath)
+    ? readFileSync(candidatesPath, 'utf8')
+    : null;
+
   const collectPrompt = renderTemplate(loadPromptTemplate('stage-discover-collect.md'), {
     ...values,
     candidates_path: candidatesPath,
+    seed_status,
   });
   const result = await ctx.adapter.invoke({
     cwd: ctx.projectRoot,
@@ -148,13 +169,17 @@ async function loadCollectedCandidates(
   });
   assertAgentOk(ctx.runDir, 'discover', result);
 
-  // Prefer an agent-written file; otherwise host-recover JSON from stdout.
+  // Prefer an agent-written / seeded file; recover from stdout when missing
+  // or when the on-disk handoff is empty/invalid while stdout has valid JSON.
+  // Do not overwrite a non-empty valid handoff just because stdout also has JSON.
   // Embedding the full candidates payload in run_command args is forbidden —
   // large heredocs hit output caps and arrive as empty tool inputs.
+  let recoveredFromStdout = false;
   if (!existsSync(candidatesPath)) {
     const extracted = extractDiscoverCandidatesJson(result.output ?? '');
     if (extracted) {
       writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+      recoveredFromStdout = true;
     } else {
       const errPath = ctx.runDir.recordParseFailure(
         'discover',
@@ -163,7 +188,65 @@ async function loadCollectedCandidates(
       );
       throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
     }
+  } else {
+    let shouldRecoverFromStdout = false;
+    try {
+      const existing = parseDiscoverCandidates(readFileSync(candidatesPath, 'utf8'));
+      shouldRecoverFromStdout = existing.candidates.length === 0;
+    } catch {
+      shouldRecoverFromStdout = true;
+    }
+    if (shouldRecoverFromStdout) {
+      const extracted = extractDiscoverCandidatesJson(result.output ?? '');
+      if (extracted) {
+        writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+        recoveredFromStdout = true;
+      }
+    }
   }
+
+  if (!existsSync(candidatesPath)) {
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      'collect agent wrote no discover-candidates.json and stdout contained no valid candidates JSON',
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
+  // Capture content before validateAndCap rewrites formatting — that rewrite alone
+  // must not count as collect having produced an empty handoff.
+  const postCollectContent = readFileSync(candidatesPath, 'utf8');
+  const collectTouchedFile =
+    recoveredFromStdout ||
+    preCollectSnapshot === null ||
+    postCollectContent !== preCollectSnapshot;
+
+  let final: DiscoverCandidates;
+  try {
+    final = parseDiscoverCandidates(postCollectContent);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      `collect produced unparseable discover-candidates.json: ${message}`,
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
+  // Empty candidates is a legal handoff only when collect actually produced it
+  // (file rewrite and/or recoverable stdout JSON). If seed left an empty file
+  // and collect exited without touching it or emitting JSON, treat as failure.
+  if (final.candidates.length === 0 && !collectTouchedFile) {
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      'collect agent left empty seed handoff unchanged and stdout contained no valid candidates JSON',
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
   return validateAndCapCandidates(candidatesPath);
 }
 
@@ -208,4 +291,20 @@ function listSeenIds(path: string): string[] {
       }
     })
     .filter(Boolean);
+}
+
+function formatSeedStatus(report: DiscoverSeedReport, language: string): string {
+  if (!report.attempted) {
+    return language === 'zh'
+      ? '宿主未执行 pwc 种子（无有效 queries）。按原发现预算自行检索。'
+      : 'No host pwc seed (no real queries). Discover under the normal budget.';
+  }
+  if (!report.available) {
+    return language === 'zh'
+      ? `宿主 pwc 不可用（软降级）。queries: ${report.queries.join(' | ') || '（无）'}。按原预算自行检索。`
+      : `Host pwc unavailable (soft-degraded). queries: ${report.queries.join(' | ') || '(none)'}. Discover under the normal budget.`;
+  }
+  return language === 'zh'
+    ? `宿主 pwc 种子已写入 ${report.candidateCount} 条。queries: ${report.queries.join(' | ')}。警告: ${report.warnings.join('; ') || '无'}。合并种子，勿重复同一 query。`
+    : `Host pwc seed wrote ${report.candidateCount} candidates. queries: ${report.queries.join(' | ')}. warnings: ${report.warnings.join('; ') || 'none'}. Merge the seed; do not repeat those queries.`;
 }
