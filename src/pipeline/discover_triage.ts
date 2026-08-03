@@ -158,7 +158,9 @@ async function loadCollectedCandidates(
   });
   assertAgentOk(ctx.runDir, 'discover', result);
 
-  // Prefer an agent-written file; otherwise host-recover JSON from stdout.
+  // Prefer an agent-written / seeded file; recover from stdout when missing
+  // or when the on-disk handoff is empty/invalid while stdout has valid JSON.
+  // Do not overwrite a non-empty valid handoff just because stdout also has JSON.
   // Embedding the full candidates payload in run_command args is forbidden —
   // large heredocs hit output caps and arrive as empty tool inputs.
   if (!existsSync(candidatesPath)) {
@@ -172,6 +174,20 @@ async function loadCollectedCandidates(
         result.output ?? '',
       );
       throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+    }
+  } else {
+    let shouldRecoverFromStdout = false;
+    try {
+      const existing = parseDiscoverCandidates(readFileSync(candidatesPath, 'utf8'));
+      shouldRecoverFromStdout = existing.candidates.length === 0;
+    } catch {
+      shouldRecoverFromStdout = true;
+    }
+    if (shouldRecoverFromStdout) {
+      const extracted = extractDiscoverCandidatesJson(result.output ?? '');
+      if (extracted) {
+        writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+      }
     }
   }
   return validateAndCapCandidates(candidatesPath);

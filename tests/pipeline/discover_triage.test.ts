@@ -668,4 +668,25 @@ describe('discover_triage stage', () => {
     expect(ctx.addSourceId).toBe('arxiv:2401.11111');
   });
 
+  it('recovers collect stdout over empty pwc seed handoff', async () => {
+    writeRealQueryProjectYaml(proj, 'trajectory triage');
+    process.env.RESEARCHER_PWC_BIN = join(proj, 'definitely-missing-pwc-bin');
+
+    const adapter = new CollectStdoutOnlyAdapter(collected(), sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    const path = rd.path('discover-candidates.json');
+    expect(existsSync(path)).toBe(true);
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as DiscoverCandidates;
+    expect(saved.candidates.map((c) => c.id)).toEqual([
+      'arxiv:2401.11111',
+      'arxiv:2401.22222',
+      'arxiv:2401.33333',
+    ]);
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+  });
+
 });
