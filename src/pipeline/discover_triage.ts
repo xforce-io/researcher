@@ -128,9 +128,14 @@ async function loadCollectedCandidates(
     methodology_source: string;
   },
 ): Promise<DiscoverCandidates> {
+  // Resume only on a non-empty valid handoff. An empty seed (or corrupt file)
+  // must not skip seed+collect on retry, and must not look like collect success.
   if (existsSync(candidatesPath)) {
     try {
-      return validateAndCapCandidates(candidatesPath);
+      const existing = validateAndCapCandidates(candidatesPath);
+      if (existing.candidates.length > 0) {
+        return existing;
+      }
     } catch {
       // A partial or corrupt artifact is not a valid handoff; collect replaces it.
     }
@@ -143,6 +148,12 @@ async function loadCollectedCandidates(
     language: values.language,
   });
   const seed_status = formatSeedStatus(seedReport, values.language);
+
+  // Snapshot after seed so we can tell whether collect produced anything.
+  // Empty seed leaves a parseable file; silent collect must not inherit it as success.
+  const preCollectSnapshot = existsSync(candidatesPath)
+    ? readFileSync(candidatesPath, 'utf8')
+    : null;
 
   const collectPrompt = renderTemplate(loadPromptTemplate('stage-discover-collect.md'), {
     ...values,
@@ -163,10 +174,12 @@ async function loadCollectedCandidates(
   // Do not overwrite a non-empty valid handoff just because stdout also has JSON.
   // Embedding the full candidates payload in run_command args is forbidden —
   // large heredocs hit output caps and arrive as empty tool inputs.
+  let recoveredFromStdout = false;
   if (!existsSync(candidatesPath)) {
     const extracted = extractDiscoverCandidatesJson(result.output ?? '');
     if (extracted) {
       writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+      recoveredFromStdout = true;
     } else {
       const errPath = ctx.runDir.recordParseFailure(
         'discover',
@@ -187,9 +200,53 @@ async function loadCollectedCandidates(
       const extracted = extractDiscoverCandidatesJson(result.output ?? '');
       if (extracted) {
         writeFileSync(candidatesPath, extracted.endsWith('\n') ? extracted : `${extracted}\n`);
+        recoveredFromStdout = true;
       }
     }
   }
+
+  if (!existsSync(candidatesPath)) {
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      'collect agent wrote no discover-candidates.json and stdout contained no valid candidates JSON',
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
+  // Capture content before validateAndCap rewrites formatting — that rewrite alone
+  // must not count as collect having produced an empty handoff.
+  const postCollectContent = readFileSync(candidatesPath, 'utf8');
+  const collectTouchedFile =
+    recoveredFromStdout ||
+    preCollectSnapshot === null ||
+    postCollectContent !== preCollectSnapshot;
+
+  let final: DiscoverCandidates;
+  try {
+    final = parseDiscoverCandidates(postCollectContent);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      `collect produced unparseable discover-candidates.json: ${message}`,
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
+  // Empty candidates is a legal handoff only when collect actually produced it
+  // (file rewrite and/or recoverable stdout JSON). If seed left an empty file
+  // and collect exited without touching it or emitting JSON, treat as failure.
+  if (final.candidates.length === 0 && !collectTouchedFile) {
+    const errPath = ctx.runDir.recordParseFailure(
+      'discover',
+      'collect agent left empty seed handoff unchanged and stdout contained no valid candidates JSON',
+      result.output ?? '',
+    );
+    throw new Error(`collect produced no usable discover-candidates.json (raw output saved to ${errPath})`);
+  }
+
   return validateAndCapCandidates(candidatesPath);
 }
 

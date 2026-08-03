@@ -206,6 +206,38 @@ class CollectNoArtifactAdapter implements AgentRuntime {
   }
 }
 
+/** Collect intentionally writes an empty but valid candidates handoff. */
+class CollectEmptyHandoffAdapter implements AgentRuntime {
+  id = 'stub-collect-empty-handoff';
+  calls: InvokeOptions[] = [];
+
+  constructor(private readonly triaged: Triaged = sample({ candidates: [] })) {}
+
+  async invoke(opts: InvokeOptions): Promise<InvokeResult> {
+    this.calls.push(opts);
+    if (opts.agentId === 'researcher-collect') {
+      const candidatePath = /`([^`]+discover-candidates\.json)`/.exec(opts.userPrompt)?.[1];
+      if (!candidatePath) throw new Error('stub: could not find discover-candidates path');
+      writeFileSync(
+        candidatePath,
+        JSON.stringify(
+          {
+            candidates: [],
+            search_summary: 'collect found nothing after reviewing seed and new queries',
+          },
+          null,
+          2,
+        ),
+      );
+      return { output: 'collected-empty', modifiedFiles: [candidatePath], exitCode: 0 };
+    }
+    if (opts.agentId === 'researcher-triage') {
+      return { output: JSON.stringify(this.triaged), modifiedFiles: [], exitCode: 0 };
+    }
+    throw new Error('stub: unexpected agent');
+  }
+}
+
 class TerminalErrorAdapter implements AgentRuntime {
   id = 'stub-terminal-error';
   calls = 0;
@@ -687,6 +719,58 @@ describe('discover_triage stage', () => {
       'arxiv:2401.33333',
     ]);
     expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+  });
+
+  it('does not resume-short-circuit on a pre-existing empty candidates file', async () => {
+    const adapter = new CollectThenTriageAdapter(collected(), sample());
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const candidatesPath = rd.path('discover-candidates.json');
+    writeFileSync(
+      candidatesPath,
+      JSON.stringify({ candidates: [], search_summary: 'prior empty seed' }, null, 2),
+    );
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await discoverTriage(ctx);
+
+    expect(adapter.calls.map((call) => call.agentId)).toContain('researcher-collect');
+    const saved = JSON.parse(readFileSync(candidatesPath, 'utf8')) as DiscoverCandidates;
+    expect(saved.candidates.map((c) => c.id)).toEqual([
+      'arxiv:2401.11111',
+      'arxiv:2401.22222',
+      'arxiv:2401.33333',
+    ]);
+    expect(ctx.addSourceId).toBe('arxiv:2401.11111');
+  });
+
+  it('throws when empty pwc seed is left unchanged by silent collect', async () => {
+    writeRealQueryProjectYaml(proj, 'trajectory triage');
+    process.env.RESEARCHER_PWC_BIN = join(proj, 'definitely-missing-pwc-bin');
+
+    const adapter = new CollectNoArtifactAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).rejects.toThrow(/collect produced no usable discover-candidates\.json/);
+    const err = readFileSync(rd.path('discover.err'), 'utf8');
+    expect(err).toContain('searched around but wrote nothing');
+    expect(adapter.calls.some((call) => call.agentId === 'researcher-collect')).toBe(true);
+  });
+
+  it('accepts explicit empty candidates JSON written by collect after empty seed', async () => {
+    writeRealQueryProjectYaml(proj, 'trajectory triage');
+    process.env.RESEARCHER_PWC_BIN = join(proj, 'definitely-missing-pwc-bin');
+
+    const adapter = new CollectEmptyHandoffAdapter();
+    const rd = new RunDir(join(proj, '.researcher/state/runs'), newRunId());
+    const ctx = await bootstrap({ projectRoot: proj, adapter, runDir: rd });
+
+    await expect(discoverTriage(ctx)).resolves.toBeUndefined();
+
+    const saved = JSON.parse(readFileSync(rd.path('discover-candidates.json'), 'utf8')) as DiscoverCandidates;
+    expect(saved.candidates).toEqual([]);
+    expect(saved.search_summary).toMatch(/collect found nothing/i);
+    expect(existsSync(rd.path('triaged.json'))).toBe(true);
   });
 
 });
