@@ -146,7 +146,6 @@ export function backfillLibraryFromTopicNotes(workspaceRoot: string): LibraryBac
           paperId: paper.id,
           surfaceType: 'topic',
           surfaceId: topic.path,
-          relation: 'integrated',
           rationale: `legacy note ${note.relPath}`,
         });
         if (lib.listLinks(paper.id).length > linksBefore) importedLinks++;

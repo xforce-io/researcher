@@ -312,7 +312,7 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(lines[0]).toContain('paper_arxiv_2401_12345');
   const lib = new PaperLibrary(root);
   expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
-    expect.objectContaining({ surfaceId: 'trace', relation: 'candidate' }),
+    expect.objectContaining({ surfaceId: 'trace' }),
   ]);
 
   const page = await fetch(base + '/library');
@@ -475,27 +475,23 @@ it('upserts topic links separately from Library reads', async () => {
   const form = new URLSearchParams({
     paperId: 'paper_arxiv_2401_12345',
     topic: 'feeds/ai-safety',
-    relation: 'relevant',
     rationale: 'matches the feed topic',
   });
   const res = await fetch(base + '/library/link', { method: 'POST', body: form, redirect: 'manual' });
   expect(res.status).toBe(303);
   const lib = new PaperLibrary(root);
   expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual(expect.arrayContaining([
-    expect.objectContaining({ surfaceId: 'trace', relation: 'candidate' }),
-    expect.objectContaining({ surfaceId: 'feeds/ai-safety', relation: 'relevant', rationale: 'matches the feed topic' }),
+    expect.objectContaining({ surfaceId: 'trace' }),
+    expect.objectContaining({ surfaceId: 'feeds/ai-safety', rationale: 'matches the feed topic' }),
   ]));
 
-  const update = new URLSearchParams({
+  const unlink = new URLSearchParams({
     paperId: 'paper_arxiv_2401_12345',
     topic: 'feeds/ai-safety',
-    relation: 'archived',
   });
-  const second = await fetch(base + '/library/link', { method: 'POST', body: update, redirect: 'manual' });
+  const second = await fetch(base + '/library/unlink', { method: 'POST', body: unlink, redirect: 'manual' });
   expect(second.status).toBe(303);
-  expect(lib.listLinks('paper_arxiv_2401_12345').filter((l) => l.surfaceId === 'feeds/ai-safety')).toEqual([
-    expect.objectContaining({ relation: 'archived' }),
-  ]);
+  expect(lib.listLinks('paper_arxiv_2401_12345').some((l) => l.surfaceId === 'feeds/ai-safety')).toBe(false);
 });
 
 it('serves canonical paper detail URLs', async () => {

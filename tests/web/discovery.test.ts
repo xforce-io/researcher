@@ -54,7 +54,7 @@ beforeAll(() => {
   lib.upsertRead({ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md' });
   mkdirSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345'), { recursive: true });
   writeFileSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md'), '# Library Read\n\n## Findings\n\n- Useful paper.');
-  lib.upsertLink({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', rationale: 'matches RQ1' });
+  lib.upsertLink({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' });
   lib.upsertIntegration({ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', notePath: 'trace/notes/active/03_active.md', zone: 'active', integratedAt: '2026-07-02T01:00:00Z', summary: 'used in landscape' });
 
   // dormant topic "decision" — directory exists but no .researcher/
@@ -152,7 +152,6 @@ describe('loadTopic', () => {
         id: 'paper_arxiv_2401_12345',
         displayTitle: 'Reusable Paper Cards',
         tags: ['agent', 'planning'],
-        relation: 'relevant',
         integratedTopicCount: 1,
       }),
     ]);
@@ -285,7 +284,7 @@ describe('loadLibrary', () => {
       path: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md',
       markdown: '# Library Read\n\n## Findings\n\n- Useful paper.',
     });
-    expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', relation: 'relevant' })]);
+    expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', rationale: 'matches RQ1' })]);
     expect(v.integrations).toEqual([expect.objectContaining({ topicId: 'trace', zone: 'active' })]);
     expect(Array.isArray(v.topicSuggestions)).toBe(true);
   });

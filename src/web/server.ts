@@ -16,7 +16,7 @@ import { assessSoulReady } from './soul-ready.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
-import { parseRelation, parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink } from '../commands/library.js';
+import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryUnlink } from '../commands/library.js';
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
 import type { Stage } from '../state/runs.js';
@@ -148,7 +148,7 @@ async function handle(
       });
       if (topic) {
         const paperId = paperIdForSource(normalizePaperInput(input));
-        runLibraryLink({ cwd: root, paperId, topic, relation: 'candidate', write: () => {} });
+        runLibraryLink({ cwd: root, paperId, topic, write: () => {} });
       }
     } catch (err) {
       return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
@@ -266,7 +266,6 @@ async function handle(
     const form = new URLSearchParams(body);
     const paperId = form.get('paperId')?.trim() ?? '';
     const topic = form.get('topic')?.trim() ?? '';
-    const relationRaw = form.get('relation')?.trim() || 'candidate';
     const rationale = form.get('rationale')?.trim() || undefined;
     if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
     if (!topic) return send(res, 400, 'text/plain', 'missing topic');
@@ -274,7 +273,22 @@ async function handle(
     const lib = new PaperLibrary(root);
     if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
     try {
-      runLibraryLink({ cwd: root, paperId, topic, relation: parseRelation(relationRaw), rationale, write: () => {} });
+      runLibraryLink({ cwd: root, paperId, topic, rationale, write: () => {} });
+    } catch (err) {
+      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
+    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
+  }
+  // POST /library/unlink
+  if (req.method === 'POST' && path === '/library/unlink') {
+    const body = await readBody(req);
+    const form = new URLSearchParams(body);
+    const paperId = form.get('paperId')?.trim() ?? '';
+    const topic = form.get('topic')?.trim() ?? '';
+    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
+    if (!topic) return send(res, 400, 'text/plain', 'missing topic');
+    try {
+      runLibraryUnlink({ cwd: root, paperId, topic, write: () => {} });
     } catch (err) {
       return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
     }

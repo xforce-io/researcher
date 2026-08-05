@@ -416,7 +416,6 @@ function renderPaperCard(
   variant: 'row' | 'compact' | 'detail' = 'row',
   opts: { defaultHidden?: boolean; topicContext?: boolean } = {},
 ): string {
-  const relation = p.relation ? `<span class="paper-relation">${escapeHtml(p.relation)}</span>` : '';
   let integrationBadge = '';
   if (opts.topicContext) {
     integrationBadge = p.integratedInTopic
@@ -424,14 +423,13 @@ function renderPaperCard(
       : `<span class="paper-integration pending-landscape">linked · not in landscape</span>`;
   }
   const stateBits = opts.topicContext
-    ? [escapeHtml(p.readStatus), relation].filter(Boolean).join(' · ')
-    : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated${relation ? ` ${relation}` : ''}`;
+    ? escapeHtml(p.readStatus)
+    : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
     p.displayTitle,
     p.canonicalId,
     p.sourceLabel,
     p.readStatus,
-    p.relation,
     ...(opts.topicContext
       ? [p.integratedInTopic ? 'in landscape' : 'not in landscape']
       : []),
@@ -493,7 +491,7 @@ export function renderLibrary(v: LibraryView): string {
         `</div>` +
       `</aside>` +
       `<section class="library-main">` +
-        `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic relations.</p></div>` +
+        `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic links.</p></div>` +
         `<button class="primary" type="button" data-open-add-paper>Add paper</button></div>` +
         `<div class="paper-list-grid">` +
           `<div class="paper-card paper-header"><span>Paper</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
@@ -580,7 +578,6 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
   const items = suggestions.map((s) =>
     `<button type="button" class="topic-suggest-item" ` +
       `data-suggest-topic="${escapeHtml(s.topicId)}" ` +
-      `data-relation="${escapeHtml(s.defaultRelation)}" ` +
       `data-rationale="${escapeHtml(s.rationaleDraft)}">` +
       `<span class="topic-suggest-id mono">${escapeHtml(s.topicId)}</span>` +
       `<span class="topic-suggest-score mono" title="heuristic score">${s.score.toFixed(0)}</span>` +
@@ -598,7 +595,6 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
 function renderLinkTopicAction(v: LibraryPaperDetailView): string {
   const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
   const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
-  const preferredLink = preferredTopic ? v.links.find((l) => l.surfaceType === 'topic' && l.surfaceId === preferredTopic) : undefined;
   const topicOptions = v.topics
     .filter((t) => t.available)
     .map((t) => {
@@ -606,9 +602,6 @@ function renderLinkTopicAction(v: LibraryPaperDetailView): string {
       const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
       return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
     })
-    .join('');
-  const relationOptions = ['candidate', 'relevant', 'integrated', 'rejected', 'archived']
-    .map((r) => `<option value="${r}"${preferredLink?.relation === r ? ' selected' : ''}>${r}</option>`)
     .join('');
   const suggest = renderTopicSuggestList(v);
   // One panel: suggest (optional) + fields + primary confirm at the same level.
@@ -620,8 +613,7 @@ function renderLinkTopicAction(v: LibraryPaperDetailView): string {
         : '') +
       `<div class="topic-link-fields">` +
         `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
-        `<label>Relation<select name="relation">${relationOptions}</select></label>` +
-        `<label>Rationale<input name="rationale" value="${escapeHtml(preferredLink?.rationale ?? '')}" placeholder="why this topic"></label>` +
+        `<label>Why (optional)<input name="rationale" placeholder="why this topic"></label>` +
       `</div>` +
       `<button class="primary topic-link-submit" type="submit">Link topic</button>` +
     `</form>`;
@@ -636,7 +628,6 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
   var root = document.querySelector('[data-topic-suggest]');
   if (!form || !root) return;
   var topicSel = form.querySelector('select[name="topic"]');
-  var relSel = form.querySelector('select[name="relation"]');
   var ratInput = form.querySelector('input[name="rationale"]');
   var status = root.querySelector('[data-suggest-status]');
   var submit = form.querySelector('.topic-link-submit');
@@ -645,13 +636,11 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
     if (!btn || !root.contains(btn)) return;
     ev.preventDefault();
     var topic = btn.getAttribute('data-suggest-topic') || '';
-    var rel = btn.getAttribute('data-relation') || 'candidate';
     var rat = btn.getAttribute('data-rationale') || '';
     if (topicSel) {
       topicSel.value = topic;
       topicSel.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    if (relSel) relSel.value = rel;
     if (ratInput) ratInput.value = rat;
     root.querySelectorAll('.topic-suggest-item').forEach(function (el) {
       el.classList.toggle('is-selected', el === btn);
@@ -797,8 +786,13 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
 }
 
 function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
-  const links = v.links.map((l) =>
-    `<li><b>${escapeHtml(l.surfaceId)}</b> <span class="paper-relation">${escapeHtml(l.relation)}</span></li>`
+  const links = v.links.filter((l) => l.surfaceType === 'topic').map((l) =>
+    `<li><b>${escapeHtml(l.surfaceId)}</b>` +
+      `<form class="inline-form" action="/library/unlink" method="post" onsubmit="return confirm('Remove this topic link?');">` +
+        `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+        `<input type="hidden" name="topic" value="${escapeHtml(l.surfaceId)}">` +
+        `<button type="submit" class="link-button">Unlink</button>` +
+      `</form></li>`
   ).join('');
   const integrations = v.integrations.map((i) =>
     `<li><b>${escapeHtml(i.topicId)}</b> ${i.zone ? `<span class="source-badge">${escapeHtml(i.zone)}</span>` : ''} ` +
@@ -807,8 +801,8 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
   const firstLink = v.links.find((l) => l.surfaceType === 'topic');
   const miniMap = firstLink
     ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
-      `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)} · ${escapeHtml(firstLink.relation)}</span></div></div>`
-    : '<p class="muted">No topic relation yet.</p>';
+      `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)}</span></div></div>`
+    : '<p class="muted">No topic link yet.</p>';
   const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
   const canDelete = v.paper.linkedTopicCount === 0 && v.links.length === 0 && v.integrations.length === 0;
   const deleteAction = canDelete
@@ -824,7 +818,7 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
   return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
     `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v)}</section>` +
     deleteAction +
-    `<section class="detail-panel"><h2>Relations</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
+    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
     `<section class="detail-panel"><h2>Mini map</h2>${miniMap}</section>`;
 }
@@ -1399,7 +1393,13 @@ export function renderTopic(
     ? `last run ${fmtDate(v.watermark.last_run_completed_at)} · <span class="mono">${escapeHtml(v.watermark.last_run_id)}</span>`
     : 'never run';
   const related = v.relatedPapers ?? [];
-  const relatedRows = related.map((p) => renderPaperCard(p, 'compact', { topicContext: true })).join('');
+  // A link is actionable before integration. Keep pending Library papers in the
+  // left navigation, beside the local files, so linking has immediate feedback.
+  const pendingRelated = related.filter((p) => !p.integratedInTopic);
+  const pendingRelatedRows = pendingRelated.map((p) =>
+    `<li><a href="/library/p/${encodeURIComponent(p.id)}" title="${escapeHtml(p.displayTitle)}">` +
+      `${escapeHtml(p.displayTitle)}</a><span class="library-link-state">linked</span></li>`,
+  ).join('');
 
   const runDisabled = runBlocked && !activeRun
     ? ` disabled title="Complete setup before running" aria-disabled="true"`
@@ -1434,6 +1434,10 @@ export function renderTopic(
     setupNotice +
     `<main class="three-col${related.length ? ' right-open' : ''}" id="cols" data-default-right-open="${related.length ? '1' : '0'}">` +
       `<aside class="left"><h3>Docs</h3><ul class="doc-tree">${docTree}</ul>` +
+        (pendingRelated.length
+          ? `<h3>Linked (Library) <span class="h3-count">${pendingRelated.length}</span></h3>` +
+            `<ul class="paper-list library-link-list">${pendingRelatedRows}</ul>`
+          : '') +
         (v.notes.length ? `<h3>Notes <span class="h3-count">${v.notes.length}</span></h3>${noteGroups}` : '') +
         `<h3>Papers</h3><ul class="paper-list">${paperList || '<li class="muted">No PDFs</li>'}</ul></aside>` +
       `<div class="col-resizer" id="col-resizer" role="separator" aria-orientation="vertical" title="Drag to resize"></div>` +
@@ -1441,11 +1445,6 @@ export function renderTopic(
       `<aside class="right" id="right-panel"><h3>About</h3>` +
         `<p class="about">${escapeHtml(v.oneline) || '<span class="muted">no one-line set</span>'}` +
         `${v.language ? ` <span class="lang">${escapeHtml(v.language)}</span>` : ''}</p>` +
-        (related.length
-          ? `<h3>Linked (Library) <span class="h3-count">${related.length}</span></h3>` +
-            `<p class="muted related-hint">Library links — not the same as landscape until integrated.</p>` +
-            `<div class="related-papers">${relatedRows}</div>`
-          : '') +
         `<h3>Sources</h3><ul class="meta-list">${sourceList || '<li>—</li>'}</ul>` +
         `<h3>Questions</h3><ul class="meta-list">${rqList || '<li>—</li>'}</ul>` +
         `<h3>State</h3><p class="state">${wm}</p>` +

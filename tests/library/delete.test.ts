@@ -49,7 +49,6 @@ describe('PaperLibrary.deletePaper', () => {
       paperId: id,
       surfaceType: 'topic',
       surfaceId: 'trace',
-      relation: 'candidate',
     });
 
     expect(() => lib.deletePaper(id)).toThrow(/linked|unlink/i);

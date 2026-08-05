@@ -528,7 +528,6 @@ describe('renderTopic', () => {
       linkedTopicCount: 1,
       integratedTopicCount: 1,
       updatedAt: '2026-07-02T00:00:00Z',
-      relation: 'relevant',
     }],
     seen: [{ id: 'arxiv:1', source: 'arxiv', first_seen_run: 'r1', decision: 'deep-read', reason: 'x' }],
     watermark: { last_run_completed_at: '2026-06-20T10:00:00Z', last_run_window: { from: 'a', to: 'b' }, last_run_id: 'r1' },
@@ -553,10 +552,9 @@ describe('renderTopic', () => {
     expect(html).toContain('class="seen-list"');       // seen ledger is a list, not a table
     expect(html).toContain('class="seen-dec deep-read"'); // decision rendered as a colored chip
     expect(html).toContain('<h1 class="sr-only">Topic: trace</h1>');
-    expect(html).toMatch(/Linked \(Library\)|Related papers/);
-    expect(html).toContain('paper-card compact');
+    expect(html).toContain('Linked (Library)');
+    expect(html).toContain('library-link-list');
     expect(html).toContain('Reusable Paper Cards');
-    expect(html).toContain('tag-chip');
     expect(html).not.toContain('<table');              // no narrow 3-col table
   });
   it('shows an unavailable notice when topic has no .researcher', () => {
@@ -611,7 +609,6 @@ describe('renderLibraryPaper delete affordance', () => {
         paperId: basePaper.id,
         surfaceType: 'topic',
         surfaceId: 'trace',
-        relation: 'candidate',
         createdAt: '2026-07-09T00:00:00Z',
         updatedAt: '2026-07-09T00:00:00Z',
       }],
@@ -691,7 +688,7 @@ describe('renderLibrary', () => {
         updatedAt: '2026-07-02T00:00:00Z',
       }],
       latestReadArtifact: { path: 'read.md', markdown: '# Library Read\n\n## Findings\n\n- Useful paper.' },
-      links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'relevant', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
+      links: [{ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', createdAt: '2026-07-02T00:00:00Z', updatedAt: '2026-07-02T00:00:00Z' }],
       integrations: [{ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', integratedAt: '2026-07-02T00:00:00Z', zone: 'active' }],
       topicSuggestions: [],
     };
@@ -709,10 +706,11 @@ describe('renderLibrary', () => {
     expect(html).toContain('Re-run read');
     expect(html).toContain('name="force" value="1"');
     expect(html).toContain('Link topic');
-    expect(html).toContain('name="relation"');
+    expect(html).not.toContain('name="relation"');
     expect(html).not.toContain('Context<select');
     expect(html).toContain('<h2>Findings</h2>');
-    expect(html).toContain('Relations');
+    expect(html).toContain('Linked topics');
+    expect(html).toContain('action="/library/unlink"');
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
     expect(html).toContain('id="notes"');
@@ -977,7 +975,6 @@ describe('renderTopic landscape / related UX (#111)', () => {
       integratedTopicCount: 0,
       integratedInTopic: false,
       updatedAt: '2026-07-28T00:00:00Z',
-      relation: 'candidate',
     }],
     seen: [], watermark: null,
   };
@@ -987,19 +984,20 @@ describe('renderTopic landscape / related UX (#111)', () => {
     expect(html).toContain('Landscape is empty');
     expect(html).toContain('linked to this topic');
     expect(html).toContain('Linked (Library)');
-    expect(html).toContain('linked · not in landscape');
+    expect(html).toContain('library-link-state">linked');
     expect(html).toContain('researcher add 2607.21051');
-    expect(html).not.toContain('>Related papers<');
+    expect(html).toContain('>Linked (Library) <span class="h3-count">1</span><');
+    expect(html).toContain('Sample-Efficient Learning from Agent Experience');
   });
 
-  it('marks integrated related papers as in landscape', () => {
+  it('removes integrated papers from the pending Library link list', () => {
     const html = renderTopic({
       ...base,
       landscapeEmpty: false,
       pendingRelatedCount: 0,
-      relatedPapers: base.relatedPapers!.map((p) => ({ ...p, integratedInTopic: true, relation: 'integrated' })),
+      relatedPapers: base.relatedPapers!.map((p) => ({ ...p, integratedInTopic: true })),
     });
-    expect(html).toContain('in landscape');
+    expect(html).not.toContain('Linked (Library)');
     expect(html).not.toContain('Landscape is empty');
   });
 
