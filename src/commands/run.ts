@@ -262,7 +262,6 @@ export function pickLinkedLibraryCandidate(opts: {
   );
   const links = lib.listLinks()
     .filter((l) => l.surfaceType === 'topic' && l.surfaceId === opts.topicPath)
-    .filter((l) => l.relation === 'candidate' || l.relation === 'relevant')
     .filter((l) => !integrated.has(l.paperId))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
@@ -291,13 +290,7 @@ export function classifyEmptyLinkedQueue(opts: {
   }
   // Only count work that was or is part of the integrate queue.
   const hasIntegration = lib.listIntegrations().some((i) => i.topicId === opts.topicPath);
-  const hasIntegratedLink = lib.listLinks().some(
-    (l) =>
-      l.surfaceType === 'topic' &&
-      l.surfaceId === opts.topicPath &&
-      l.relation === 'integrated',
-  );
-  return hasIntegration || hasIntegratedLink ? 'all-integrated' : 'nothing-to-run';
+  return hasIntegration ? 'all-integrated' : 'nothing-to-run';
 }
 
 function inferTopicPath(workspaceRoot: string, topicDir: string): string {

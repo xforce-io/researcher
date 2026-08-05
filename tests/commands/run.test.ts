@@ -315,7 +315,6 @@ describe('researcher run (autonomous)', () => {
       paperId: libraryPaperId,
       surfaceType: 'topic',
       surfaceId: 'topic',
-      relation: 'integrated',
     });
     lib.upsertIntegration({
       paperId: libraryPaperId,
@@ -434,7 +433,6 @@ describe('researcher run (autonomous)', () => {
       }),
     ]);
     expect(lib.listLinks(libraryPaperId)).toEqual([
-      expect.objectContaining({ relation: 'integrated' }),
     ]);
     expect(readFileSync(join(proj, 'notes/00_research_landscape.md'), 'utf8')).toContain('new entry');
   });
@@ -459,7 +457,7 @@ describe('researcher run (autonomous)', () => {
 
     const lib = new PaperLibrary(proj);
     expect(lib.listIntegrations(libraryPaperId)).toEqual([]);
-    expect(lib.listLinks(libraryPaperId).some((l) => l.relation === 'integrated')).toBe(false);
+    expect(lib.listLinks(libraryPaperId)).toEqual([]);
     expect(existsSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'))).toBe(true);
   });
 

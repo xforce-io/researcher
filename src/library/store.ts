@@ -115,7 +115,10 @@ export class PaperLibrary {
     const existing = this.listLinks().find((l) => keyOf(l) === keyOf(input as PaperSurfaceLink));
     const now = this.clock.now();
     const link: PaperSurfaceLink = {
-      ...input,
+      paperId: input.paperId,
+      surfaceType: input.surfaceType,
+      surfaceId: input.surfaceId,
+      rationale: input.rationale,
       createdAt: existing?.createdAt ?? input.createdAt ?? now,
       updatedAt: now,
     };
@@ -124,9 +127,26 @@ export class PaperLibrary {
   }
 
   listLinks(paperId?: string): PaperSurfaceLink[] {
-    const links = readJsonl<PaperSurfaceLink>(this.path('links.jsonl'));
+    // Older workspaces stored workflow decisions in links. Rejected and archived
+    // entries were never active links; hide them while retaining the ledger on disk.
+    // All other legacy links normalize to the new relation-free shape on their next upsert.
+    const links = readJsonl<PaperSurfaceLink & { relation?: string }>(this.path('links.jsonl'))
+      .filter((link) => link.relation !== 'rejected' && link.relation !== 'archived')
+      .map(({ relation: _relation, ...link }) => link);
     return (paperId ? links.filter((l) => l.paperId === paperId) : links)
       .sort((a, b) => `${a.paperId}:${a.surfaceType}:${a.surfaceId}`.localeCompare(`${b.paperId}:${b.surfaceType}:${b.surfaceId}`));
+  }
+
+  unlink(paperId: string, surfaceType: PaperSurfaceLink['surfaceType'], surfaceId: string): { unlinked: true } {
+    const found = this.listLinks(paperId).some(
+      (link) => link.surfaceType === surfaceType && link.surfaceId === surfaceId,
+    );
+    if (!found) throw new Error(`no link for ${paperId} on ${surfaceType}:${surfaceId}`);
+    writeJsonlFilter(
+      this.path('links.jsonl'),
+      (link: PaperSurfaceLink) => !(link.paperId === paperId && link.surfaceType === surfaceType && link.surfaceId === surfaceId),
+    );
+    return { unlinked: true };
   }
 
   upsertIntegration(input: IntegrationInput): TopicIntegration {

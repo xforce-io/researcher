@@ -31,7 +31,6 @@ describe('pickLinkedLibraryCandidate (#111)', () => {
       paperId: 'paper_arxiv_2607_21051',
       surfaceType: 'topic',
       surfaceId: 'agentic-model-training',
-      relation: 'candidate',
       rationale: 'seed',
     });
     expect(pickLinkedLibraryCandidate({
@@ -53,7 +52,6 @@ describe('pickLinkedLibraryCandidate (#111)', () => {
       paperId: 'paper_arxiv_2607_21051',
       surfaceType: 'topic',
       surfaceId: 'agentic-model-training',
-      relation: 'integrated',
     });
     lib.upsertIntegration({
       paperId: 'paper_arxiv_2607_21051',

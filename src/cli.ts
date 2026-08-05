@@ -47,13 +47,20 @@ library
   });
 library
   .command('link <paper-id>')
-  .description('Link a library paper to a topic surface')
+  .description('Link a library paper to a topic')
   .requiredOption('--topic <topic>', 'topic id/path')
-  .option('--relation <relation>', 'candidate, relevant, integrated, rejected, or archived', 'candidate')
-  .option('--rationale <text>', 'short reason for the relation')
-  .action(async (paperId: string, opts: { topic: string; relation: string; rationale?: string }) => {
-    const { parseRelation, runLibraryLink } = await import('./commands/library.js');
-    runLibraryLink({ paperId, cwd: process.cwd(), topic: opts.topic, relation: parseRelation(opts.relation), rationale: opts.rationale });
+  .option('--rationale <text>', 'optional reason for the link')
+  .action(async (paperId: string, opts: { topic: string; rationale?: string }) => {
+    const { runLibraryLink } = await import('./commands/library.js');
+    runLibraryLink({ paperId, cwd: process.cwd(), topic: opts.topic, rationale: opts.rationale });
+  });
+library
+  .command('unlink <paper-id>')
+  .description('Remove a library paper link from a topic')
+  .requiredOption('--topic <topic>', 'topic id/path')
+  .action(async (paperId: string, opts: { topic: string }) => {
+    const { runLibraryUnlink } = await import('./commands/library.js');
+    runLibraryUnlink({ paperId, cwd: process.cwd(), topic: opts.topic });
   });
 library
   .command('integrate <paper-id>')

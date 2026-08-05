@@ -27,7 +27,6 @@ export interface TopicLinkSuggestion {
   score: number;
   /** Short evidence-oriented why (not a slogan). */
   reason: string;
-  defaultRelation: 'candidate';
   /** Prefill for the rationale field; human may edit. */
   rationaleDraft: string;
 }
@@ -194,7 +193,6 @@ export function suggestTopicLinks(
       topicId: topic.topicId,
       score,
       reason,
-      defaultRelation: 'candidate',
       rationaleDraft: reason,
     });
   }

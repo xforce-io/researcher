@@ -62,7 +62,6 @@ export async function libraryTopicRead(ctx: RunContext, opts: LibraryTopicReadOp
       paperId: paper.id,
       surfaceType: 'topic',
       surfaceId: topicId,
-      relation: 'candidate',
       rationale: ctx.triageReason,
     });
   }
@@ -97,7 +96,6 @@ export function finalizeLibraryIntegration(
     paperId: pending.paperId,
     surfaceType: 'topic',
     surfaceId: topicId,
-    relation: 'integrated',
     rationale: pending.summary ?? ctx.triageReason,
   });
   lib.upsertIntegration({

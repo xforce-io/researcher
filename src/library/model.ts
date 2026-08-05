@@ -55,13 +55,12 @@ export interface PaperNote {
 }
 
 export type SurfaceType = 'topic' | 'tag-graph' | 'concept-map' | 'collection' | 'board';
-export type PaperRelation = 'candidate' | 'relevant' | 'integrated' | 'rejected' | 'archived';
 
 export interface PaperSurfaceLink {
   paperId: string;
   surfaceType: SurfaceType;
   surfaceId: string;
-  relation: PaperRelation;
+  /** Optional human context for why this paper is linked to this surface. */
   rationale?: string;
   createdAt: string;
   updatedAt: string;

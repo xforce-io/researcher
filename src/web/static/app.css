@@ -853,7 +853,7 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   font-size:12px;
   overflow-wrap:anywhere;
 }
-.source-badge, .paper-relation {
+.source-badge {
   display:inline-flex;
   align-items:center;
   width:max-content;
@@ -880,11 +880,9 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
 .status-badge.failed { background:#f8e5df; color:#9a3f2f; }
 .status-badge.queued { background:#e7edf5; color:#3c5878; }
 .status-badge.unread { background:var(--line-soft); color:var(--ink-soft); }
-.paper-relation {
-  margin-left:6px;
-  background:#f6ecd6;
-  color:#8a6123;
-}
+.inline-form { display:inline; margin-left:6px; }
+.link-button { border:0; background:transparent; color:var(--accent-ink); cursor:pointer; padding:0; font:inherit; }
+.link-button:hover { text-decoration:underline; }
 .paper-tags {
   display:flex;
   flex-wrap:wrap;
@@ -1584,6 +1582,12 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
 }
 .doc-tree a:hover, .paper-list a:hover, .note-tree a:hover { background:var(--accent-soft); text-decoration:none; }
 .paper-list a { font-family:var(--mono); font-size:12.5px; }
+.library-link-list li { position:relative; padding-right:48px; }
+.library-link-list a { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.library-link-state {
+  position:absolute; right:0; top:6px;
+  color:var(--accent-ink); font:700 9px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase;
+}
 .h3-count {
   font:600 10px/1 var(--mono); color:var(--ink-faint);
   background:var(--line-soft); padding:2px 5px; border-radius:4px; letter-spacing:0;

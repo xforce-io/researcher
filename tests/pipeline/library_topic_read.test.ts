@@ -109,7 +109,6 @@ describe('libraryTopicRead integration timing', () => {
       paperId,
       surfaceType: 'topic',
       surfaceId: 'trace',
-      relation: 'candidate',
       rationale: 'pre-linked',
     });
 
@@ -152,7 +151,7 @@ describe('libraryTopicRead integration timing', () => {
     const after = new PaperLibrary(root);
     expect(after.listIntegrations(paperId)).toEqual([]);
     expect(after.listLinks(paperId)).toEqual([
-      expect.objectContaining({ surfaceId: 'trace', relation: 'candidate' }),
+      expect.objectContaining({ surfaceId: 'trace' }),
     ]);
   });
 
@@ -170,7 +169,6 @@ describe('libraryTopicRead integration timing', () => {
       paperId,
       surfaceType: 'topic',
       surfaceId: 'trace',
-      relation: 'candidate',
     });
 
     const rd = new RunDir(join(topic, '.researcher/state/runs'), newRunId());
@@ -201,7 +199,7 @@ describe('libraryTopicRead integration timing', () => {
       }),
     ]);
     expect(after.listLinks(paperId)).toEqual([
-      expect.objectContaining({ surfaceId: 'trace', relation: 'integrated' }),
+      expect.objectContaining({ surfaceId: 'trace' }),
     ]);
   });
 

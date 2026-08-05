@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
-import { parseRelation, runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList } from '../../src/commands/library.js';
+import { runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList, runLibraryUnlink } from '../../src/commands/library.js';
 import { PaperLibrary } from '../../src/library/store.js';
 
 describe('researcher library commands', () => {
@@ -21,14 +21,14 @@ describe('researcher library commands', () => {
     const write = (_s: string) => {};
     runLibraryAdd({ cwd: root, input: 'https://arxiv.org/abs/2401.12345v2', tags: ['survey'], write });
     runLibraryAdd({ cwd: root, input: '2401.12345', tags: ['benchmark'], write });
-    runLibraryLink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', relation: 'candidate', rationale: 'matches RQ1', write });
+    runLibraryLink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', rationale: 'matches RQ1', write });
 
     const lib = new PaperLibrary(root);
     expect(lib.listPapers()).toEqual([
       expect.objectContaining({ id: 'paper_arxiv_2401_12345', tags: ['benchmark'] }),
     ]);
     expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
-      expect.objectContaining({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', relation: 'candidate' }),
+      expect.objectContaining({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' }),
     ]);
     expect(readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
     expect(readFileSync(join(root, 'trace/notes/00_research_landscape.md'), 'utf8')).toBe('# Landscape\n');
@@ -68,15 +68,18 @@ describe('researcher library commands', () => {
       }),
     ]);
     expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
-      expect.objectContaining({ surfaceType: 'topic', surfaceId: 'trace', relation: 'integrated' }),
+      expect.objectContaining({ surfaceType: 'topic', surfaceId: 'trace' }),
     ]);
     expect(readFileSync(join(root, 'trace/notes/00_research_landscape.md'), 'utf8')).toBe('# Landscape\n');
     expect(readFileSync(join(root, 'trace/report.md'), 'utf8')).toBe('# Report\n');
   });
 
-  it('validates paper relation input', () => {
-    expect(parseRelation('relevant')).toBe('relevant');
-    expect(() => parseRelation('maybe')).toThrow(/invalid relation/);
+  it('unlinks a paper from one topic without removing its integration history', () => {
+    const write = (_s: string) => {};
+    runLibraryAdd({ cwd: root, input: '2401.12345', write });
+    runLibraryLink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', write });
+    runLibraryUnlink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', write });
+    expect(new PaperLibrary(root).listLinks('paper_arxiv_2401_12345')).toEqual([]);
   });
 
   it('stores explicit docType on library add', () => {

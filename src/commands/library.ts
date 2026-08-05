@@ -1,7 +1,7 @@
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { defaultDocTypeForSource, type DocType } from '../library/doc-type.js';
 import { PaperLibrary } from '../library/store.js';
-import type { PaperRelation, TopicIntegration } from '../library/model.js';
+import type { TopicIntegration } from '../library/model.js';
 
 export interface LibraryAddOptions {
   cwd: string;
@@ -20,7 +20,6 @@ export interface LibraryLinkOptions {
   cwd: string;
   paperId: string;
   topic: string;
-  relation?: PaperRelation;
   rationale?: string;
   write?: (s: string) => void;
 }
@@ -41,9 +40,14 @@ export interface LibraryDeleteOptions {
   write?: (s: string) => void;
 }
 
-const defaultWrite = (s: string) => process.stdout.write(s);
-const RELATIONS: PaperRelation[] = ['candidate', 'relevant', 'integrated', 'rejected', 'archived'];
+export interface LibraryUnlinkOptions {
+  cwd: string;
+  paperId: string;
+  topic: string;
+  write?: (s: string) => void;
+}
 
+const defaultWrite = (s: string) => process.stdout.write(s);
 export function runLibraryAdd(opts: LibraryAddOptions): void {
   const write = opts.write ?? defaultWrite;
   const source = normalizePaperInput(opts.input);
@@ -82,15 +86,13 @@ export function runLibraryLink(opts: LibraryLinkOptions): void {
   const lib = new PaperLibrary(opts.cwd);
   const paper = lib.getPaper(opts.paperId);
   if (!paper) throw new Error(`unknown paper id: ${opts.paperId}`);
-  const relation = opts.relation ?? 'candidate';
   const link = lib.upsertLink({
     paperId: opts.paperId,
     surfaceType: 'topic',
     surfaceId: opts.topic,
-    relation,
     rationale: opts.rationale,
   });
-  write(`${link.paperId}\t${link.surfaceType}:${link.surfaceId}\t${link.relation}\n`);
+  write(`${link.paperId}\t${link.surfaceType}:${link.surfaceId}\tlinked\n`);
 }
 
 export function runLibraryIntegrate(opts: LibraryIntegrateOptions): void {
@@ -111,10 +113,18 @@ export function runLibraryIntegrate(opts: LibraryIntegrateOptions): void {
     paperId: opts.paperId,
     surfaceType: 'topic',
     surfaceId: opts.topic,
-    relation: 'integrated',
     rationale: opts.summary,
   });
   write(`${integration.paperId}\ttopic:${integration.topicId}\tintegrated\n`);
+}
+
+/** Remove only the explicit topic link. Existing integration history remains intact. */
+export function runLibraryUnlink(opts: LibraryUnlinkOptions): void {
+  const write = opts.write ?? defaultWrite;
+  const lib = new PaperLibrary(opts.cwd);
+  if (!lib.getPaper(opts.paperId)) throw new Error(`unknown paper id: ${opts.paperId}`);
+  lib.unlink(opts.paperId, 'topic', opts.topic);
+  write(`${opts.paperId}\ttopic:${opts.topic}\tunlinked\n`);
 }
 
 /** Delete a Library paper only when it has no topic links/integrations. */
@@ -128,9 +138,4 @@ export function runLibraryDelete(opts: LibraryDeleteOptions): void {
 export function parseTags(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw.split(',').map((t) => t.trim()).filter(Boolean).sort();
-}
-
-export function parseRelation(raw: string): PaperRelation {
-  if ((RELATIONS as string[]).includes(raw)) return raw as PaperRelation;
-  throw new Error(`invalid relation: ${raw}. expected one of ${RELATIONS.join(', ')}`);
 }

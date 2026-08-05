@@ -58,7 +58,7 @@ describe('suggestTopicLinks', () => {
     expect(out.length).toBeLessThanOrEqual(2);
     expect(out[0].topicId).toMatch(/decision|trace/);
     expect(out.map((s) => s.topicId)).not.toContain('data');
-    expect(out.every((s) => s.defaultRelation === 'candidate')).toBe(true);
+    expect(out.every((s) => s.rationaleDraft.length > 0)).toBe(true);
     expect(out[0].reason.length).toBeGreaterThan(0);
     expect(out[0].score).toBeGreaterThanOrEqual(out[out.length - 1]?.score ?? 0);
   });
@@ -142,14 +142,12 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
       topicId: 'decision',
       score: 12,
       reason: 'selection gate / verifier',
-      defaultRelation: 'candidate',
       rationaleDraft: 'selection gate / verifier',
     },
     {
       topicId: 'trace',
       score: 8,
       reason: 'trajectory verification',
-      defaultRelation: 'candidate',
       rationaleDraft: 'trajectory verification',
     },
   ];
@@ -193,7 +191,6 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
         paperId: 'paper_arxiv_2607_05391',
         surfaceType: 'topic',
         surfaceId: 'decision',
-        relation: 'candidate',
         createdAt: '2026-07-01T00:00:00Z',
         updatedAt: '2026-07-01T00:00:00Z',
       }],
@@ -208,11 +205,11 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
       paper: { ...base().paper, linkedTopicCount: 2 },
       links: [
         {
-          paperId: 'p', surfaceType: 'topic', surfaceId: 'decision', relation: 'candidate',
+          paperId: 'p', surfaceType: 'topic', surfaceId: 'decision',
           createdAt: 'a', updatedAt: 'a',
         },
         {
-          paperId: 'p', surfaceType: 'topic', surfaceId: 'trace', relation: 'candidate',
+          paperId: 'p', surfaceType: 'topic', surfaceId: 'trace',
           createdAt: 'a', updatedAt: 'a',
         },
       ],
@@ -236,6 +233,6 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
     expect(html).toMatch(/name="rationale"/);
     expect(html).not.toMatch(/fetch\(['"]\/library\/link/);
     expect(html).toContain('data-rationale=');
-    expect(html).toContain('data-relation="candidate"');
+    expect(html).not.toContain('data-relation=');
   });
 });

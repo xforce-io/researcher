@@ -8,7 +8,7 @@ import { resolveProjectResearcherDir } from '../paths.js';
 import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 import { PaperLibrary } from '../library/store.js';
-import type { Paper, PaperNote, PaperRead, PaperRelation, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
+import type { Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
 import { assessSoulReady } from './soul-ready.js';
 import {
   extractReadSuggestExcerpt,
@@ -132,7 +132,6 @@ export interface LibraryPaperSummary {
   /** True when this paper has a TopicIntegration row for the current topic. */
   integratedInTopic?: boolean;
   updatedAt: string;
-  relation?: PaperRelation;
 }
 export interface LibraryView {
   root: string;
@@ -285,7 +284,6 @@ function latestReadStatus(reads: PaperRead[]): LibraryPaperSummary['readStatus']
 function summarizePaper(
   lib: PaperLibrary,
   paper: Paper,
-  relation?: PaperRelation,
   topicPath?: string,
 ): LibraryPaperSummary {
   const reads = lib.listReads(paper.id);
@@ -304,7 +302,6 @@ function summarizePaper(
       ? integrations.some((i) => i.topicId === topicPath)
       : undefined,
     updatedAt: paper.updatedAt,
-    relation,
   };
 }
 
@@ -575,7 +572,7 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     .filter((l) => l.surfaceType === 'topic' && l.surfaceId === topic.path)
     .map((l) => {
       const paper = lib.getPaper(l.paperId);
-      return paper ? summarizePaper(lib, paper, l.relation, topic.path) : null;
+      return paper ? summarizePaper(lib, paper, topic.path) : null;
     })
     .filter((p): p is LibraryPaperSummary => p !== null);
   const notes = listNotes(topicDir);

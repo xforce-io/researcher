@@ -27,14 +27,14 @@ describe('PaperLibrary store', () => {
     const id = paperIdForSource(source);
     lib.upsertPaper({ id, canonicalSource: source, sources: [source], identifiers: { url: 'https://example.com/x' }, tags: ['agent-memory'] });
     lib.upsertRead({ id: `read_${id}`, paperId: id, status: 'read', artifactPath: `.researcher-workspace/library/papers/${id}/read.md` });
-    lib.upsertLink({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', relation: 'candidate', rationale: 'matches RQ1' });
+    lib.upsertLink({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' });
 
     expect(lib.getPaper(id)?.tags).toEqual(['agent-memory']);
     expect(lib.listReads(id)).toEqual([
       expect.objectContaining({ id: `read_${id}`, paperId: id, status: 'read' }),
     ]);
     expect(lib.listLinks(id)).toEqual([
-      expect.objectContaining({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', relation: 'candidate' }),
+      expect.objectContaining({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' }),
     ]);
     expect(existsSync(join(root, '.researcher-workspace/library/reads.jsonl'))).toBe(true);
     expect(existsSync(join(root, '.researcher-workspace/library/links.jsonl'))).toBe(true);
