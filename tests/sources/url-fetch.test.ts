@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { extractHtmlMainText, fetchUrlMaterial } from '../../src/sources/url-fetch.js';
+import { extractHtmlMainText, fetchUrlMaterial, formatNetworkError, githubRepoRawCandidates } from '../../src/sources/url-fetch.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,5 +72,63 @@ describe('fetchUrlMaterial', () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })));
     await expect(fetchUrlMaterial('url:https://example.com/missing')).rejects.toThrow(/404|fetch/i);
+  });
+
+  it('includes the underlying fetch cause in the thrown error', async () => {
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    const cause = Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' });
+    const boom = new TypeError('fetch failed', { cause });
+    vi.stubGlobal('fetch', vi.fn(async () => { throw boom; }));
+    await expect(fetchUrlMaterial('url:http://127.0.0.1:1/doc')).rejects.toThrow(/UND_ERR_CONNECT_TIMEOUT/);
+  });
+
+  it('resolves a GitHub repo-root URL to paper text via raw artifacts', async () => {
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const u = String(input);
+      if (/paper\.pdf(\?|$)/i.test(u)) {
+        return new Response('missing', { status: 404 });
+      }
+      if (/\/README\.md(\?|$)/i.test(u)) {
+        return new Response(
+          '# A Programming Paradigm for Spatiotemporal Composability\n\nAbstract\nWe lift effects.\n',
+          { status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' } },
+        );
+      }
+      return new Response(
+        '<html><head><title>GitHub</title></head><body><main>repo chrome</main></body></html>',
+        { status: 200, headers: { 'content-type': 'text/html' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const material = await fetchUrlMaterial('url:https://github.com/acme/paper');
+    expect(material.text).toContain('Spatiotemporal Composability');
+    expect(material.text).toContain('Abstract');
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('raw.githubusercontent.com'))).toBe(true);
+  });
+});
+
+describe('formatNetworkError', () => {
+  it('includes the Node fetch message and cause code', () => {
+    const cause = Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' });
+    const err = new TypeError('fetch failed', { cause });
+    const msg = formatNetworkError(err);
+    expect(msg).toMatch(/fetch failed/);
+    expect(msg).toMatch(/UND_ERR_CONNECT_TIMEOUT/);
+  });
+});
+
+describe('githubRepoRawCandidates', () => {
+  it('lists paper.pdf then README on main/master for a repo root', () => {
+    const urls = githubRepoRawCandidates('https://github.com/cordiverse/paper');
+    expect(urls?.[0]).toBe('https://raw.githubusercontent.com/cordiverse/paper/main/paper.pdf');
+    expect(urls).toContain('https://raw.githubusercontent.com/cordiverse/paper/main/README.md');
+    expect(urls).toContain('https://raw.githubusercontent.com/cordiverse/paper/master/paper.pdf');
+  });
+
+  it('ignores blob/issue paths and reserved owners', () => {
+    expect(githubRepoRawCandidates('https://github.com/cordiverse/paper/blob/main/paper.pdf')).toBeUndefined();
+    expect(githubRepoRawCandidates('https://github.com/topics/agents')).toBeUndefined();
   });
 });
