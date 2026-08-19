@@ -12,10 +12,9 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const LANDSCAPE = 'notes/00_research_landscape.md';
 
 /**
- * Shared packaging head used by both the paper path (`packageStage`) and the feed path
- * (`feedPackage`): guard the context, reject unrelated dirty files, then run the
- * devil's-advocate / run-summary adapter pass. Returns the run-summary path. The two paths
- * diverge only in how they commit (PR branch vs. in-place on main).
+ * Shared packaging head for the paper path: guard the context, reject unrelated
+ * dirty files, then run the devil's-advocate / run-summary adapter pass.
+ * Returns the run-summary path.
  */
 export async function packageReview(ctx: RunContext, extraAllowedPrefixes: string[] = []): Promise<string> {
   if (!ctx.newNoteFilename || !ctx.newNoteContent || !ctx.newNoteRelPath) throw new Error('package requires note context');
@@ -26,8 +25,7 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
   //    swept into the researcher branch when we stage workshop docs.
   //    Allowed: workshop docs the agent actually maintains (landscape + the current paper's note,
   //    README.md, report.md, papers/, references/) and .researcher/ project metadata.
-  //    Both paths pass the note zone dirs (notes/active|buffer|history/) via extraAllowedPrefixes:
-  //    rebalance runs before package on BOTH the paper and feed paths and legitimately rewrites
+  //    rebalance runs before package and legitimately rewrites
   //    frontmatter on — and relocates — prior notes inside those zone dirs.
   //    notes/ is allowed wholesale so flat→zone migration deletes (notes/01_*.md) don't fail package.
   //    .milkie/ + agents/ are the milkie runtime scaffold/cwd state — never research content;
@@ -84,8 +82,7 @@ export async function packageReview(ctx: RunContext, extraAllowedPrefixes: strin
 /**
  * Paper-path packaging: branch FROM MAIN, two commits, push, open a PR for human review.
  * Each paper run produces an independent PR; the human merges it to main between runs, and
- * that merge is how the corpus accumulates. The feed path can't rely on that (an autonomous
- * high-frequency stream has nobody merging PRs), so it uses `feedPackage` instead.
+ * that merge is how the corpus accumulates.
  */
 export async function packageStage(ctx: RunContext): Promise<void> {
   const runSummaryPath = await packageReview(ctx, ZONE_DIRS.map((z) => z + '/'));
@@ -184,11 +181,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   if (!seen.has(addSourceId)) {
     seen.append({
       id: addSourceId,
-      source: addSourceId.startsWith('arxiv:')
-        ? 'arxiv'
-        : addSourceId.startsWith('xfeed:')
-        ? 'x-inbox'
-        : 'url',
+      source: addSourceId.startsWith('arxiv:') ? 'arxiv' : 'url',
       first_seen_run: ctx.runDir.id,
       decision: 'deep-read',
       reason: ctx.triageReason ?? 'manual feed via researcher add',

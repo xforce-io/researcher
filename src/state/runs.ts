@@ -12,8 +12,6 @@ export type Stage =
   | 'rebalance'
   | 'synthesize'
   | 'package'
-  | 'feed-synthesize'
-  | 'feed-enrich'
   | 'fetch-source'
   | 'draft-read'
   | 'record-read';

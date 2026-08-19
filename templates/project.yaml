@@ -26,11 +26,6 @@ sources:
     queries:
       - "your topic keyword"
     priority: high
-  # Feed mode: consume normalized digests dropped into a repo-external inbox by a
-  # preprocessing layer (e.g. researcher-invest-feeds, which filters by an account
-  # allowlist upstream). Side-mounts a feed-synthesize pipeline — arxiv path untouched.
-  # - kind: x-inbox
-  #   inbox_dir: "~/.researcher-invest-feeds/inbox"
 
 paper_axes: []
 

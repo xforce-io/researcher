@@ -1,5 +1,7 @@
 # 23 · x-inbox 去 Twitter 化:feed 路径收敛为来源无关的通用 digest 综合
 
+> **状态: Superseded** — feed / x-inbox 产品面已由 #148 从 researcher 删除。见 `docs/design/148-remove-x-inbox.md`。
+>
 > Epic(跨仓 B)。串起 `researcher`(引擎去耦)与 `researcher-invest-feeds`(富化,后续)。
 > Issue: researcher#23 · 关联已交付的 researcher#21(x-inbox 源)。
 

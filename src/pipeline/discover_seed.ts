@@ -97,7 +97,6 @@ function collectQueries(sources: ProjectYaml['sources']): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
-    if (source.kind === 'x-inbox') continue;
     if (!source.queries) continue;
     for (const raw of source.queries) {
       const q = raw.trim();

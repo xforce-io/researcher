@@ -28,8 +28,6 @@ sources:
       - "q4"
       - "q5"
       - "q6-should-drop"
-  - kind: x-inbox
-    queries: ["should ignore"]
 cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
 `;
 
@@ -68,7 +66,7 @@ describe('seedDiscoverCandidates', () => {
     expect(parsed.search_summary).toMatch(/pwc not available/i);
   });
 
-  it('maps search hits, drops seen, dedupes, caps at 20, and ignores x-inbox/placeholder', async () => {
+  it('maps search hits, drops seen, dedupes, caps at 20, and ignores placeholder', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'seed-map-'));
     const yamlPath = writeProject(dir, baseYaml);
     const candidatesPath = join(dir, 'discover-candidates.json');
@@ -184,7 +182,7 @@ cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
     expect(parsed.candidates[0]?.id).toBe('arxiv:2401.77777');
   });
 
-  it('returns no_queries without writing when only placeholders/inbox exist', async () => {
+  it('returns no_queries without writing when only placeholders exist', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'seed-none-'));
     const yamlPath = writeProject(
       dir,
@@ -195,8 +193,6 @@ exclusion_criteria: []
 sources:
   - kind: arxiv
     queries: ["your topic keyword"]
-  - kind: x-inbox
-    inbox_dir: ~/inbox
 cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
 `,
     );

@@ -224,8 +224,7 @@ function noteCount(topicDir: string): number {
   return listIntegratedNotes(topicDir).length;
 }
 
-function sourceSummary(s: { kind: string; queries?: string[]; inbox_dir?: string }): SourceSummary {
-  if (s.kind === 'x-inbox') return { kind: s.kind, summary: s.inbox_dir ?? '(no inbox_dir)' };
+function sourceSummary(s: { kind: string; queries?: string[] }): SourceSummary {
   return { kind: s.kind, summary: (s.queries ?? []).join(', ') };
 }
 
