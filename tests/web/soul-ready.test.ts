@@ -160,31 +160,6 @@ describe('assessSoulReady / isSoulReady (#106)', () => {
     expect(r.hasOpenQuestions).toBe(false);
   });
 
-  it('accepts x-inbox source with inbox_dir even without arxiv queries', () => {
-    const dot = resolveProjectResearcherDir(dir);
-    writeFileSync(
-      join(dot, 'project.yaml'),
-      [
-        'meta:',
-        '  topic_oneline: "feed pillar"',
-        '  language: zh',
-        'research_questions:',
-        '  - id: RQ1',
-        '    text: "What signals matter this week?"',
-        'inclusion_criteria: []',
-        'exclusion_criteria: []',
-        'sources:',
-        '  - kind: x-inbox',
-        '    inbox_dir: "~/.researcher-invest-feeds/inbox"',
-        'cadence:',
-        '  default_interval_days: 7',
-        '  backoff_after_empty_runs: 3',
-        '',
-      ].join('\n'),
-    );
-    writeFileSync(join(dot, 'thesis.md'), readyThesis());
-    expect(isSoulReady(dir)).toBe(true);
-  });
 
   it('rejects placeholder arxiv query your topic keyword', () => {
     const dot = resolveProjectResearcherDir(dir);

@@ -113,4 +113,17 @@ zoning: { active_max: 5, buffer_max: 10, min_dwell: 1 }
 `);
     expect(loadProjectYaml(p).zoning.active_max).toBe(5);
   });
+
+  it('rejects kind x-inbox', () => {
+    const p = writeYaml(`
+research_questions: [{ id: RQ1, text: t }]
+inclusion_criteria: []
+exclusion_criteria: []
+sources:
+  - kind: x-inbox
+    inbox_dir: ~/inbox
+cadence: { default_interval_days: 7, backoff_after_empty_runs: 3 }
+`);
+    expect(() => loadProjectYaml(p)).toThrow(ProjectYamlError);
+  });
 });

@@ -11,18 +11,10 @@ export class ProjectYamlError extends Error {
 
 const ResearchQuestion = z.object({ id: z.string(), text: z.string() });
 const Source = z.object({
-  kind: z.enum(['arxiv', 'semantic_scholar', 'openreview', 'github', 'rss', 'x-inbox']),
+  kind: z.enum(['arxiv', 'semantic_scholar', 'openreview', 'github', 'rss']),
   queries: z.array(z.string()).optional(),
   seed_papers: z.array(z.string()).optional(),
   follow: z.array(z.enum(['citations', 'references'])).optional(),
-  /** For kind: x-inbox — repo-external directory of digest files produced by the
-   * preprocessing layer (researcher-invest-feeds). Supports a leading ~. */
-  inbox_dir: z.string().optional(),
-  /** For kind: x-inbox — opt into the researcher-side enrich/verify stage (#27).
-   * When true, after feed-synthesize an extra stage looks up primary fundamental
-   * data for the window's targets and folds verified evidence back into the note/report.
-   * Default off = the feed path's current synthesize-only behavior. */
-  enrich: z.boolean().optional(),
   priority: z.enum(['high', 'normal', 'low']).default('normal'),
 });
 const Axis = z.object({ name: z.string(), values: z.array(z.string()).min(1) });

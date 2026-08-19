@@ -1,37 +1,24 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentRuntime } from '../adapter/runtime.js';
 import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { newRunId, RunDir } from '../state/runs.js';
 import { withLock } from '../state/lock.js';
-import { Seen } from '../state/seen.js';
-import { runStages, type StageDef } from '../pipeline/runner.js';
+import { runStages } from '../pipeline/runner.js';
 import { emitEvent } from '../pipeline/events.js';
 import { bootstrap } from '../pipeline/bootstrap.js';
 import { soulBootstrap } from '../pipeline/soul_bootstrap.js';
 import { discoverTriage } from '../pipeline/discover_triage.js';
 import { libraryTopicRead, finalizeLibraryIntegration } from '../pipeline/library_topic_read.js';
 import { synthesize } from '../pipeline/synthesize.js';
-import { feedSynthesize } from '../pipeline/feed_synthesize.js';
-import { feedEnrich } from '../pipeline/feed_enrich.js';
 import { rebalance } from '../pipeline/rebalance.js';
 import { packageStage } from '../pipeline/package.js';
-import { feedPackage } from '../pipeline/package_feed.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
-import { pickOldestUnconsumed } from '../sources/inbox.js';
 import type { RunContext } from '../pipeline/context.js';
 import type { LibraryReadRunner } from '../web/library-read.js';
-import { resolveRunSourceMode } from './run-source-mode.js';
 import { PaperLibrary } from '../library/store.js';
 
-
-/** Resolve a configured inbox_dir, expanding a leading ~. */
-function resolveInboxDir(p: string | undefined): string | null {
-  if (!p) return null;
-  return p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
-}
 
 export interface RunOptions {
   cwd: string;
@@ -83,15 +70,8 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       },
     ]);
 
-    // Feed vs paper: exclusive modes (#77). Dual config fails loudly — never
-    // silently skip paper discovery because an x-inbox source is present.
-    const mode = resolveRunSourceMode(ctx!.projectYaml.sources);
-    const feedSource = mode === 'feed'
-      ? ctx!.projectYaml.sources.find((s) => s.kind === 'x-inbox')
-      : undefined;
-
-    // Paper mode + discover off: empty linked queue exits before soul (no LLM).
-    if (!feedSource && opts.discover !== true) {
+    // Discover off: empty linked queue exits before soul (no LLM).
+    if (opts.discover !== true) {
       const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
       const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
       const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
@@ -125,46 +105,6 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
         `see .researcher/open_questions.md, fill it in, then re-run. (${runDir.id})\n`,
       );
       setOutcome('thin-signal');
-      return;
-    }
-
-    if (feedSource) {
-      const inboxDir = resolveInboxDir(feedSource.inbox_dir);
-      if (!inboxDir) {
-        process.stdout.write(
-          `autonomous tick: x-inbox source has no inbox_dir configured — nothing to consume. (${runDir.id})\n`,
-        );
-        setOutcome('no-queries');
-        return;
-      }
-      const seen = new Seen(join(researcherDir, 'state/seen.jsonl'));
-      const pick = pickOldestUnconsumed(inboxDir, (id) => seen.has(id));
-      if (!pick) {
-        process.stdout.write(`autonomous tick: no unconsumed digest in ${inboxDir} (${runDir.id}).\n`);
-        setOutcome('no-candidate');
-        return;
-      }
-      ctx!.feedDigest = pick;
-      // No semantic triage: the digest's items are already source-allowlisted upstream.
-      // feed-synthesize weighs thesis-relevance while writing. One LLM call, not two.
-      const feedStages: StageDef[] = [
-        { name: 'rebalance', fn: async () => rebalance(ctx!) },
-        { name: 'feed-synthesize', fn: async () => feedSynthesize(ctx!) },
-      ];
-      // #27: opt-in researcher-side enrich/verify pass — turns the report's "下一步:补 X 数据"
-      // items into primary-sourced, confidence-tagged evidence. Off = synthesize-only (current).
-      if (feedSource.enrich) {
-        feedStages.push({ name: 'feed-enrich', fn: async () => feedEnrich(ctx!) });
-      }
-      // #25: feed commits in place to main (one commit/window), not the paper path's branch+PR.
-      feedStages.push({ name: 'package', fn: async () => feedPackage(ctx!) });
-      emitEvent({ type: 'plan', stages: ['bootstrap', 'soul', ...feedStages.map((s) => s.name)] });
-      await runStages(runDir, feedStages);
-      process.stdout.write(
-        `done. run id: ${runDir.id} (feed digest: ${pick.filename}, ${pick.meta.count} item(s))\n`,
-      );
-      reportContradictions(ctx!);
-      setOutcome('completed');
       return;
     }
 

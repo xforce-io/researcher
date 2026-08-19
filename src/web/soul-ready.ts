@@ -58,7 +58,7 @@ export function assessSoulReady(topicDir: string): SoulReadyAssessment {
   }
 
   if (yaml && !hasUsableSource(yaml)) {
-    reasons.push('no usable source queries or feed inbox configured');
+    reasons.push('no usable source queries configured');
   }
 
   return {
@@ -86,10 +86,6 @@ function isThesisHollow(topicDir: string): boolean {
 
 function hasUsableSource(yaml: ProjectYaml): boolean {
   for (const s of yaml.sources) {
-    if (s.kind === 'x-inbox') {
-      if (s.inbox_dir && s.inbox_dir.trim() !== '') return true;
-      continue;
-    }
     const queries = (s.queries ?? [])
       .map((q) => q.trim())
       .filter((q) => q !== '' && !PLACEHOLDER_QUERIES.has(q.toLowerCase()));
