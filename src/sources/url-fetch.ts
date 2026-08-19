@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { resolveResearcherHome } from '../paths.js';
 import { defaultDocTypeForSource, type DocType } from '../library/doc-type.js';
 import type { SourceRef } from '../library/model.js';
+import { fetchXStatusMaterial, parseXStatusUrl } from './x-status.js';
 
 const FETCH_TIMEOUT_MS = 60_000;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -68,6 +69,12 @@ export async function fetchUrlMaterial(canonicalId: string, opts?: { docType?: D
 
   const cached = readUrlCache(canonicalId);
   if (cached) return { ...cached, docType: opts?.docType ?? cached.docType };
+
+  if (parseXStatusUrl(url)) {
+    const fetched = await fetchXStatusMaterial(url, docType);
+    writeUrlCache(canonicalId, fetched);
+    return fetched;
+  }
 
   const extras = githubRepoRawCandidates(url) ?? [];
   const tryUrls = extras.length > 0 ? [...extras, url] : [url];

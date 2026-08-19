@@ -13,6 +13,7 @@ export function parseDocType(raw: string): DocType {
 export function defaultDocTypeForSource(source: SourceRef): DocType {
   if (source.kind === 'arxiv') return 'paper';
   const url = (source.url ?? source.id.replace(/^url:/, '')).toLowerCase();
+  if (/https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\S*\/status\//.test(url)) return 'blog';
   if (/\/blog(\/|$)|\/posts?\/|medium\.com|substack\.com/.test(url)) return 'blog';
   if (/\/adr(\/|$)|\/design([-_/]|$)|\/design-docs?\/|architecture-decision/.test(url)) return 'design-doc';
   if (/rfc-editor\.org\/rfc\/|\/rfc\d{3,5}|\/specs?\/|\/standards?\//.test(url)) return 'spec';
