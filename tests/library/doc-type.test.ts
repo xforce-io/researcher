@@ -26,6 +26,11 @@ describe('defaultDocTypeForSource', () => {
       kind: 'url', id: 'url:https://example.com/blog/foo', url: 'https://example.com/blog/foo',
     })).toBe('blog');
     expect(defaultDocTypeForSource({
+      kind: 'url',
+      id: 'url:https://x.com/vasuman/status/2085806422072418632',
+      url: 'https://x.com/vasuman/status/2085806422072418632',
+    })).toBe('blog');
+    expect(defaultDocTypeForSource({
       kind: 'url', id: 'url:https://example.com/adr/003-cache', url: 'https://example.com/adr/003-cache',
     })).toBe('design-doc');
     expect(defaultDocTypeForSource({
