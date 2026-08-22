@@ -327,7 +327,9 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(selectedHtml).toContain('paper-detail-main');
   expect(selectedHtml).toContain('paper-identity-fm');
   expect(selectedHtml).toContain('Deep read');
-  expect(selectedHtml).toContain('trace · linked');
+  expect(selectedHtml).toContain('class="linked-topic-row"');
+  expect(selectedHtml).toMatch(/<b>trace<\/b>/);
+  expect(selectedHtml).toContain('Link another topic');
 });
 
 it('deletes an unlinked library paper and refuses a linked one', async () => {
@@ -494,13 +496,68 @@ it('upserts topic links separately from Library reads', async () => {
   expect(lib.listLinks('paper_arxiv_2401_12345').some((l) => l.surfaceId === 'feeds/ai-safety')).toBe(false);
 });
 
+it('manages a second topic link without rewriting the first (#153)', async () => {
+  const paperId = 'paper_arxiv_2401_12345';
+  const lib = new PaperLibrary(root);
+  const before = lib.listLinks(paperId).find((l) => l.surfaceId === 'trace');
+  expect(before).toBeDefined();
+
+  const add = await fetch(base + '/library/link', {
+    method: 'POST',
+    body: new URLSearchParams({
+      paperId,
+      topic: 'feeds/ai-safety',
+      rationale: 'feed-side failure modes',
+    }),
+    redirect: 'manual',
+  });
+  expect(add.status).toBe(303);
+
+  const html = await (await fetch(base + `/library/p/${paperId}`)).text();
+  expect(html).toContain('trace');
+  expect(html).toContain('feeds/ai-safety');
+  expect(html).toContain('feed-side failure modes');
+  expect(html).toContain('Link another topic');
+  expect(html).toContain(`?edit=trace`);
+  const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/)?.[0] ?? '';
+  expect(addSelect).not.toContain('value="trace"');
+  expect(addSelect).not.toContain('value="feeds/ai-safety"');
+  const map = html.match(/<section class="detail-panel"><h2>Mini map<\/h2>[\s\S]*?<\/section>/)?.[0] ?? '';
+  expect(map).toContain('trace');
+  expect(map).toContain('feeds/ai-safety');
+
+  const editPage = await (await fetch(base + `/library/p/${paperId}?edit=trace`)).text();
+  expect(editPage).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
+
+  const update = await fetch(base + '/library/link', {
+    method: 'POST',
+    body: new URLSearchParams({ paperId, topic: 'trace', rationale: 'updated why for trace' }),
+    redirect: 'manual',
+  });
+  expect(update.status).toBe(303);
+  const afterUpdate = new PaperLibrary(root).listLinks(paperId);
+  expect(afterUpdate).toHaveLength(2);
+  expect(afterUpdate.find((l) => l.surfaceId === 'trace')?.rationale).toBe('updated why for trace');
+  expect(afterUpdate.find((l) => l.surfaceId === 'feeds/ai-safety')?.rationale).toBe('feed-side failure modes');
+
+  const unlink = await fetch(base + '/library/unlink', {
+    method: 'POST',
+    body: new URLSearchParams({ paperId, topic: 'feeds/ai-safety' }),
+    redirect: 'manual',
+  });
+  expect(unlink.status).toBe(303);
+  const leftover = new PaperLibrary(root).listLinks(paperId);
+  expect(leftover).toEqual([expect.objectContaining({ surfaceId: 'trace', rationale: 'updated why for trace' })]);
+  expect(new PaperLibrary(root).getPaper(paperId)).toBeDefined();
+});
+
 it('serves canonical paper detail URLs', async () => {
   const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
   expect(html).toContain('paper-doc-head');
   expect(html).toContain('Re-run read');
-  expect(html).toContain('Link topic');
+  expect(html).toContain('Link another topic');
 });
 
 it('redirects legacy selected-paper query URLs to canonical paper detail', async () => {
