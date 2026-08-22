@@ -11,12 +11,19 @@ const GrokCliOptionsSchema = z.object({
 
 export const GlobalConfigSchema = z
   .object({
-    runtime: z.enum(['milkie', 'grok-cli']).default('milkie'),
+    transport: z.string().optional(),
+    runtime: z.string().optional(),
+    protocol: z.string().optional(),
+    model: z.string().optional(),
+    provider: z.string().optional(),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    contract_version: z.number().optional(),
     runtime_options: z.object({
       'grok-cli': GrokCliOptionsSchema,
     }).default({ 'grok-cli': defaultGrokCliOptions }),
   })
-  .default({ runtime: 'milkie', runtime_options: { 'grok-cli': defaultGrokCliOptions } });
+  .default({ runtime_options: { 'grok-cli': defaultGrokCliOptions } });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 
 export function loadGlobalConfig(path: string): GlobalConfig {
