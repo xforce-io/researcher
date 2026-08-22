@@ -36,6 +36,21 @@ describe('renderDoc', () => {
     expect(html).not.toContain('$P =');
     expect(html).not.toContain('$$');
   });
+  it('renders TeX \\( \\) inline and \\[ \\] display math (#155)', () => {
+    const html = renderDoc([
+      'log-ratio 状态值 \\(V(S_k)=\\log(d_0/d_k)\\)（\\(d_k=-\\bar{\\ell}_k+\\epsilon\\)）',
+      '',
+      '\\[',
+      '\\hat{A}=\\alpha_{\\mathrm{out}}A^{\\mathrm{out}}+\\alpha_{\\mathrm{turn}}r^{\\mathrm{turn}}',
+      '\\]',
+    ].join('\n'));
+    expect(html).toContain('class="math-inline"');
+    expect(html).toContain('class="math-display"');
+    expect(html).toContain('<math');
+    expect(html).not.toMatch(/<p>[^<]*\\log/);
+    expect(html).not.toContain('\\[');
+    expect(html).not.toContain('\\(');
+  });
   it('lifts a report H1 + key/value blockquote into the aligned fm table', () => {
     const md = '# Decision Agent: Research Report\n\n> **Version:** v19 (19 papers)\n> **Last Updated:** 2026-06-04\n> **Papers:** [01](notes/01.md), [02](notes/02.md)\n\n---\n\n## Body';
     const html = renderDoc(md);

@@ -31,16 +31,26 @@ function renderMath(src: string, displayMode: boolean): string {
   });
 }
 
+function firstIndex(src: string, needles: string[]): number {
+  let best = -1;
+  for (const n of needles) {
+    const i = src.indexOf(n);
+    if (i >= 0 && (best < 0 || i < best)) best = i;
+  }
+  return best;
+}
+
 marked.use({
   extensions: [
     {
       name: 'mathBlock',
       level: 'block',
-      start(src: string) { return src.match(/\$\$/)?.index; },
+      start(src: string) { return firstIndex(src, ['$$', '\\[']); },
       tokenizer(src: string) {
-        const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?[ \t]*\$\$(?:\n|$)/.exec(src);
-        if (!m) return;
-        return { type: 'mathBlock', raw: m[0], text: m[1].trim() };
+        const dollars = /^\$\$[ \t]*\n?([\s\S]+?)\n?[ \t]*\$\$(?:\n|$)/.exec(src);
+        if (dollars) return { type: 'mathBlock', raw: dollars[0], text: dollars[1].trim() };
+        const brackets = /^\\\[(?:[ \t]*\n)?([\s\S]+?)(?:\n[ \t]*)?\\\](?:\n|$)/.exec(src);
+        if (brackets) return { type: 'mathBlock', raw: brackets[0], text: brackets[1].trim() };
       },
       renderer(token) {
         return `<div class="math-display">${renderMath(String(token.text ?? ''), true)}</div>`;
@@ -49,9 +59,11 @@ marked.use({
     {
       name: 'mathInline',
       level: 'inline',
-      start(src: string) { return src.indexOf('$'); },
+      start(src: string) { return firstIndex(src, ['\\(', '$']); },
       tokenizer(src: string) {
         if (src.startsWith('$$')) return;
+        const paren = /^\\\(([\s\S]+?)\\\)/.exec(src);
+        if (paren) return { type: 'mathInline', raw: paren[0], text: paren[1].trim() };
         const m = /^\$((?:\\.|[^\n$\\])+?)\$(?!\$)/.exec(src);
         if (!m) return;
         return { type: 'mathInline', raw: m[0], text: m[1].trim() };
