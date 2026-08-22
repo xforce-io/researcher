@@ -561,9 +561,17 @@ function renderDeepReadAction(
   return renderDeepReadForm(paperId, isRerun ? 'Re-run read' : 'Deep read', isRerun);
 }
 
+function topicLinksOf(v: LibraryPaperDetailView) {
+  return v.links.filter((l) => l.surfaceType === 'topic');
+}
+
+function unlinkedSuggestions(v: LibraryPaperDetailView) {
+  const linked = new Set(topicLinksOf(v).map((l) => l.surfaceId));
+  return (v.topicSuggestions ?? []).filter((s) => !linked.has(s.topicId));
+}
+
 function shouldShowTopicSuggest(v: LibraryPaperDetailView): boolean {
-  const suggestions = v.topicSuggestions ?? [];
-  if (suggestions.length === 0) return false;
+  if (unlinkedSuggestions(v).length === 0) return false;
   // Multi-link or any integration: facts dominate; hide Suggest.
   if (v.paper.linkedTopicCount >= 2) return false;
   if (v.integrations.length > 0 || v.paper.integratedTopicCount > 0) return false;
@@ -572,7 +580,7 @@ function shouldShowTopicSuggest(v: LibraryPaperDetailView): boolean {
 
 function renderTopicSuggestList(v: LibraryPaperDetailView): string {
   if (!shouldShowTopicSuggest(v)) return '';
-  const suggestions = v.topicSuggestions ?? [];
+  const suggestions = unlinkedSuggestions(v);
   const weak = v.paper.linkedTopicCount === 1;
   const heading = weak ? 'Also consider' : 'Suggest';
   const items = suggestions.map((s) =>
@@ -592,19 +600,42 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
   `</div>`;
 }
 
-function renderLinkTopicAction(v: LibraryPaperDetailView): string {
-  const linkedTopicIds = new Set(v.links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId));
-  const preferredTopic = linkedTopicIds.size === 1 ? [...linkedTopicIds][0] : undefined;
-  const topicOptions = v.topics
-    .filter((t) => t.available)
-    .map((t) => {
-      const selected = t.path === preferredTopic ? ' selected' : '';
-      const linked = linkedTopicIds.has(t.path) ? ' · linked' : '';
-      return `<option value="${escapeHtml(t.path)}"${selected}>${escapeHtml(t.path)}${linked}</option>`;
-    })
-    .join('');
+function paperDetailHref(paperId: string, editTopic?: string): string {
+  const base = `/library/p/${encodeURIComponent(paperId)}`;
+  return editTopic ? `${base}?edit=${encodeURIComponent(editTopic)}` : base;
+}
+
+function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): string {
+  const linkedTopicIds = new Set(topicLinksOf(v).map((l) => l.surfaceId));
+  const editing = editTopic && linkedTopicIds.has(editTopic)
+    ? topicLinksOf(v).find((l) => l.surfaceId === editTopic)
+    : undefined;
+
+  if (editing) {
+    const why = escapeHtml(editing.rationale ?? '');
+    const form =
+      `<form id="topic-link-form" class="topic-link-form" action="/library/link" method="post">` +
+        `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+        `<input type="hidden" name="topic" value="${escapeHtml(editing.surfaceId)}">` +
+        `<p class="topic-link-manual-head">Update <span class="mono">${escapeHtml(editing.surfaceId)}</span></p>` +
+        `<div class="topic-link-fields">` +
+          `<label>Why (optional)<input name="rationale" value="${why}" placeholder="why this topic"></label>` +
+        `</div>` +
+        `<button class="primary topic-link-submit" type="submit">Update</button>` +
+        `<a class="secondary" href="${paperDetailHref(v.paper.id)}">Cancel</a>` +
+      `</form>`;
+    return `<div class="topic-link-panel">${form}</div>`;
+  }
+
+  const unlinked = v.topics.filter((t) => t.available && !linkedTopicIds.has(t.path));
   const suggest = renderTopicSuggestList(v);
-  // One panel: suggest (optional) + fields + primary confirm at the same level.
+  if (unlinked.length === 0) {
+    return `<div class="topic-link-panel"><p class="muted">All available topics are linked.</p></div>`;
+  }
+  const topicOptions =
+    `<option value="" selected disabled>Select topic…</option>` +
+    unlinked.map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`).join('');
+  const button = linkedTopicIds.size >= 1 ? 'Link another topic' : 'Link topic';
   const form =
     `<form id="topic-link-form" class="topic-link-form" action="/library/link" method="post">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
@@ -615,7 +646,7 @@ function renderLinkTopicAction(v: LibraryPaperDetailView): string {
         `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
         `<label>Why (optional)<input name="rationale" placeholder="why this topic"></label>` +
       `</div>` +
-      `<button class="primary topic-link-submit" type="submit">Link topic</button>` +
+      `<button class="primary topic-link-submit" type="submit">${button}</button>` +
     `</form>`;
   const script = suggest ? `<script>${TOPIC_SUGGEST_JS}</script>` : '';
   return `<div class="topic-link-panel">${suggest}${form}</div>${script}`;
@@ -726,7 +757,11 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
   `</section>`;
 }
 
-export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
+export function renderLibraryPaper(
+  v: LibraryPaperDetailView,
+  activeRead: ActiveTaskView | null = null,
+  editTopic?: string,
+): string {
   const noteCount = v.notes.length;
   // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
@@ -779,30 +814,59 @@ export function renderLibraryPaper(v: LibraryPaperDetailView, activeRead: Active
         readSurface +
         renderPaperNotes(v) +
       `</section>` +
-      `<aside class="paper-inspector">${renderPaperInspector(v, activeRead)}</aside>` +
+      `<aside class="paper-inspector">${renderPaperInspector(v, activeRead, editTopic)}</aside>` +
     `</main>` +
     `${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
   return page(`${v.paper.displayTitle} · researcher`, body);
 }
 
-function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskView | null = null): string {
-  const links = v.links.filter((l) => l.surfaceType === 'topic').map((l) =>
-    `<li><b>${escapeHtml(l.surfaceId)}</b>` +
-      `<form class="inline-form" action="/library/unlink" method="post" onsubmit="return confirm('Remove this topic link?');">` +
-        `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-        `<input type="hidden" name="topic" value="${escapeHtml(l.surfaceId)}">` +
-        `<button type="submit" class="link-button">Unlink</button>` +
-      `</form></li>`
-  ).join('');
+function renderLinkedTopicRows(v: LibraryPaperDetailView): string {
+  const integrated = new Set(v.integrations.map((i) => i.topicId));
+  const rows = topicLinksOf(v).map((l) => {
+    const badge = integrated.has(l.surfaceId)
+      ? `<span class="source-badge">in landscape</span>`
+      : `<span class="muted">not in landscape</span>`;
+    const why = l.rationale
+      ? `<p class="linked-topic-why muted">${escapeHtml(l.rationale)}</p>`
+      : '';
+    return `<li class="linked-topic-row">` +
+      `<div class="linked-topic-head">` +
+        `<b>${escapeHtml(l.surfaceId)}</b> ${badge}` +
+        `<span class="linked-topic-actions">` +
+          `<a class="link-button" href="${paperDetailHref(v.paper.id, l.surfaceId)}">Edit</a>` +
+          `<form class="inline-form" action="/library/unlink" method="post" onsubmit="return confirm('Remove this topic link?');">` +
+            `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+            `<input type="hidden" name="topic" value="${escapeHtml(l.surfaceId)}">` +
+            `<button type="submit" class="link-button">Unlink</button>` +
+          `</form>` +
+        `</span>` +
+      `</div>${why}</li>`;
+  }).join('');
+  return rows || '<li>—</li>';
+}
+
+function renderMiniMap(v: LibraryPaperDetailView): string {
+  const links = topicLinksOf(v);
+  if (links.length === 0) return '<p class="muted">No topic link yet.</p>';
+  const topics = links
+    .map((l) => `<div class="mini-node"><b>Topic</b><span>${escapeHtml(l.surfaceId)}</span></div>`)
+    .join('');
+  return `<div class="mini-map${links.length > 1 ? ' is-multi' : ''}">` +
+    `<div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
+    `<div class="mini-edge"></div>` +
+    `<div class="mini-map-topics">${topics}</div>` +
+    `</div>`;
+}
+
+function renderPaperInspector(
+  v: LibraryPaperDetailView,
+  activeRead: ActiveTaskView | null = null,
+  editTopic?: string,
+): string {
   const integrations = v.integrations.map((i) =>
     `<li><b>${escapeHtml(i.topicId)}</b> ${i.zone ? `<span class="source-badge">${escapeHtml(i.zone)}</span>` : ''} ` +
     `<span class="mono">${escapeHtml(i.notePath ?? i.integratedAt)}</span></li>`
   ).join('');
-  const firstLink = v.links.find((l) => l.surfaceType === 'topic');
-  const miniMap = firstLink
-    ? `<div class="mini-map"><div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
-      `<div class="mini-edge"></div><div class="mini-node"><b>Topic</b><span>${escapeHtml(firstLink.surfaceId)}</span></div></div>`
-    : '<p class="muted">No topic link yet.</p>';
   const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
   const canDelete = v.paper.linkedTopicCount === 0 && v.links.length === 0 && v.integrations.length === 0;
   const deleteAction = canDelete
@@ -816,11 +880,11 @@ function renderPaperInspector(v: LibraryPaperDetailView, activeRead: ActiveTaskV
     : `<section class="detail-panel"><h2>Delete</h2>` +
       `<p class="muted">Linked or integrated papers cannot be deleted. Unlink from all topics first.</p></section>`;
   return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
-    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v)}</section>` +
-    deleteAction +
-    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${links || '<li>—</li>'}</ul></section>` +
+    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${renderLinkedTopicRows(v)}</ul></section>` +
+    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v, editTopic)}</section>` +
+    `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v)}</section>` +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
-    `<section class="detail-panel"><h2>Mini map</h2>${miniMap}</section>`;
+    deleteAction;
 }
 
 const LIBRARY_READ_JS = `

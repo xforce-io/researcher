@@ -1055,6 +1055,14 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
 .topic-link-form.has-suggest-pick .topic-link-submit {
   box-shadow:0 0 0 2px var(--accent-soft);
 }
+.topic-link-form .secondary {
+  justify-self:start;
+  font:500 13px var(--sans);
+}
+.topic-link-panel > .muted {
+  margin:0;
+  padding:12px;
+}
 .deep-read-form label {
   display:grid;
   gap:5px;
@@ -1517,11 +1525,33 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   grid-template-columns:repeat(2, minmax(0, 1fr));
   gap:14px;
 }
+.linked-topic-row { padding:8px 0; }
+.linked-topic-head {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:6px 8px;
+}
+.linked-topic-actions {
+  margin-left:auto;
+  display:inline-flex;
+  align-items:baseline;
+  gap:8px;
+}
+.linked-topic-why {
+  margin:4px 0 0;
+  font-size:12.5px;
+  line-height:1.4;
+}
 .mini-map {
   display:grid;
   grid-template-columns:minmax(0, 1fr) 28px minmax(0, 1fr);
   align-items:center;
   gap:8px;
+}
+.mini-map-topics {
+  display:grid;
+  gap:6px;
 }
 .mini-node {
   min-height:70px;

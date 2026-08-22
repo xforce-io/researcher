@@ -701,11 +701,11 @@ describe('renderLibrary', () => {
     expect(html).toContain('paper-detail-main');
     expect(html).toContain('paper-inspector');
     expect(html).toContain('action="/library/read"');
-    expect(html).toContain('action="/library/link"');
     expect(html).toContain('name="paperId"');
     expect(html).toContain('Re-run read');
     expect(html).toContain('name="force" value="1"');
-    expect(html).toContain('Link topic');
+    expect(html).toContain('All available topics are linked');
+    expect(html).not.toContain('Link topic');
     expect(html).not.toContain('name="relation"');
     expect(html).not.toContain('Context<select');
     expect(html).toContain('<h2>Findings</h2>');
@@ -840,6 +840,158 @@ describe('renderLibrary', () => {
     expect(html).toContain('data-library-task="task-9"');
     expect(html).toContain('data-started-at="1719000000000"');
     expect(html).toContain('/library/read/');
+  });
+});
+
+describe('renderLibraryPaper multi-topic links (#153)', () => {
+  const topics = [
+    { slug: 'decision', path: 'decision', active: true, available: true },
+    { slug: 'trace', path: 'trace', active: true, available: true },
+    { slug: 'data', path: 'data', active: true, available: true },
+  ];
+  const paper = {
+    id: 'paper_arxiv_2401_12345',
+    displayTitle: 'Reusable Paper Cards',
+    canonicalId: 'arxiv:2401.12345',
+    sourceLabel: 'arXiv',
+    tags: [] as string[],
+    readStatus: 'read' as const,
+    linkedTopicCount: 2,
+    integratedTopicCount: 1,
+    updatedAt: '2026-07-02T00:00:00Z',
+  };
+  const twoLinks = [
+    {
+      paperId: paper.id,
+      surfaceType: 'topic' as const,
+      surfaceId: 'decision',
+      rationale: 'governance depth',
+      createdAt: '2026-07-01T00:00:00Z',
+      updatedAt: '2026-07-01T00:00:00Z',
+    },
+    {
+      paperId: paper.id,
+      surfaceType: 'topic' as const,
+      surfaceId: 'trace',
+      rationale: 'L1 triage',
+      createdAt: '2026-07-02T00:00:00Z',
+      updatedAt: '2026-07-02T00:00:00Z',
+    },
+  ];
+  const suggestions = [
+    {
+      topicId: 'decision',
+      score: 12,
+      reason: 'selection gate',
+      rationaleDraft: 'selection gate',
+    },
+    {
+      topicId: 'trace',
+      score: 8,
+      reason: 'trajectory verification',
+      rationaleDraft: 'trajectory verification',
+    },
+    {
+      topicId: 'data',
+      score: 6,
+      reason: 'catalog',
+      rationaleDraft: 'catalog',
+    },
+  ];
+
+  function view(overrides: Partial<LibraryPaperDetailView> = {}): LibraryPaperDetailView {
+    return {
+      root: '/ws',
+      paper,
+      topics,
+      reads: [],
+      notes: [],
+      latestReadArtifact: null,
+      links: twoLinks,
+      integrations: [{
+        paperId: paper.id,
+        topicId: 'trace',
+        integratedAt: '2026-07-02T00:00:00Z',
+        zone: 'active',
+      }],
+      topicSuggestions: [],
+      ...overrides,
+    };
+  }
+
+  it('S1 lists every topic link with Why and integrate state', () => {
+    const html = renderLibraryPaper(view());
+    const rows = html.match(/class="linked-topic-row"/g) ?? [];
+    expect(rows).toHaveLength(2);
+    expect(html).toContain('governance depth');
+    expect(html).toContain('L1 triage');
+    expect(html).toMatch(/linked-topic-row[\s\S]*trace[\s\S]*in landscape/);
+    expect(html).toMatch(/linked-topic-row[\s\S]*decision[\s\S]*not in landscape/);
+    expect(html).toContain('name="topic" value="decision"');
+    expect(html).toContain('name="topic" value="trace"');
+    expect(html).toContain(`href="/library/p/${paper.id}?edit=decision"`);
+    expect(html).toContain(`href="/library/p/${paper.id}?edit=trace"`);
+  });
+
+  it('S2 add form omits linked topics and does not default-submit them', () => {
+    const html = renderLibraryPaper(view({
+      paper: { ...paper, linkedTopicCount: 1, integratedTopicCount: 0 },
+      links: [twoLinks[0]],
+      integrations: [],
+      topicSuggestions: suggestions,
+    }));
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link another topic</);
+    expect(html).toMatch(/<option value=""[^>]*>/);
+    expect(html).toContain('value="trace"');
+    expect(html).toContain('value="data"');
+    // Linked A stays out of the add <select>, so a no-change submit cannot upsert A.
+    const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/);
+    expect(addSelect?.[0]).toBeDefined();
+    expect(addSelect?.[0]).not.toContain('value="decision"');
+    expect(addSelect?.[0]).toMatch(/<option value=""[^>]*selected/);
+    expect(html).toContain('Also consider');
+    expect(html).not.toContain('data-suggest-topic="decision"');
+    expect(html).toContain('data-suggest-topic="trace"');
+  });
+
+  it('S3 edit mode backfills Why and switches the primary action to Update', () => {
+    const html = renderLibraryPaper(view({
+      paper: { ...paper, linkedTopicCount: 1, integratedTopicCount: 0 },
+      links: [twoLinks[0]],
+      integrations: [],
+    }), null, 'decision');
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
+    expect(html).toMatch(/<input type="hidden" name="topic" value="decision">/);
+    expect(html).toMatch(/name="rationale"[^>]*value="governance depth"/);
+    expect(html).toContain(`href="/library/p/${paper.id}"`);
+    expect(html).toContain('Cancel');
+  });
+
+  it('S4 keeps a distinct Unlink control per linked topic', () => {
+    const html = renderLibraryPaper(view());
+    const unlinks = html.match(/action="\/library\/unlink"/g) ?? [];
+    expect(unlinks).toHaveLength(2);
+  });
+
+  it('S5 mini map names every linked topic', () => {
+    const html = renderLibraryPaper(view());
+    const map = html.match(/<section class="detail-panel"><h2>Mini map<\/h2>[\s\S]*?<\/section>/);
+    expect(map?.[0]).toBeDefined();
+    expect(map?.[0]).toContain('decision');
+    expect(map?.[0]).toContain('trace');
+    expect(map?.[0]).toContain('mini-map-topics');
+  });
+
+  it('hides the add form when every available topic is already linked', () => {
+    const html = renderLibraryPaper(view({
+      topics: [
+        { slug: 'decision', path: 'decision', active: true, available: true },
+        { slug: 'trace', path: 'trace', active: true, available: true },
+      ],
+    }));
+    expect(html).not.toContain('Link another topic');
+    expect(html).not.toContain('Link topic');
+    expect(html).toMatch(/all available topics are linked/i);
   });
 });
 

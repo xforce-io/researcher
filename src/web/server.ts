@@ -323,7 +323,8 @@ async function handle(
     if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
     const active = registry.activeTask(libraryReadTaskKey(paperId));
     const activeRead = active ? { taskId: active.id, startedAt: active.startedAt } : null;
-    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead));
+    const editTopic = url.searchParams.get('edit')?.trim() || undefined;
+    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopic));
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {
