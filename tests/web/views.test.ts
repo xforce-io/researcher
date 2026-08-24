@@ -51,6 +51,39 @@ describe('renderDoc', () => {
     expect(html).not.toContain('\\[');
     expect(html).not.toContain('\\(');
   });
+  it('renders undelimited TeX sub/superscripts from Library reads (#159)', () => {
+    const html = renderDoc(
+      '路径按 Σ_{d\'} λ^{d\'} Q_φ(s_b^{d\'}, a_b^{d\'}) 排序；下一状态 s^{n,k}_{d+1} 与 s^k_1、s_0。',
+    );
+    expect(html).toContain('class="math-inline"');
+    expect(html).toContain('<math');
+    const visible = html.replace(/<annotation[\s\S]*?<\/annotation>/g, '');
+    expect(visible).not.toContain('_{');
+    expect(visible).not.toContain('^{');
+    expect(visible).not.toContain('s_0');
+  });
+  it('leaves agg_n-style identifiers as text (#159)', () => {
+    const html = renderDoc('V_r(d|s_d)=agg_n[r]+agg_k V');
+    const visible = html.replace(/<annotation[\s\S]*?<\/annotation>/g, '');
+    expect(visible).toContain('agg_n');
+    expect(visible).toContain('agg_k');
+    expect(visible).toContain('class="math-inline"');
+  });
+  it('does not wrap snake_case or re-wrap delimited math (#159)', () => {
+    const html = renderDoc([
+      'keep paper_id and N_leaf and _强调_ here.',
+      '',
+      'EEVEE uses $P = \\{p_1, \\ldots, p_K\\}$.',
+      '',
+      'also \\(V(S_k)\\).',
+    ].join('\n'));
+    expect(html).toContain('paper_id');
+    expect(html).toContain('N_leaf');
+    expect(html).toMatch(/<em>强调<\/em>/);
+    expect(html).toContain('class="math-inline"');
+    expect(html).not.toContain('$P =');
+    expect(html).not.toContain('\\(V');
+  });
   it('lifts a report H1 + key/value blockquote into the aligned fm table', () => {
     const md = '# Decision Agent: Research Report\n\n> **Version:** v19 (19 papers)\n> **Last Updated:** 2026-06-04\n> **Papers:** [01](notes/01.md), [02](notes/02.md)\n\n---\n\n## Body';
     const html = renderDoc(md);
