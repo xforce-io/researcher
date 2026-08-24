@@ -17,10 +17,86 @@ import {
 
 /** marked → HTML with XSS hardening for untrusted note/report/read bodies (#77). */
 function markedHtml(markdown: string): string {
-  return sanitizeHtml(marked.parse(markdown ?? '', { async: false }) as string);
+  return sanitizeHtml(marked.parse(wrapBareTexMath(markdown ?? ''), { async: false }) as string);
 }
 function markedInline(markdown: string): string {
-  return sanitizeHtml(marked.parseInline(markdown ?? '', { async: false }) as string);
+  return sanitizeHtml(marked.parseInline(wrapBareTexMath(markdown ?? ''), { async: false }) as string);
+}
+
+/**
+ * Library reads often emit TeX sub/superscripts without `$` / `\(` (#159).
+ * Wrap those atoms so the existing KaTeX extension can render them.
+ * Skip fenced/inline code and already-delimited math; leave snake_case alone.
+ */
+function wrapBareTexMath(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const rest = src.slice(i);
+    const skipped = matchMathSkip(rest);
+    if (skipped !== undefined) {
+      out += skipped;
+      i += skipped.length;
+      continue;
+    }
+    const atom = matchBareTexAtom(rest);
+    if (atom !== undefined) {
+      out += isWordyIdentifier(atom) ? atom : `$${atom}$`;
+      i += atom.length;
+      continue;
+    }
+    out += src[i];
+    i += 1;
+  }
+  return out;
+}
+
+function matchMathSkip(src: string): string | undefined {
+  if (src.startsWith('```')) {
+    const end = src.indexOf('```', 3);
+    return end < 0 ? src : src.slice(0, end + 3);
+  }
+  if (src.startsWith('`')) {
+    const end = src.indexOf('`', 1);
+    return end < 0 ? '`' : src.slice(0, end + 1);
+  }
+  if (src.startsWith('$$')) {
+    const end = src.indexOf('$$', 2);
+    return end < 0 ? src : src.slice(0, end + 2);
+  }
+  if (src.startsWith('\\[')) {
+    const end = src.indexOf('\\]', 2);
+    return end < 0 ? src : src.slice(0, end + 2);
+  }
+  if (src.startsWith('\\(')) {
+    const end = src.indexOf('\\)', 2);
+    return end < 0 ? src : src.slice(0, end + 2);
+  }
+  if (src.startsWith('$')) {
+    const m = /^\$((?:\\.|[^\n$\\])+?)\$(?!\$)/.exec(src);
+    if (m) return m[0];
+  }
+  return undefined;
+}
+
+function matchBareTexAtom(src: string): string | undefined {
+  const base = /^(?:\\[A-Za-z]+|[A-Za-z][A-Za-z0-9]*|[Α-Ωα-ω∞½])/.exec(src);
+  if (!base) return undefined;
+  let len = base[0].length;
+  let attached = 0;
+  while (true) {
+    const rest = src.slice(len);
+    const part = /^(_\{[^}]+\}|\^\{[^}]+\}|_[A-Za-z0-9](?![A-Za-z0-9])|\^[A-Za-z0-9]+(?![A-Za-z0-9]))/.exec(rest);
+    if (!part) break;
+    attached += 1;
+    len += part[0].length;
+  }
+  if (attached === 0) return undefined;
+  return src.slice(0, len);
+}
+
+function isWordyIdentifier(atom: string): boolean {
+  return /^[A-Za-z]{3,}[A-Za-z0-9]*_[A-Za-z0-9]$/.test(atom) && !/[\^{]/.test(atom);
 }
 
 function renderMath(src: string, displayMode: boolean): string {
