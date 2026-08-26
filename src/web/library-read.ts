@@ -16,11 +16,11 @@ import {
   libraryReadBodyHasRequiredSections,
 } from './library-read-sections.js';
 
-/** Bound the model call so silent hangs cannot stretch to the SDK's default 10min×retries. */
-const TIMEOUT_MS = 5 * 60 * 1000;
+/** Align with topic `read` (15min). 5min was a hang bound; GLM reasoning + ZH cards overrun it. */
+const TIMEOUT_MS = 15 * 60 * 1000;
 /** Chinese multi-section read cards often exceed 8k completion tokens. */
 const LIBRARY_READ_MAX_TOKENS = 16_384;
-const RECOVERY_TIMEOUT_MS = 5 * 60 * 1000;
+const RECOVERY_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_HEARTBEAT_MS = 10_000;
 
 export interface LibraryReadRunnerOptions {
