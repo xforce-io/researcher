@@ -162,10 +162,12 @@ class LengthThenRecoverAdapter implements AgentRuntime {
   id = 'length-recover-stub';
   calls = 0;
   prompts: string[] = [];
+  timeoutMs: Array<number | undefined> = [];
 
   async invoke(opts: InvokeOptions): Promise<InvokeResult> {
     this.calls += 1;
     this.prompts.push(opts.userPrompt);
+    this.timeoutMs.push(opts.timeoutMs);
     if (this.calls === 1) {
       return {
         output: '# Library Read Paper\n\n> Frame.\n\n## Essence\n\npartial only\n',
@@ -257,7 +259,7 @@ describe('runLibraryRead', () => {
     expect(body).toContain('## Takeaway');
     expect(body).toContain('- x');
     expect(adapter.lastMaxTokens).toBeGreaterThan(4096);
-    expect(adapter.lastTimeoutMs).toBeGreaterThan(0);
+    expect(adapter.lastTimeoutMs).toBe(15 * 60 * 1000);
     expect(adapter.lastPrompt).toContain('Return only the Markdown artifact body');
     expect(adapter.lastPrompt).toContain('## Essence');
     expect(adapter.lastPrompt).toMatch(/\*\*Essence\*\*/);
@@ -355,6 +357,7 @@ describe('runLibraryRead', () => {
     });
 
     expect(adapter.calls).toBe(2);
+    expect(adapter.timeoutMs).toEqual([15 * 60 * 1000, 15 * 60 * 1000]);
     expect(adapter.prompts[1]).toMatch(/recover|complet|truncated|续写|补全/i);
     const body = readFileSync(join(root, result.artifactPath), 'utf8');
     expect(body).toContain('## Takeaway');
