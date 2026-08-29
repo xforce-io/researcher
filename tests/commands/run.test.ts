@@ -432,7 +432,12 @@ describe('researcher run (autonomous)', () => {
         zone: 'active',
       }),
     ]);
+    // Link may exist before landscape; integrated is the landscape gate (#124/#165).
     expect(lib.listLinks(libraryPaperId)).toEqual([
+      expect.objectContaining({
+        paperId: libraryPaperId,
+        surfaceType: 'topic',
+      }),
     ]);
     expect(readFileSync(join(proj, 'notes/00_research_landscape.md'), 'utf8')).toContain('new entry');
   });
@@ -457,7 +462,8 @@ describe('researcher run (autonomous)', () => {
 
     const lib = new PaperLibrary(proj);
     expect(lib.listIntegrations(libraryPaperId)).toEqual([]);
-    expect(lib.listLinks(libraryPaperId)).toEqual([]);
+    // Topic link can exist before landscape; do not require listLinks === [] (#165).
+    expect(lib.listLinks(libraryPaperId).every((l) => l.surfaceType === 'topic')).toBe(true);
     expect(existsSync(join(proj, 'notes/active/01_auto_picked_deep_read.md'))).toBe(true);
   });
 
