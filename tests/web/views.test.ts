@@ -1043,6 +1043,25 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(map?.[0]).toContain('mini-map-topics');
   });
 
+  it('hides Mini map when unread with exactly one topic link (#167)', () => {
+    const html = renderLibraryPaper(view({
+      paper: { ...paper, readStatus: 'unread', linkedTopicCount: 1, integratedTopicCount: 0 },
+      links: [twoLinks[0]],
+      integrations: [],
+      latestReadArtifact: null,
+    }));
+    expect(html).toContain('Deep read');
+    expect(html).toContain('decision');
+    expect(html).toContain('governance depth');
+    expect(html).toMatch(/Link another topic/);
+    expect(html).not.toMatch(/<h2>Mini map<\/h2>/);
+    expect(html).not.toContain('class="mini-map');
+    expect(html).not.toContain('mini-node');
+    const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/);
+    expect(addSelect?.[0]).toContain('value="trace"');
+    expect(addSelect?.[0]).not.toContain('value="decision"');
+  });
+
   it('hides the add form when every available topic is already linked', () => {
     const html = renderLibraryPaper(view({
       topics: [

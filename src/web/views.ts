@@ -967,10 +967,11 @@ function renderPaperInspector(
       `</form></section>`
     : `<section class="detail-panel"><h2>Delete</h2>` +
       `<p class="muted">Linked or integrated papers cannot be deleted. Unlink from all topics first.</p></section>`;
+  const showMiniMap = v.paper.readStatus !== 'unread' && topicLinksOf(v).length > 0;
   return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
     `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${renderLinkedTopicRows(v)}</ul></section>` +
     `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v, editTopic)}</section>` +
-    `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v)}</section>` +
+    (showMiniMap ? `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v)}</section>` : '') +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
     deleteAction;
 }
