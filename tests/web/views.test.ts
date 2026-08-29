@@ -562,8 +562,12 @@ describe('renderTopic', () => {
     docs: [{ path: '.researcher/thesis.md', label: 'Thesis' }],
     notes: [
       { path: 'notes/active/01_signals.md', num: '01', title: 'Signals: trajectory triage', zone: 'active', pin: true, score: 0.82, dwell: 2 },
+      { path: 'notes/active/13_mid.md', num: '13', title: 'Mid active', zone: 'active', pin: false, score: 0.5, dwell: 1 },
+      { path: 'notes/active/24_new.md', num: '24', title: 'Newest active', zone: 'active', pin: false, score: 0.2, dwell: 0 },
       { path: 'notes/buffer/02_buffer.md', num: '02', title: 'Buffer paper', zone: 'buffer', pin: false, score: 0.41, dwell: 1 },
+      { path: 'notes/buffer/08_newer_buf.md', num: '08', title: 'Newer buffer', zone: 'buffer', pin: false, score: 0.3, dwell: 0 },
       { path: 'notes/history/03_history.md', num: '03', title: 'History paper', zone: 'history', pin: false, score: 0.12, dwell: 4 },
+      { path: 'notes/history/06_newer_hist.md', num: '06', title: 'Newer history', zone: 'history', pin: false, score: 0.05, dwell: 1 },
     ],
     papers: [{ id: '2401.00001', file: 'papers/2401.00001.pdf' }],
     relatedPapers: [{
@@ -604,6 +608,15 @@ describe('renderTopic', () => {
     expect(html).toContain('library-link-list');
     expect(html).toContain('Reusable Paper Cards');
     expect(html).not.toContain('<table');              // no narrow 3-col table
+  });
+  it('lists each zone newest-first by note number (#168)', () => {
+    const html = renderTopic(v);
+    const trees = [...html.matchAll(/<ol class="note-tree">([\s\S]*?)<\/ol>/g)].map((m) => m[1]);
+    const nums = (block: string) => [...block.matchAll(/class="num">(\d+)</g)].map((m) => m[1]);
+    expect(trees.length).toBe(3);
+    expect(nums(trees[0])).toEqual(['24', '13', '01']);
+    expect(nums(trees[1])).toEqual(['08', '02']);
+    expect(nums(trees[2])).toEqual(['06', '03']);
   });
   it('shows an unavailable notice when topic has no .researcher', () => {
     const html = renderTopic({ ...v, available: false, docs: [], papers: [], seen: [], sources: [], researchQuestions: [] });

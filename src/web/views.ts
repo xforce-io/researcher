@@ -1511,7 +1511,10 @@ export function renderTopic(
     `<li><a href="/t/${v.slug}/doc?path=${encodeURIComponent(d.path)}" class="doc-link" data-path="${encodeURIComponent(d.path)}">${escapeHtml(d.label)}</a></li>`
   ).join('');
   const noteGroups = (Object.keys(NOTE_ZONE_LABELS) as IntegratedZone[]).map((zone) => {
-    const notes = v.notes.filter((n) => n.zone === zone);
+    const notes = v.notes
+      .filter((n) => n.zone === zone)
+      .slice()
+      .sort((a, b) => Number(b.num) - Number(a.num));
     if (!notes.length) return '';
     const items = notes.map((n) => {
       const meta = `${n.zone}${n.pin ? ' · pinned' : ''} · score ${n.score.toFixed(2)} · dwell ${n.dwell}`;

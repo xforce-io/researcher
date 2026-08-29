@@ -28,10 +28,18 @@ beforeAll(() => {
   writeFileSync(join(trace, 'notes/00_research_landscape.md'), '# Landscape');
   writeFileSync(join(trace, 'notes/active/03_active.md'),
     '---\nzone: active\npin: true\nscore: 0.8\ndwell: 2\n---\n# Active note');
+  writeFileSync(join(trace, 'notes/active/12_mid.md'),
+    '---\nzone: active\npin: false\nscore: 0.5\ndwell: 1\n---\n# Mid note');
+  writeFileSync(join(trace, 'notes/active/24_new.md'),
+    '---\nzone: active\npin: false\nscore: 0.2\ndwell: 0\n---\n# New note');
   writeFileSync(join(trace, 'notes/buffer/02_buffer.md'),
     '---\nzone: buffer\npin: false\nscore: 0.4\ndwell: 1\n---\n# Buffer note');
+  writeFileSync(join(trace, 'notes/buffer/08_buffer_newer.md'),
+    '---\nzone: buffer\npin: false\nscore: 0.3\ndwell: 0\n---\n# Newer buffer');
   writeFileSync(join(trace, 'notes/history/01_history.md'),
     '---\nzone: history\npin: false\nscore: 0.1\ndwell: 4\n---\n# History note');
+  writeFileSync(join(trace, 'notes/history/06_history_newer.md'),
+    '---\nzone: history\npin: false\nscore: 0.05\ndwell: 1\n---\n# Newer history');
   writeFileSync(join(trace, 'notes/pending/04_pending.md'),
     '---\nzone: pending\ntags: []\npin: false\nscore: 0\ndwell: 0\n---\n# Pending note');
   writeFileSync(join(trace, 'report.md'), '# Report');
@@ -79,7 +87,7 @@ describe('loadDashboard', () => {
     expect(trace.active).toBe(true);
     expect(trace.available).toBe(true);
     expect(trace.oneline).toBe('triage traces');
-    expect(trace.noteCount).toBe(3);     // integrated notes only; pending and 00_landscape excluded
+    expect(trace.noteCount).toBe(7);     // integrated notes only; pending and 00_landscape excluded
     expect(trace.lastRun).toBe('2026-06-20T10:00:00Z');
     expect(trace.decisionCounts).toEqual({ 'deep-read': 1, skim: 1, reject: 0 });
     expect(decision.active).toBe(false);
@@ -138,14 +146,22 @@ describe('loadTopic', () => {
     expect(v.available).toBe(true);
     expect(v.docs.map((d) => d.path)).toEqual(
       ['.researcher/thesis.md', 'notes/00_research_landscape.md', 'report.md']);
-    expect(v.notes.map((n) => [n.path, n.zone])).toEqual([
-      ['notes/history/01_history.md', 'history'],
-      ['notes/buffer/02_buffer.md', 'buffer'],
-      ['notes/active/03_active.md', 'active'],
-    ]);                                                                 // numbered notes split out
-    expect(v.notes[2].title).toBe('Active note');                       // from the note's H1
-    expect(v.notes[2].pin).toBe(true);
-    expect(v.notes[2].score).toBe(0.8);
+    expect(v.notes.map((n) => [n.num, n.zone])).toEqual([
+      ['24', 'active'],
+      ['12', 'active'],
+      ['08', 'buffer'],
+      ['06', 'history'],
+      ['03', 'active'],
+      ['02', 'buffer'],
+      ['01', 'history'],
+    ]);
+    const active = v.notes.filter((n) => n.zone === 'active');
+    expect(active[0].title).toBe('New note');
+    expect(active.map((n) => n.num)).toEqual(['24', '12', '03']);
+    expect(v.notes.find((n) => n.path === 'notes/active/03_active.md')!.pin).toBe(true);
+    expect(v.notes.find((n) => n.path === 'notes/active/03_active.md')!.score).toBe(0.8);
+    expect(v.notes.filter((n) => n.zone === 'buffer').map((n) => n.num)).toEqual(['08', '02']);
+    expect(v.notes.filter((n) => n.zone === 'history').map((n) => n.num)).toEqual(['06', '01']);
     expect(v.papers).toEqual([{ id: '2401.00001', file: 'papers/2401.00001.pdf' }]);
     expect(v.relatedPapers).toEqual([
       expect.objectContaining({

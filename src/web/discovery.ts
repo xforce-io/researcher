@@ -217,7 +217,7 @@ function listNotes(topicDir: string): NoteRef[] {
       score: n.fm.score,
       dwell: n.fm.dwell,
     }))
-    .sort((a, b) => Number(a.num) - Number(b.num));
+    .sort((a, b) => Number(b.num) - Number(a.num));
 }
 
 function noteCount(topicDir: string): number {
