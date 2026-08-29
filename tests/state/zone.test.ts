@@ -15,6 +15,19 @@ describe('note frontmatter', () => {
     expect(body).toBe('# T\n\nbody');
   });
 
+  it('falls back to default fm when legacy paper: Title: … YAML is invalid (#166)', () => {
+    const src =
+      '---\n' +
+      'paper: Autodata: an automatic data scientist to create high-quality data\n' +
+      'authors: Meta FAIR\n' +
+      'year: 2026\n' +
+      '---\n' +
+      '## Claims\n\n- x\n';
+    const { fm, body } = parseNote(src);
+    expect(fm).toEqual(DEFAULT_FM);
+    expect(body).toContain('## Claims');
+  });
+
   it('round-trips serialize(parse(x))', () => {
     const src = '---\nzone: pending\ntags: []\npin: false\nscore: 0\ndwell: 1\n---\n# T\n\nbody\n';
     const { fm, body } = parseNote(src);

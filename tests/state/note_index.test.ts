@@ -41,6 +41,27 @@ describe('note_index', () => {
     expect(nextNoteNumber(proj)).toBe(10);
   });
 
+  it('enumerates leftover unquoted paper: Title: … notes without throwing (#166)', () => {
+    writeFileSync(
+      join(proj, 'notes/14_autodata.md'),
+      '---\n' +
+        'paper: Autodata: an automatic data scientist to create high-quality data\n' +
+        'year: 2026\n' +
+        '---\n' +
+        '# Autodata\n',
+    );
+    mkdirSync(join(proj, 'notes/active'), { recursive: true });
+    writeFileSync(
+      join(proj, 'notes/active/14_autodata.md'),
+      '---\nzone: active\ntags: []\npin: false\nscore: 0\ndwell: 0\n---\n# Autodata\n',
+    );
+    expect(() => listNotes(proj)).not.toThrow();
+    expect(nextNoteNumber(proj)).toBe(15);
+    const leftover = listNotes(proj).find((n) => n.relPath === 'notes/14_autodata.md');
+    expect(leftover).toBeDefined();
+    expect(leftover!.fm).toMatchObject({ zone: 'active', pin: false });
+  });
+
   it('nextNoteNumber is 1 on an empty/missing notes dir', () => {
     const empty = mkdtempSync(join(tmpdir(), 'r-idx-empty-'));
     expect(nextNoteNumber(empty)).toBe(1);

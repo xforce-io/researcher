@@ -17,7 +17,13 @@ const FM_RE = /^---\n([\s\S]*?)\n---\n?/;
 export function parseNote(content: string): { fm: NoteFrontmatter; body: string } {
   const m = FM_RE.exec(content);
   if (!m) return { fm: { ...DEFAULT_FM }, body: content };
-  const raw = (parseYaml(m[1]) ?? {}) as Record<string, unknown>;
+  let raw: Record<string, unknown>;
+  try {
+    raw = (parseYaml(m[1]) ?? {}) as Record<string, unknown>;
+  } catch {
+    // Legacy unquoted titles (`paper: Autodata: …`) must not abort add (#166).
+    return { fm: { ...DEFAULT_FM }, body: content.slice(m[0].length) };
+  }
   const zone =
     raw.zone === 'buffer' || raw.zone === 'history' || raw.zone === 'pending'
       ? raw.zone
