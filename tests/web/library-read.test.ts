@@ -2,10 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runLibraryRead } from '../../src/web/library-read.js';
+import { defaultLibraryReadRunner, runLibraryRead } from '../../src/web/library-read.js';
 import { writeTextCache } from '../../src/sources/cache.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 import type { Paper } from '../../src/library/model.js';
+
+const createAgentRuntime = vi.hoisted(() => vi.fn());
+vi.mock('../../src/adapter/runtime.js', () => ({
+  createAgentRuntime: (...args: unknown[]) => createAgentRuntime(...args),
+}));
 
 vi.mock('../../src/sources/arxiv.js', async (orig) => ({
   ...(await orig() as object),
@@ -458,5 +463,33 @@ describe('runLibraryRead', () => {
 
     expect(lines.some((l) => /fetch-source/i.test(l))).toBe(true);
     expect(lines.some((l) => /draft-read still waiting/i.test(l))).toBe(true);
+  });
+});
+
+describe('defaultLibraryReadRunner', () => {
+  it('uses createAgentRuntime (grok-cli when so configured), not OpenAITextAdapter (#163)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-factory-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    const invoke = vi.fn(async (): Promise<InvokeResult> => ({
+      output: COMPLETE_PAPER_BODY,
+      modifiedFiles: [],
+      exitCode: 0,
+    }));
+    createAgentRuntime.mockReset();
+    createAgentRuntime.mockReturnValue({ id: 'grok-cli', invoke });
+
+    await defaultLibraryReadRunner({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+    });
+
+    expect(createAgentRuntime).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(
+      root,
+      '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md',
+    ))).toBe(true);
   });
 });

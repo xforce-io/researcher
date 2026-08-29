@@ -203,7 +203,7 @@ describe('libraryTopicRead integration timing', () => {
     ]);
   });
 
-  it('defaults library-read to OpenAI runner, not topic runtime adapter (#136)', async () => {
+  it('defaults library-read to factory runner, not topic runtime adapter (#136/#163)', async () => {
     defaultLibraryReadRunner.mockClear();
     let topicAdapterCalls = 0;
     class TopicRuntimeAdapter implements AgentRuntime {

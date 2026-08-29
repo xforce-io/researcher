@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { OpenAITextAdapter } from '../adapter/openai-text.js';
+import { createAgentRuntime } from '../adapter/runtime.js';
 import { LIBRARY_DIR } from '../library/store.js';
 import { loadSourceMaterial } from '../pipeline/read.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
@@ -47,7 +47,7 @@ export interface LibraryReadResult {
 export type LibraryReadRunner = (opts: LibraryReadRunnerOptions) => Promise<LibraryReadResult>;
 
 export async function defaultLibraryReadRunner(opts: LibraryReadRunnerOptions): Promise<LibraryReadResult> {
-  return runLibraryRead({ ...opts, adapter: new OpenAITextAdapter() });
+  return runLibraryRead({ ...opts, adapter: createAgentRuntime() });
 }
 
 export async function runLibraryRead(

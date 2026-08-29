@@ -121,8 +121,8 @@ async function ensureLibraryRead(opts: {
 
   const readId = `read_${opts.paper.id}`;
   opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'reading', lastError: undefined });
-  // Library-read is content generation — always OpenAI-compatible text path (#69/#120),
-  // never the topic runtime (milkie/grok-cli) used for discover/synthesize agents.
+  // Library-read uses defaultLibraryReadRunner (createAgentRuntime / grok-cli),
+  // never the topic ctx.adapter instance (#136). Factory selection is #163.
   const runner = opts.runner ?? defaultLibraryReadRunner;
   try {
     const result = await runner({
