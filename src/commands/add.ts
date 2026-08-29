@@ -9,6 +9,7 @@ import { bootstrap } from '../pipeline/bootstrap.js';
 import { read } from '../pipeline/read.js';
 import { synthesize } from '../pipeline/synthesize.js';
 import { packageStage } from '../pipeline/package.js';
+import { registerAddInWorkspaceLibrary } from '../pipeline/library_add_register.js';
 import { Seen } from '../state/seen.js';
 import { withLock } from '../state/lock.js';
 import type { RunContext } from '../pipeline/context.js';
@@ -38,6 +39,7 @@ export async function runAdd(opts: AddOptions): Promise<void> {
       { name: 'synthesize',  fn: async () => synthesize(ctx!) },
       { name: 'package',     fn: async () => packageStage(ctx!) },
     ] as const);
+    registerAddInWorkspaceLibrary(ctx!);
   });
   process.stdout.write(`done. run id: ${runDir.id}\n`);
 }
