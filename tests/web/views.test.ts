@@ -1057,6 +1057,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(html).not.toMatch(/<h2>Mini map<\/h2>/);
     expect(html).not.toContain('class="mini-map');
     expect(html).not.toContain('mini-node');
+    expect(html).not.toContain('mini-edge');
     const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/);
     expect(addSelect?.[0]).toContain('value="trace"');
     expect(addSelect?.[0]).not.toContain('value="decision"');

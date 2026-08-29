@@ -12,9 +12,10 @@ import { packageStage } from '../pipeline/package.js';
 import { registerAddInWorkspaceLibrary } from '../pipeline/library_add_register.js';
 import { Seen } from '../state/seen.js';
 import { withLock } from '../state/lock.js';
+import type { AgentRuntime } from '../adapter/interface.js';
 import type { RunContext } from '../pipeline/context.js';
 
-export interface AddOptions { input: string; cwd: string; }
+export interface AddOptions { input: string; cwd: string; adapter?: AgentRuntime; }
 
 export async function runAdd(opts: AddOptions): Promise<void> {
   const id = canonicalizeAddInput(opts.input);
@@ -24,7 +25,7 @@ export async function runAdd(opts: AddOptions): Promise<void> {
     process.stdout.write(`already seen: ${id} (decision=${seen.get(id)?.decision})\n`);
     return;
   }
-  const adapter = createAgentRuntime();
+  const adapter = opts.adapter ?? createAgentRuntime();
   const runDir = new RunDir(join(researcherDir, 'state/runs'), newRunId());
   await withLock(join(researcherDir, 'state/.lock'), async () => {
     let ctx: RunContext;
