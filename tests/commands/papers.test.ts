@@ -168,7 +168,7 @@ describe('runPapersRead', () => {
     expect(ran).toBe(1);
   });
 
-  it('refuses a concurrent reading record', async () => {
+  it('reclaims a stale reading record and runs the reader', async () => {
     const root = makeWorkspace();
     const lib = new PaperLibrary(root);
     lib.upsertPaper({
@@ -179,9 +179,25 @@ describe('runPapersRead', () => {
       tags: [],
     });
     lib.upsertRead({ id: 'read_paper_arxiv_2401_12345', paperId: 'paper_arxiv_2401_12345', status: 'reading' });
-    await expect(runPapersRead({ input: '2401.12345', workspace: root, runner: async () => ({ artifactPath: 'x' }) })).rejects.toThrow(
-      /reading/i,
-    );
+    const io = capture();
+    let ran = 0;
+    const runner: LibraryReadRunner = async ({ workspaceRoot, paper, readId }) => {
+      ran += 1;
+      const artifactPath = `${LIBRARY_DIR}/papers/${paper.id}/reads/${readId}.md`;
+      mkdirSync(join(workspaceRoot, LIBRARY_DIR, 'papers', paper.id, 'reads'), { recursive: true });
+      writeFileSync(join(workspaceRoot, artifactPath), `---\nkind: library-read\n---\n\n${cardBody}\n`);
+      return { artifactPath, title: 'Sample Paper' };
+    };
+    await runPapersRead({
+      input: '2401.12345',
+      workspace: root,
+      write: io.write,
+      writeErr: io.writeErr,
+      runner,
+    });
+    expect(ran).toBe(1);
+    expect(io.stderr()).toMatch(/reclaimed/i);
+    expect(new PaperLibrary(root).listReads('paper_arxiv_2401_12345')[0].status).toBe('read');
   });
 
   it('does not write files when no default workspace is configured', async () => {

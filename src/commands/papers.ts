@@ -100,7 +100,14 @@ export async function runPapersRead(opts: {
 
   const inFlight = lib.listReads(paper.id).find((r) => r.status === 'reading');
   if (inFlight) {
-    throw new Error(`papers read: ${paper.id} is already reading (${inFlight.id})`);
+    // CLI has no live task registry (unlike serve). A leftover `reading` row is
+    // an orphan from a killed/timed-out process; reclaim this paper only, then retry.
+    lib.upsertRead({
+      ...inFlight,
+      status: 'failed',
+      lastError: 'papers read: reclaimed stale reading (no live CLI task)',
+    });
+    writeErr(`library-read: reclaimed stale reading ${inFlight.id}\n`);
   }
 
   const readId = `read_${paper.id}`;

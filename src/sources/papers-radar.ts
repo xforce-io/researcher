@@ -167,12 +167,7 @@ function mapHfDailyItem(item: unknown): Omit<PapersItem, 'heat_index' | 'heat_le
   if (!paper || typeof paper !== 'object') return undefined;
   const mapped = mapHfPaper(paper as Record<string, unknown>, rec);
   if (!mapped) return undefined;
-  const repo = rec.githubRepo;
-  if (repo && typeof repo === 'object') {
-    const r = repo as Record<string, unknown>;
-    if (typeof r.url === 'string' && r.url) mapped.github_repo = r.url;
-    if (typeof r.stars === 'number') mapped.github_stars = r.stars;
-  }
+  applyGithubFields(mapped, paper as Record<string, unknown>, rec);
   return mapped;
 }
 
@@ -213,7 +208,27 @@ function mapHfPaper(
   if (Array.isArray(paper.ai_keywords)) {
     item.ai_keywords = paper.ai_keywords.map((k) => String(k)).filter(Boolean);
   }
+  applyGithubFields(item, paper, extra);
   return item;
+}
+
+/** Live HF API: `paper.githubRepo` is a URL string and `githubStars` a number.
+ * Older/nested payloads used `item.githubRepo: { url, stars }`. Accept both. */
+function applyGithubFields(
+  item: Omit<PapersItem, 'heat_index' | 'heat_level'>,
+  ...records: Record<string, unknown>[]
+): void {
+  for (const rec of records) {
+    const repo = rec.githubRepo;
+    if (typeof repo === 'string' && repo && !item.github_repo) item.github_repo = repo;
+    if (repo && typeof repo === 'object') {
+      const r = repo as Record<string, unknown>;
+      if (typeof r.url === 'string' && r.url && !item.github_repo) item.github_repo = r.url;
+      if (typeof r.stars === 'number' && item.github_stars === undefined) item.github_stars = r.stars;
+    }
+    const stars = rec.githubStars ?? rec.github_stars;
+    if (typeof stars === 'number' && item.github_stars === undefined) item.github_stars = stars;
+  }
 }
 
 function parseAtomPapers(xml: string, source: 'arxiv'): PapersItem[] {

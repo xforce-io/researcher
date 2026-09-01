@@ -108,6 +108,43 @@ describe('fetchTrendingPapers', () => {
     expect(papers[0].heat_index).toBeGreaterThan(papers[1].heat_index);
   });
 
+  it('reads githubRepo string and githubStars from the paper object (live HF API)', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse([
+        {
+          paper: {
+            id: '2401.00010',
+            title: 'Has Repo',
+            authors: [{ name: 'A' }],
+            summary: 'Abs',
+            publishedAt: '2026-01-15T00:00:00.000Z',
+            upvotes: 10,
+            githubRepo: 'https://github.com/org/repo',
+            githubStars: 2500,
+          },
+          githubRepo: null,
+        },
+        {
+          paper: {
+            id: '2401.00011',
+            title: 'No Repo',
+            authors: [{ name: 'B' }],
+            summary: 'Abs',
+            publishedAt: '2026-01-15T00:00:00.000Z',
+            upvotes: 10,
+          },
+          githubRepo: null,
+        },
+      ]);
+    const papers = await fetchTrendingPapers({ limit: 2, source: 'huggingface', fetch: fetchImpl });
+    const withRepo = papers.find((p) => p.paper_id === '2401.00010');
+    const without = papers.find((p) => p.paper_id === '2401.00011');
+    expect(withRepo?.github_repo).toBe('https://github.com/org/repo');
+    expect(withRepo?.github_stars).toBe(2500);
+    expect(without?.github_repo).toBeUndefined();
+    expect(withRepo!.heat_index).toBeGreaterThan(without!.heat_index);
+  });
+
   it('falls back to arXiv when HuggingFace fails', async () => {
     const fetchImpl: typeof fetch = async (input) => {
       const url = String(input);
@@ -171,6 +208,23 @@ describe('showPaper', () => {
     expect(papers[0].title).toBe('From HF');
     expect(papers[0].authors).toEqual(['Zed']);
     requiredFields(papers[0]);
+  });
+
+  it('maps githubRepo string on the HuggingFace paper payload', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse({
+        id: '2401.12345',
+        title: 'From HF',
+        authors: [{ name: 'Zed' }],
+        summary: 'HF abstract',
+        publishedAt: '2026-03-01T00:00:00.000Z',
+        upvotes: 3,
+        githubRepo: 'https://github.com/a/b',
+        githubStars: 42,
+      });
+    const papers = await showPaper({ arxivId: '2401.12345', fetch: fetchImpl });
+    expect(papers[0].github_repo).toBe('https://github.com/a/b');
+    expect(papers[0].github_stars).toBe(42);
   });
 
   it('falls back to arXiv id_list when HuggingFace misses', async () => {

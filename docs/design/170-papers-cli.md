@@ -96,7 +96,7 @@ flowchart TD
 2. 规范化 arXiv ID；`library` upsert 该 paper（不创建 topic 链接）。
 3. 若该 paper 已有 `status=read` 且证据卡文件存在 → stdout 该文件全文，不调模型。
 4. 否则跑既有 Library 深读（15 分钟预算、#98 章节、中文）。进行中状态按现有 runner 写入；失败标记 `failed`，非零退出，不把半截卡当成功。
-5. 同一 paper 禁止并行 `papers read`；已有 `reading` 则失败并说明，不另开 runner。
+5. CLI 无常驻 task registry。该 paper 已有 `status=reading` 时视为孤儿：标记 `failed`（stderr 说明 reclaim），再开一次 runner。只动这一篇，不调用全库 `reclaimOrphanReads`（避免误伤 `serve` 正在跑的其它深读）。跨进程真并行仍是 TOCTOU。
 6. stdout 仅为证据卡全文（含既有 frontmatter，与 `serve` 所读文件相同）。路径与阶段信息在 stderr。
 
 ## 7. 模块设计
