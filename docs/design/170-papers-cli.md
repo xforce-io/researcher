@@ -120,7 +120,7 @@ researcher papers show <arxiv-id> [--format json|report]
 researcher papers read <arxiv-id> [--workspace <path>]
 ```
 
-退出码：`0` 成功；`1` 未命中 / 源失败 / 未配 workspace / 深读失败 / 并发 reading。
+退出码：`0` 成功；`1` 未命中 / 源失败 / 未配 workspace / 深读失败。
 
 ### 8.1 JSON 契约（`trending` / `search` / `show`）
 
@@ -174,7 +174,7 @@ workspace: /absolute/path/to/super-repo
 
 - 假设：HF Daily Papers 与 arXiv export API 匿名可读；失败可回退或退出，不重试成死循环。arXiv 礼仪沿用既有 `fetchArxivMetadata` 间隔，雷达列表另走短超时（单次请求，不做 8 次长重试）。
 - 错误：JSON 模式 stdout 与 stderr 分离。深读失败保留 `PaperRead.status=failed`，不删 paper 元数据。
-- 并发：同一 paper 的 `papers read` 互斥（见 §6.2）；热榜无写盘，无锁。
+- 并发：`papers read` 对该 paper 的 leftover `reading` 按 §6.2 回收后重跑；跨进程真并行是 TOCTOU。热榜无写盘，无锁。
 - 权限：不把 API key 写入论文 JSON。HF/arXiv 匿名。
 - 性能：热榜/搜索无 LLM。深读与现网 Library 深读同预算。
 - 安全：论文正文仍按既有 untrusted 块进入 prompt。
