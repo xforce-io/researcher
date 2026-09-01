@@ -19,6 +19,7 @@ export const GlobalConfigSchema = z
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     contract_version: z.number().optional(),
+    workspace: z.string().min(1).optional(),
     runtime_options: z.object({
       'grok-cli': GrokCliOptionsSchema,
     }).default({ 'grok-cli': defaultGrokCliOptions }),

@@ -9,7 +9,8 @@
     "dist",
     "methodology",
     "prompts",
-    "templates"
+    "templates",
+    "skills"
   ],
   "scripts": {
     "build": "tsc -p . && mkdir -p dist/web/static && cp src/web/static/* dist/web/static/",
