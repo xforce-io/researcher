@@ -71,7 +71,7 @@ describe('loadHomeTrending', () => {
       root: '/tmp/researcher-home-trending-missing',
       loader: async () => { throw new Error('huggingface down'); },
     });
-    expect(rows).toEqual({ items: [], nextOffset: 0 });
+    expect(rows).toEqual({ items: [], nextOffset: 0, total: 0 });
   });
 
   it('returns an empty list when the loader exceeds the home budget', async () => {
@@ -80,6 +80,6 @@ describe('loadHomeTrending', () => {
       timeoutMs: 20,
       loader: () => new Promise(() => {}),
     });
-    expect(rows).toEqual({ items: [], nextOffset: 0 });
+    expect(rows).toEqual({ items: [], nextOffset: 0, total: 0 });
   });
 });

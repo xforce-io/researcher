@@ -100,9 +100,8 @@ async function handle(
   }
   // GET /trending — Home 热榜 fragment; empty body when none / fail
   if (req.method === 'GET' && path === '/trending') {
-    const offset = Number(url.searchParams.get('offset') ?? '0') || 0;
-    const page = await loadHomeTrending({ root, loader: trendingLoader, offset });
-    return send(res, 200, 'text/html; charset=utf-8', renderHomeTrendingPanel(page.items, page.nextOffset));
+    const page = await loadHomeTrending({ root, loader: trendingLoader });
+    return send(res, 200, 'text/html; charset=utf-8', renderHomeTrendingPanel(page.items));
   }
   // GET /topics
   if (req.method === 'GET' && path === '/topics') {

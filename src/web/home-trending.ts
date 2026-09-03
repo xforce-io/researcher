@@ -20,6 +20,7 @@ export interface HomeTrendingItem {
 export interface HomeTrendingPage {
   items: HomeTrendingItem[];
   nextOffset: number;
+  total: number;
 }
 
 export type HomeTrendingLoader = () => Promise<PapersItem[]>;
@@ -59,13 +60,13 @@ export function pageHomeTrending(
       upvotes: item.upvotes,
     });
   }
-  if (all.length === 0) return { items: [], nextOffset: 0 };
+  if (all.length === 0) return { items: [], nextOffset: 0, total: 0 };
   const start = ((offset % all.length) + all.length) % all.length;
   const page: HomeTrendingItem[] = [];
   for (let i = 0; i < Math.min(cap, all.length); i++) {
     page.push(all[(start + i) % all.length]);
   }
-  return { items: page, nextOffset: (start + page.length) % all.length };
+  return { items: page, nextOffset: (start + page.length) % all.length, total: all.length };
 }
 
 export function libraryPaperIdSet(root: string): Set<string> {
@@ -81,9 +82,14 @@ export async function loadHomeTrending(opts: {
   const budget = opts.timeoutMs ?? HOME_TRENDING_TIMEOUT_MS;
   try {
     const items = await withTimeout((opts.loader ?? defaultTrendingLoader)(), budget);
-    return pageHomeTrending(items, libraryPaperIdSet(opts.root), HOME_TRENDING_CAP, opts.offset ?? 0);
+    return pageHomeTrending(
+      items,
+      libraryPaperIdSet(opts.root),
+      items.length,
+      0,
+    );
   } catch {
-    return { items: [], nextOffset: 0 };
+    return { items: [], nextOffset: 0, total: 0 };
   }
 }
 

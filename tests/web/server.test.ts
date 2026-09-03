@@ -214,8 +214,10 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
   expect(html).toContain('Trending Paper 1');
   expect(html).toContain('Trending Paper 1 is a one-line abstract.');
   expect(html).toContain('data-trending-more');
+  expect(html).toContain('"title":"Trending Paper 6"');
+  expect((html.match(/class="trending-title"/g) || []).length).toBe(5);
   expect(html).not.toContain('>11<');
-  expect(html).not.toContain('Trending Paper 6');
+  expect(html).not.toMatch(/class="trending-title"[^>]*>Trending Paper 6</);
   const second = await fetch(base + '/trending');
   expect(await second.text()).toContain('Trending Paper 1');
   trendingResult = [];
