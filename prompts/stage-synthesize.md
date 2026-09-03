@@ -94,6 +94,8 @@ Produce up to four artifacts (the third and fourth depend on what already exists
 
 3. **`README.md`** — maintain per the **workshop curation** section in the writing discipline. The minimum required mutation: ensure the paper table includes a row for the new note `{{new_note_filename}}` (with the right priority and read-status emoji), and update "Last Updated" if the README has such a field. Beyond that, follow the curation rules: preserve narrative paragraphs that still match the current thesis; rewrite them only if the thesis has shifted relative to what the existing README implies. Use `Edit` for surgical changes, `Write` only if the README is being effectively rebuilt.
 
+   **Paper table order (load-bearing):** rows are **newest-first**（最新在上）. Sort by note number descending so the highest `NN` (e.g. `25_…`) is the first data row. The `#` column stays the note number — do not renumber. If the existing table is oldest-first, reverse the body rows this run. Insert the new paper at the top, not the bottom.
+
    **Hard cap on the README's Thesis section** (if the README has one, named `## Thesis` / `## 论题` / similar). It is a *summary* of `.researcher/thesis.md`, not a copy of it and not an accretion log:
    - **≤4 sentences total**, written as a single short paragraph or 2–4 short bullets. No multi-claim mega-paragraphs.
    - **Regenerated each run from `.researcher/thesis.md`, never appended to**. If you find the existing section already exceeds the cap, rewrite it to fit the cap — do not preserve length out of "surgical update" politeness.
@@ -166,7 +168,7 @@ Produce up to four artifacts (the third and fourth depend on what already exists
    |------|------|---------|---------|
    ```
 
-5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's. If it does not exist, **do not create it**.
+5. **`papers/README.md`** — only if this file already exists. Sync its paper table the same way you sync the README's, including **newest-first**（最新在上）row order and stable `#` = note number. If it does not exist, **do not create it**.
 
 ### What you MUST NOT change in the landscape
 

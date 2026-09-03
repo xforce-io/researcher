@@ -100,8 +100,9 @@ It must answer four questions for a first-time visitor in this order:
    `papers/README.md` for the source index, `.researcher/` for project soul).
 
 The paper table MUST be in sync with `notes/` — if a `09_<slug>.md` exists,
-the table has a row for it. "Last Updated" gets today's date when the README
-is touched in this run.
+the table has a row for it. Rows are **newest-first**（最新在上）: highest note
+number at the top; the `#` column is that note number, never renumbered.
+"Last Updated" gets today's date when the README is touched in this run.
 
 If `README.md` already has narrative paragraphs that are still consistent
 with the current thesis, preserve them — do not churn prose for cosmetic
@@ -112,8 +113,9 @@ paragraphs to match.
 **`papers/README.md`** (only if it exists in the repo).
 
 The source-index counterpart to `notes/`. Maintain its paper table the same
-way: every paper that has a note in `notes/` must have a row here. Don't
-invent the structure if the file doesn't exist; only maintain what's there.
+way: every paper that has a note in `notes/` must have a row here, **newest-first**
+（最新在上）. Don't invent the structure if the file doesn't exist; only
+maintain what's there.
 
 ## What you do NOT touch
 
