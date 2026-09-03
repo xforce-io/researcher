@@ -455,6 +455,7 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   min-width:0;
   display:grid;
   gap:4px;
+  white-space:normal;
 }
 .trending-list .trending-title {
   min-width:0;
@@ -464,8 +465,10 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 .trending-list .trending-blurb {
   display:-webkit-box;
   -webkit-line-clamp:2;
+  line-clamp:2;
   -webkit-box-orient:vertical;
   overflow:hidden;
+  white-space:normal;
   color:var(--ink-soft);
   font:400 13.5px/1.45 var(--sans);
 }
