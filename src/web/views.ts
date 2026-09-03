@@ -1210,7 +1210,7 @@ const HOME_TRENDING_JS = `
   function rowHtml(p) {
     var heat = (typeof p.upvotes === 'number' && p.upvotes > 0)
       ? '<span class="trending-heat mono" title="upvotes">▲ ' + esc(p.upvotes) + '</span>' : '';
-    var blurb = p.blurb ? '<span class="trending-blurb muted">' + esc(p.blurb) + '</span>' : '';
+    var blurb = p.blurb ? '<span class="trending-blurb">' + esc(p.blurb) + '</span>' : '';
     return '<li class="trending-item"><form class="trending-form" action="/library/add" method="post">'
       + '<input type="hidden" name="input" value="' + esc(p.input) + '">'
       + '<input type="hidden" name="next" value="paper">'
@@ -1278,7 +1278,7 @@ function trendingRowHtml(p: {
     ? `<span class="trending-heat mono" title="upvotes">▲ ${escapeHtml(String(p.upvotes))}</span>`
     : '';
   const blurb = p.blurb
-    ? `<span class="trending-blurb muted">${escapeHtml(p.blurb)}</span>`
+    ? `<span class="trending-blurb">${escapeHtml(p.blurb)}</span>`
     : '';
   return `<li class="trending-item">` +
     `<form class="trending-form" action="/library/add" method="post">` +
