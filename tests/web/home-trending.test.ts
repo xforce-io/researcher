@@ -3,13 +3,13 @@ import type { PapersItem } from '../../src/sources/papers-radar.js';
 import { paperIdForSource, normalizePaperInput } from '../../src/library/identity.js';
 import { HOME_TRENDING_CAP, loadHomeTrending, selectHomeTrending } from '../../src/web/home-trending.js';
 
-function item(paperId: string, title: string, heat: number): PapersItem {
+function item(paperId: string, title: string, heat: number, abstract = `${title} abstract.`): PapersItem {
   return {
     id: `arxiv:${paperId}`,
     paper_id: paperId,
     title,
     authors: [],
-    abstract: '',
+    abstract,
     arxiv_url: `https://arxiv.org/abs/${paperId}`,
     pdf_url: `https://arxiv.org/pdf/${paperId}`,
     source: 'arxiv',
@@ -33,9 +33,19 @@ describe('selectHomeTrending', () => {
     expect(selected[0]).toEqual(expect.objectContaining({
       title: 'Paper 10',
       heatIndex: 10,
+      blurb: 'Paper 10 abstract.',
       input: 'arxiv:2609.000010',
       paperId: paperIdForSource(normalizePaperInput('2609.000010')),
     }));
+  });
+
+  it('pages past the first five with offset', () => {
+    const items = [10, 20, 30, 40, 50, 60, 70].map((n) =>
+      item(`2609.0000${n}`, `Paper ${n}`, n),
+    );
+    expect(selectHomeTrending(items, new Set(), 5, 5).map((s) => s.title)).toEqual([
+      'Paper 60', 'Paper 70', 'Paper 10', 'Paper 20', 'Paper 30',
+    ]);
   });
 
   it('omits papers already in the Library', () => {
@@ -61,7 +71,7 @@ describe('loadHomeTrending', () => {
       root: '/tmp/researcher-home-trending-missing',
       loader: async () => { throw new Error('huggingface down'); },
     });
-    expect(rows).toEqual([]);
+    expect(rows).toEqual({ items: [], nextOffset: 0, total: 0 });
   });
 
   it('returns an empty list when the loader exceeds the home budget', async () => {
@@ -70,6 +80,6 @@ describe('loadHomeTrending', () => {
       timeoutMs: 20,
       loader: () => new Promise(() => {}),
     });
-    expect(rows).toEqual([]);
+    expect(rows).toEqual({ items: [], nextOffset: 0, total: 0 });
   });
 });

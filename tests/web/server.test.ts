@@ -185,7 +185,7 @@ function trendingPaper(paperId: string, title: string, heat: number): PapersItem
     paper_id: paperId,
     title,
     authors: [],
-    abstract: '',
+    abstract: `${title} is a one-line abstract.`,
     arxiv_url: `https://arxiv.org/abs/${paperId}`,
     pdf_url: `https://arxiv.org/pdf/${paperId}`,
     source: 'arxiv',
@@ -199,15 +199,26 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
   trendingResult = [1, 2, 3, 4, 5, 6].map((n) =>
     trendingPaper(`2609.1000${n}`, `Trending Paper ${n}`, 10 + n),
   );
-  const first = await fetch(base + '/');
+  const home = await fetch(base + '/');
+  expect(home.status).toBe(200);
+  const homeHtml = await home.text();
+  expect(homeHtml).toContain('data-trending-slot');
+  expect(homeHtml).toContain('<h2>Trending</h2>');
+  expect(homeHtml).toContain('Fetching today’s papers…');
+  expect(homeHtml).not.toContain('data-home-trending>');
+  const first = await fetch(base + '/trending');
   const html = await first.text();
   expect(first.status).toBe(200);
   expect(html).toContain('data-home-trending');
   expect(html).toContain('<h2>Trending</h2>');
   expect(html).toContain('Trending Paper 1');
-  expect(html).toContain('11');
-  expect(html).not.toContain('Trending Paper 6');
-  const second = await fetch(base + '/');
+  expect(html).toContain('Trending Paper 1 is a one-line abstract.');
+  expect(html).toContain('data-trending-more');
+  expect(html).toContain('"title":"Trending Paper 6"');
+  expect((html.match(/class="trending-title"/g) || []).length).toBe(5);
+  expect(html).not.toContain('>11<');
+  expect(html).not.toMatch(/class="trending-title"[^>]*>Trending Paper 6</);
+  const second = await fetch(base + '/trending');
   expect(await second.text()).toContain('Trending Paper 1');
   trendingResult = [];
 });
@@ -251,26 +262,32 @@ it('omits Trending chrome when the source is empty, already in Library, or fails
   });
   const inLibrary = trendingPaper('2401.12345', 'Reusable Paper Cards', 99);
   trendingResult = [inLibrary];
-  const already = await fetch(base + '/');
+  const alreadyHome = await fetch(base + '/');
+  const alreadyHomeHtml = await alreadyHome.text();
+  expect(alreadyHomeHtml).toContain('Needs attention');
+  expect(alreadyHomeHtml).toContain('Active Topics');
+  expect(alreadyHomeHtml).toContain('Library health');
+  const already = await fetch(base + '/trending');
   const alreadyHtml = await already.text();
+  expect(alreadyHtml.trim()).toBe('');
   expect(alreadyHtml).not.toContain('data-home-trending');
-  expect(alreadyHtml).toContain('Needs attention');
-  expect(alreadyHtml).toContain('Active Topics');
-  expect(alreadyHtml).toContain('Library health');
 
   trendingResult = [];
-  const empty = await fetch(base + '/');
-  expect(await empty.text()).not.toContain('data-home-trending');
+  expect((await (await fetch(base + '/trending')).text()).trim()).toBe('');
 
   trendingResult = new Error('huggingface down');
-  const failed = await fetch(base + '/');
+  const failedHome = await fetch(base + '/');
+  expect(failedHome.status).toBe(200);
+  const failedHomeHtml = await failedHome.text();
+  expect(failedHomeHtml).toContain('Needs attention');
+  expect(failedHomeHtml).toContain('Active Topics');
+  expect(failedHomeHtml).toContain('Library health');
+  const failed = await fetch(base + '/trending');
   expect(failed.status).toBe(200);
   const failedHtml = await failed.text();
+  expect(failedHtml.trim()).toBe('');
   expect(failedHtml).not.toContain('data-home-trending');
   expect(failedHtml).not.toContain('huggingface down');
-  expect(failedHtml).toContain('Needs attention');
-  expect(failedHtml).toContain('Active Topics');
-  expect(failedHtml).toContain('Library health');
   trendingResult = [];
 });
 

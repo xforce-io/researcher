@@ -492,21 +492,48 @@ describe('renderWorkspaceHome', () => {
         title: 'Verbal RL',
         heatIndex: 88,
         heatLevel: 5,
+        blurb: 'Language feedback is the main channel.',
+        upvotes: 12,
       }],
     });
     expect(html).toContain('data-home-trending');
     expect(html).toContain('<h2>Trending</h2>');
     expect(html).toContain('Verbal RL');
-    expect(html).toContain('88');
+    expect(html).toContain('Language feedback is the main channel.');
+    expect(html).toContain('▲ 12');
+    expect(html).not.toContain('88');
+    expect(html).not.toContain('data-trending-more');
     expect(html).toContain('name="next" value="paper"');
     expect(html).toContain('name="input" value="arxiv:2609.01597"');
     expect(html).toContain('action="/library/add"');
   });
 
-  it('omits Trending chrome when there are no items', () => {
+  it('pages More from the embedded pack without a second radar fetch', () => {
+    const row = (n: number) => ({
+      paperId: `paper_${n}`,
+      input: `arxiv:2609.0000${n}`,
+      title: `Paper ${n}`,
+      heatIndex: n,
+      heatLevel: 2,
+      blurb: `Blurb ${n}`,
+    });
+    const html = renderWorkspaceHome({
+      ...m,
+      trending: [1, 2, 3, 4, 5, 6].map(row),
+    });
+    expect(html).toContain('data-trending-more');
+    expect(html).toContain('"title":"Paper 6"');
+    expect((html.match(/class="trending-title"/g) || []).length).toBe(5);
+    expect(html).toContain('Paper 1');
+    expect(html).not.toMatch(/class="trending-title"[^>]*>Paper 6</);
+  });
+
+  it('shows a Trending loading slot when items are not yet loaded', () => {
     const html = renderWorkspaceHome(m);
-    expect(html).not.toContain('data-home-trending');
-    expect(html).not.toContain('<h2>Trending</h2>');
+    expect(html).not.toContain('data-home-trending>');
+    expect(html).toContain('data-trending-slot');
+    expect(html).toContain('<h2>Trending</h2>');
+    expect(html).toContain('Fetching today’s papers…');
     expect(html).toContain('Needs attention');
     expect(html).toContain('Library health');
     expect(html).toContain('Active Topics');

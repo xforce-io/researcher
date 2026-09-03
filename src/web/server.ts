@@ -4,7 +4,7 @@ import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
 import { loadHomeTrending, type HomeTrendingLoader } from './home-trending.js';
-import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
+import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
@@ -96,9 +96,12 @@ async function handle(
 
   // GET /
   if (req.method === 'GET' && path === '/') {
-    const home = loadWorkspaceHome(root);
-    home.trending = await loadHomeTrending({ root, loader: trendingLoader });
-    return send(res, 200, 'text/html; charset=utf-8', renderWorkspaceHome(home));
+    return send(res, 200, 'text/html; charset=utf-8', renderWorkspaceHome(loadWorkspaceHome(root)));
+  }
+  // GET /trending — Home 热榜 fragment; empty body when none / fail
+  if (req.method === 'GET' && path === '/trending') {
+    const page = await loadHomeTrending({ root, loader: trendingLoader });
+    return send(res, 200, 'text/html; charset=utf-8', renderHomeTrendingPanel(page.items));
   }
   // GET /topics
   if (req.method === 'GET' && path === '/topics') {

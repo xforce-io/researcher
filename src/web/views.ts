@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
+import { HOME_TRENDING_CAP, type HomeTrendingItem } from './home-trending.js';
 import { displayLibraryReadMarkdown } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
@@ -1201,25 +1202,125 @@ function homeMetric(
   return `<a class="${classes}" href="${href}"><b>${display}</b><span>${escapeHtml(label)}</span></a>`;
 }
 
+const HOME_TRENDING_JS = `
+(function () {
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function rowHtml(p) {
+    var heat = (typeof p.upvotes === 'number' && p.upvotes > 0)
+      ? '<span class="trending-heat mono" title="upvotes">▲ ' + esc(p.upvotes) + '</span>' : '';
+    var blurb = p.blurb ? '<span class="trending-blurb">' + esc(p.blurb) + '</span>' : '';
+    return '<li class="trending-item"><form class="trending-form" action="/library/add" method="post">'
+      + '<input type="hidden" name="input" value="' + esc(p.input) + '">'
+      + '<input type="hidden" name="next" value="paper">'
+      + '<button type="submit" class="trending-submit"><span class="trending-copy">'
+      + '<span class="trending-title">' + esc(p.title) + '</span>' + blurb + '</span>'
+      + heat + '</button></form></li>';
+  }
+  function paint(panel, offset) {
+    var packEl = panel.querySelector('[data-trending-pack]');
+    if (!packEl) return;
+    var pack = JSON.parse(packEl.textContent || '{"items":[]}');
+    var items = pack.items || [];
+    var cap = pack.cap || 5;
+    var n = items.length;
+    if (!n) return;
+    var start = ((offset % n) + n) % n;
+    var page = [];
+    for (var i = 0; i < Math.min(cap, n); i++) page.push(items[(start + i) % n]);
+    var list = panel.querySelector('.trending-list');
+    if (list) list.innerHTML = page.map(rowHtml).join('');
+    var btn = panel.querySelector('[data-trending-more]');
+    if (btn) btn.setAttribute('data-offset', String((start + page.length) % n));
+  }
+  function fill(el, url) {
+    fetch(url).then(function (r) { return r.text(); }).then(function (html) {
+      if (!el.isConnected) return;
+      if (html && html.trim()) el.outerHTML = html;
+      else el.remove();
+    }).catch(function () {
+      if (el.isConnected) el.remove();
+    });
+  }
+  var slot = document.querySelector('[data-trending-slot]');
+  if (slot) fill(slot, '/trending');
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-trending-more]') : null;
+    if (!btn) return;
+    ev.preventDefault();
+    var panel = btn.closest('[data-home-trending]');
+    if (!panel) return;
+    paint(panel, Number(btn.getAttribute('data-offset') || '0'));
+  });
+})();
+`;
+
+function trendingPackJson(items: HomeTrendingItem[]): string {
+  return JSON.stringify({
+    cap: HOME_TRENDING_CAP,
+    items: items.map((p) => ({
+      input: p.input,
+      title: p.title,
+      blurb: p.blurb,
+      upvotes: p.upvotes,
+    })),
+  }).replace(/</g, '\\u003c');
+}
+
+function trendingRowHtml(p: {
+  input: string;
+  title: string;
+  blurb?: string;
+  upvotes?: number;
+}): string {
+  const heat = typeof p.upvotes === 'number' && p.upvotes > 0
+    ? `<span class="trending-heat mono" title="upvotes">▲ ${escapeHtml(String(p.upvotes))}</span>`
+    : '';
+  const blurb = p.blurb
+    ? `<span class="trending-blurb">${escapeHtml(p.blurb)}</span>`
+    : '';
+  return `<li class="trending-item">` +
+    `<form class="trending-form" action="/library/add" method="post">` +
+      `<input type="hidden" name="input" value="${escapeHtml(p.input)}">` +
+      `<input type="hidden" name="next" value="paper">` +
+      `<button type="submit" class="trending-submit">` +
+        `<span class="trending-copy">` +
+          `<span class="trending-title">${escapeHtml(p.title)}</span>` +
+          blurb +
+        `</span>` +
+        heat +
+      `</button>` +
+    `</form>` +
+  `</li>`;
+}
+
+export function renderHomeTrendingPanel(
+  items: HomeTrendingItem[],
+  nextOffset = HOME_TRENDING_CAP,
+): string {
+  if (items.length === 0) return '';
+  const visible = items.slice(0, HOME_TRENDING_CAP);
+  const more = items.length > HOME_TRENDING_CAP
+    ? `<button type="button" class="trending-more" data-trending-more data-offset="${escapeHtml(String(nextOffset % items.length))}">More</button>`
+    : '';
+  return `<section class="home-panel home-trending" data-home-trending>` +
+    `<div class="home-library-head">` +
+      `<h2>Trending</h2>` +
+      more +
+    `</div>` +
+    `<ul class="home-list trending-list">${visible.map(trendingRowHtml).join('')}</ul>` +
+    `<script type="application/json" data-trending-pack>${trendingPackJson(items)}</script>` +
+  `</section>`;
+}
+
 function homeTrending(m: WorkspaceHomeModel): string {
   const items = m.trending ?? [];
-  if (items.length === 0) return '';
-  const rows = items.map((p) =>
-    `<li class="trending-item">` +
-      `<form class="trending-form" action="/library/add" method="post">` +
-        `<input type="hidden" name="input" value="${escapeHtml(p.input)}">` +
-        `<input type="hidden" name="next" value="paper">` +
-        `<button type="submit" class="trending-submit">` +
-          `<span class="trending-title">${escapeHtml(p.title)}</span>` +
-          `<span class="trending-heat mono" title="heat index">${escapeHtml(String(p.heatIndex))}</span>` +
-        `</button>` +
-      `</form>` +
-    `</li>`,
-  ).join('');
-  return `<section class="home-panel home-trending" data-home-trending>` +
+  if (items.length > 0) return renderHomeTrendingPanel(items);
+  return `<section class="home-panel home-trending is-loading" data-trending-slot>` +
     `<h2>Trending</h2>` +
-    `<ul class="home-list trending-list">${rows}</ul>` +
-  `</section>`;
+    `<p class="home-empty">Fetching today’s papers…</p>` +
+  `</section><script>${HOME_TRENDING_JS}</script>`;
 }
 
 function homeAttention(m: WorkspaceHomeModel): string {
