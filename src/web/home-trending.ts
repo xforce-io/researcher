@@ -4,7 +4,8 @@ import { fetchTrendingPapers, type PapersItem } from '../sources/papers-radar.js
 
 export const HOME_TRENDING_CAP = 5;
 export const HOME_TRENDING_FETCH_LIMIT = 10;
-export const HOME_TRENDING_TIMEOUT_MS = 3_000;
+/** Whole-load budget for GET /trending. Live Node HF is ~11s; 3s hid the panel. */
+export const HOME_TRENDING_TIMEOUT_MS = 15_000;
 
 export interface HomeTrendingItem {
   paperId: string;

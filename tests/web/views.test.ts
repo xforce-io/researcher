@@ -507,6 +507,7 @@ describe('renderWorkspaceHome', () => {
     const html = renderWorkspaceHome(m);
     expect(html).not.toContain('data-home-trending');
     expect(html).not.toContain('<h2>Trending</h2>');
+    expect(html).toContain('data-trending-slot');
     expect(html).toContain('Needs attention');
     expect(html).toContain('Library health');
     expect(html).toContain('Active Topics');

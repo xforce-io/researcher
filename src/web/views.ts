@@ -1201,8 +1201,21 @@ function homeMetric(
   return `<a class="${classes}" href="${href}"><b>${display}</b><span>${escapeHtml(label)}</span></a>`;
 }
 
-function homeTrending(m: WorkspaceHomeModel): string {
-  const items = m.trending ?? [];
+const HOME_TRENDING_JS = `
+(function () {
+  var slot = document.querySelector('[data-trending-slot]');
+  if (!slot) return;
+  fetch('/trending').then(function (r) { return r.text(); }).then(function (html) {
+    if (!slot.isConnected) return;
+    if (html && html.trim()) slot.outerHTML = html;
+    else slot.remove();
+  }).catch(function () {
+    if (slot.isConnected) slot.remove();
+  });
+})();
+`;
+
+export function renderHomeTrendingPanel(items: { input: string; title: string; heatIndex: number }[]): string {
   if (items.length === 0) return '';
   const rows = items.map((p) =>
     `<li class="trending-item">` +
@@ -1220,6 +1233,12 @@ function homeTrending(m: WorkspaceHomeModel): string {
     `<h2>Trending</h2>` +
     `<ul class="home-list trending-list">${rows}</ul>` +
   `</section>`;
+}
+
+function homeTrending(m: WorkspaceHomeModel): string {
+  const items = m.trending ?? [];
+  if (items.length > 0) return renderHomeTrendingPanel(items);
+  return `<div data-trending-slot></div><script>${HOME_TRENDING_JS}</script>`;
 }
 
 function homeAttention(m: WorkspaceHomeModel): string {
