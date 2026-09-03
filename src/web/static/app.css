@@ -425,6 +425,38 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   gap:16px;
   margin-bottom:16px;
 }
+.home-trending {
+  margin-bottom:16px;
+}
+.trending-list {
+  display:grid;
+  gap:2px;
+}
+.trending-form { margin:0; }
+.trending-submit {
+  display:flex;
+  width:100%;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  padding:8px 0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+}
+.trending-submit:hover .trending-title { color:var(--accent-ink); }
+.trending-title {
+  min-width:0;
+  font-weight:600;
+}
+.trending-heat {
+  flex:none;
+  color:var(--ink-faint);
+  font-size:12px;
+}
 .home-panel {
   min-width:0;
   padding:16px 18px;

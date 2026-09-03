@@ -16,8 +16,10 @@ import {
   type TopicLinkSuggestion,
   type TopicSuggestProfile,
 } from './topic-link-suggest.js';
+import type { HomeTrendingItem } from './home-trending.js';
 
 export type { TopicLinkSuggestion } from './topic-link-suggest.js';
+export type { HomeTrendingItem } from './home-trending.js';
 
 export interface TopicCard {
   slug: string;
@@ -79,6 +81,8 @@ export interface WorkspaceHomeModel {
   topicPaths: string[];
   attention: HomeAttentionItem[];
   recentPapers: LibraryPaperSummary[];
+  /** Unlinked 热榜 rows for Home. Empty ⇒ do not render Trending chrome. */
+  trending: HomeTrendingItem[];
 }
 export interface DocRef { path: string; label: string; }
 export interface NoteRef {
@@ -430,6 +434,7 @@ export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
     topicPaths: dashboard.topics.map((t) => t.path),
     attention: attention.slice(0, HOME_ATTENTION_LIMIT),
     recentPapers,
+    trending: [],
   };
 }
 
