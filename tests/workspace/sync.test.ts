@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -421,6 +422,30 @@ describe('workspace sync --library', () => {
 
     const again = await runWorkspaceSync({ cwd: root, library: true });
     expect(again.library?.status).toBe('no-op');
+  });
+
+  it('commits deletions of previously tracked allowlisted files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-del-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    seedLibrary(root);
+    const first = await runWorkspaceSync({ cwd: root, library: true });
+    expect(first.library?.status).toBe('committed');
+
+    const md =
+      '.researcher-workspace/library/papers/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md';
+    rmSync(join(root, md));
+    writeFileSync(join(root, '.researcher-workspace/library/notes.jsonl'), '');
+
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.library?.status).toBe('committed');
+    const tracked = libraryTracked(root);
+    expect(tracked).not.toContain(md);
+    expect(tracked).toContain('.researcher-workspace/library/notes.jsonl');
   });
 
   it('dry-run and missing library dir do not write', async () => {

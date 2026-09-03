@@ -60,7 +60,7 @@ flowchart TB
   LIST --> STORE["library/store.ts LIBRARY_DIR"]
 ```
 
-**主路径**：校验 workspace 根 → `--library` 启用 → 超级仓是 git → index 无无关 staged → 只 `git add` 白名单路径 → 有 staged 则 commit `workspace sync: commit library state` → 摘要 `library=committed count=N`。
+**主路径**：校验 workspace 根 → `--library` 启用 → 超级仓是 git → index 无无关 staged → 只 `git add` 白名单路径（含已跟踪白名单文件的删除）→ 有 staged 则 commit `workspace sync: commit library state` → 摘要 `library=committed count=N`。
 
 **失败路径**：非 workspace → exit 2；超级仓非 git / 无关 staged / git 失败 → `library=failed`，exit 1，不改 HEAD，不碰既有 staged。无 Library 目录或无允许文件变更 → `library=no-op`，exit 0。
 
@@ -125,7 +125,7 @@ Exit：与 #130 相同 — 存在 failed → 1；用法/非 workspace → 2。
 - **E2E / Integration**（`tests/workspace/sync.test.ts`，对 S1/S2/S3）：
   1. fixture：超级仓 + 1 篇 `reads/*.md` + `notes.jsonl` + 故意放的 PDF 与 `_extracted`
   2. `--library` → committed；`git ls-files` 含 md 与 jsonl，0 条 pdf/_extracted
-  3. 无变更再跑 → no-op
+  3. 无变更再跑 → no-op；删除已跟踪的 `reads/*.md` 后再跑 → commit 含该删除
   4. 无动作 flag → `actions.library=false`，HEAD 不变
   5. `--library --dry-run` → dry-run，HEAD 不变
   6. 无关 staged → failed，exit 聚合为 failed≥1，staged 原样

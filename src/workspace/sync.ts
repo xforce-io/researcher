@@ -104,18 +104,35 @@ const LIBRARY_LEDGERS = [
   'notes.jsonl',
 ] as const;
 
-/** Allowlisted Library paths relative to the workspace root. */
+function isAllowlistedLibraryPath(rel: string): boolean {
+  const prefix = `${LIBRARY_DIR}/`;
+  if (!rel.startsWith(prefix)) return false;
+  const rest = rel.slice(prefix.length);
+  if ((LIBRARY_LEDGERS as readonly string[]).includes(rest)) return true;
+  return /^papers\/[^/]+\/reads\/[^/]+\.md$/.test(rest);
+}
+
+function listTrackedAllowlistedLibraryPaths(root: string): string[] {
+  try {
+    const { stdout } = execaSync('git', ['ls-files', '-z', '--', LIBRARY_DIR], { cwd: root });
+    return stdout.split('\0').filter((p) => p && isAllowlistedLibraryPath(p));
+  } catch {
+    return [];
+  }
+}
+
+/** Allowlisted Library paths relative to the workspace root, including tracked deletions. */
 export function listLibrarySyncPaths(root: string): string[] {
+  const seen = new Set<string>(listTrackedAllowlistedLibraryPaths(root));
   const lib = join(root, LIBRARY_DIR);
-  if (!existsSync(lib) || !statSync(lib).isDirectory()) return [];
-  const out: string[] = [];
+  if (!existsSync(lib) || !statSync(lib).isDirectory()) return [...seen];
   for (const name of LIBRARY_LEDGERS) {
     const rel = `${LIBRARY_DIR}/${name}`;
     const abs = join(root, rel);
-    if (existsSync(abs) && statSync(abs).isFile()) out.push(rel);
+    if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
   }
   const papers = join(lib, 'papers');
-  if (!existsSync(papers) || !statSync(papers).isDirectory()) return out;
+  if (!existsSync(papers) || !statSync(papers).isDirectory()) return [...seen];
   for (const paperId of readdirSync(papers)) {
     const readsDir = join(papers, paperId, 'reads');
     if (!existsSync(readsDir) || !statSync(readsDir).isDirectory()) continue;
@@ -123,10 +140,10 @@ export function listLibrarySyncPaths(root: string): string[] {
       if (!fname.endsWith('.md')) continue;
       const rel = `${LIBRARY_DIR}/papers/${paperId}/reads/${fname}`;
       const abs = join(root, rel);
-      if (existsSync(abs) && statSync(abs).isFile()) out.push(rel);
+      if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
     }
   }
-  return out;
+  return [...seen];
 }
 
 function pathNeedsCommit(root: string, rel: string): boolean {
