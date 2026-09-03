@@ -428,6 +428,9 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 .home-trending {
   margin-bottom:16px;
 }
+.home-trending.is-loading .home-empty {
+  margin:0;
+}
 .trending-list {
   display:grid;
   gap:2px;

@@ -203,6 +203,8 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
   expect(home.status).toBe(200);
   const homeHtml = await home.text();
   expect(homeHtml).toContain('data-trending-slot');
+  expect(homeHtml).toContain('<h2>Trending</h2>');
+  expect(homeHtml).toContain('Fetching today’s papers…');
   expect(homeHtml).not.toContain('data-home-trending');
   const first = await fetch(base + '/trending');
   const html = await first.text();

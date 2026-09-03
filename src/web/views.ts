@@ -1238,7 +1238,10 @@ export function renderHomeTrendingPanel(items: { input: string; title: string; h
 function homeTrending(m: WorkspaceHomeModel): string {
   const items = m.trending ?? [];
   if (items.length > 0) return renderHomeTrendingPanel(items);
-  return `<div data-trending-slot></div><script>${HOME_TRENDING_JS}</script>`;
+  return `<section class="home-panel home-trending is-loading" data-trending-slot>` +
+    `<h2>Trending</h2>` +
+    `<p class="home-empty">Fetching today’s papers…</p>` +
+  `</section><script>${HOME_TRENDING_JS}</script>`;
 }
 
 function homeAttention(m: WorkspaceHomeModel): string {

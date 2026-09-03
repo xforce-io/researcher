@@ -503,11 +503,12 @@ describe('renderWorkspaceHome', () => {
     expect(html).toContain('action="/library/add"');
   });
 
-  it('omits Trending chrome when there are no items', () => {
+  it('shows a Trending loading slot when items are not yet loaded', () => {
     const html = renderWorkspaceHome(m);
     expect(html).not.toContain('data-home-trending');
-    expect(html).not.toContain('<h2>Trending</h2>');
     expect(html).toContain('data-trending-slot');
+    expect(html).toContain('<h2>Trending</h2>');
+    expect(html).toContain('Fetching today’s papers…');
     expect(html).toContain('Needs attention');
     expect(html).toContain('Library health');
     expect(html).toContain('Active Topics');
