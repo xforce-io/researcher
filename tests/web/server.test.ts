@@ -6,12 +6,14 @@ import { startServer } from '../../src/web/server.js';
 import { TaskRegistry } from '../../src/web/tasks.js';
 import { PaperLibrary } from '../../src/library/store.js';
 import type { LibraryReadTopicContext } from '../../src/web/library-read.js';
+import type { PapersItem } from '../../src/sources/papers-radar.js';
 
 let root: string;
 let server: { port: number; close: () => Promise<void> };
 let base: string;
 let releaseLibraryRead: (() => void) | undefined;
 let libraryReadCalls = 0;
+let trendingResult: PapersItem[] | Error = [];
 const libraryReadTopicContexts: (LibraryReadTopicContext | undefined)[] = [];
 
 beforeAll(async () => {
@@ -90,6 +92,10 @@ beforeAll(async () => {
     root,
     port: 0,
     registry,
+    trendingLoader: async () => {
+      if (trendingResult instanceof Error) throw trendingResult;
+      return trendingResult;
+    },
     libraryReadRunner: async ({ onLine, topicContext }) => {
       libraryReadCalls++;
       libraryReadTopicContexts.push(topicContext);
@@ -171,6 +177,101 @@ it('serves workspace home at /', async () => {
   expect(html).toContain('/topics');
   expect(html).toContain('/library');
   expect(html).not.toContain('<main class="grid">');
+});
+
+function trendingPaper(paperId: string, title: string, heat: number): PapersItem {
+  return {
+    id: `arxiv:${paperId}`,
+    paper_id: paperId,
+    title,
+    authors: [],
+    abstract: '',
+    arxiv_url: `https://arxiv.org/abs/${paperId}`,
+    pdf_url: `https://arxiv.org/pdf/${paperId}`,
+    source: 'arxiv',
+    published_date: '2026-09-01',
+    heat_index: heat,
+    heat_level: 4,
+  };
+}
+
+it('shows at most 5 not-in-library trending papers with title and heat on /', async () => {
+  trendingResult = [1, 2, 3, 4, 5, 6].map((n) =>
+    trendingPaper(`2609.1000${n}`, `Trending Paper ${n}`, 10 + n),
+  );
+  const first = await fetch(base + '/');
+  const html = await first.text();
+  expect(first.status).toBe(200);
+  expect(html).toContain('data-home-trending');
+  expect(html).toContain('<h2>Trending</h2>');
+  expect(html).toContain('Trending Paper 1');
+  expect(html).toContain('11');
+  expect(html).not.toContain('Trending Paper 6');
+  const second = await fetch(base + '/');
+  expect(await second.text()).toContain('Trending Paper 1');
+  trendingResult = [];
+});
+
+it('returns 400 for an invalid library add instead of 500', async () => {
+  const res = await fetch(base + '/library/add', {
+    method: 'POST',
+    body: new URLSearchParams({ input: 'ftp://not-a-paper', next: 'paper' }),
+    redirect: 'manual',
+  });
+  expect(res.status).toBe(400);
+  expect(await res.text()).toMatch(/canonicalizeUrl|invalid|ftp/i);
+});
+
+it('adds a trending paper then lands on its detail without Deep read', async () => {
+  const form = new URLSearchParams({
+    input: 'arxiv:2609.01597',
+    next: 'paper',
+  });
+  const res = await fetch(base + '/library/add', { method: 'POST', body: form, redirect: 'manual' });
+  expect(res.status).toBe(303);
+  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2609_01597');
+
+  const lib = new PaperLibrary(root);
+  expect(lib.getPaper('paper_arxiv_2609_01597')).toBeTruthy();
+  expect(lib.listReads('paper_arxiv_2609_01597')).toEqual([]);
+
+  const page = await fetch(base + '/library/p/paper_arxiv_2609_01597');
+  expect(page.status).toBe(200);
+  const html = await page.text();
+  expect(html).toContain('Deep read');
+  expect(html).toContain('Topic link');
+  expect(html).not.toContain('read_paper_arxiv_2609_01597.md');
+});
+
+it('omits Trending chrome when the source is empty, already in Library, or fails', async () => {
+  await fetch(base + '/library/add', {
+    method: 'POST',
+    body: new URLSearchParams({ input: '2401.12345' }),
+    redirect: 'manual',
+  });
+  const inLibrary = trendingPaper('2401.12345', 'Reusable Paper Cards', 99);
+  trendingResult = [inLibrary];
+  const already = await fetch(base + '/');
+  const alreadyHtml = await already.text();
+  expect(alreadyHtml).not.toContain('data-home-trending');
+  expect(alreadyHtml).toContain('Needs attention');
+  expect(alreadyHtml).toContain('Active Topics');
+  expect(alreadyHtml).toContain('Library health');
+
+  trendingResult = [];
+  const empty = await fetch(base + '/');
+  expect(await empty.text()).not.toContain('data-home-trending');
+
+  trendingResult = new Error('huggingface down');
+  const failed = await fetch(base + '/');
+  expect(failed.status).toBe(200);
+  const failedHtml = await failed.text();
+  expect(failedHtml).not.toContain('data-home-trending');
+  expect(failedHtml).not.toContain('huggingface down');
+  expect(failedHtml).toContain('Needs attention');
+  expect(failedHtml).toContain('Active Topics');
+  expect(failedHtml).toContain('Library health');
+  trendingResult = [];
 });
 
 it('serves the topic list at /topics', async () => {
@@ -308,8 +409,7 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(second.status).toBe(303);
 
   const lines = readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n');
-  expect(lines).toHaveLength(1);
-  expect(lines[0]).toContain('paper_arxiv_2401_12345');
+  expect(lines.filter((line) => line.includes('paper_arxiv_2401_12345'))).toHaveLength(1);
   const lib = new PaperLibrary(root);
   expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
     expect.objectContaining({ surfaceId: 'trace' }),

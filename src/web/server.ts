@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
+import { loadHomeTrending, type HomeTrendingLoader } from './home-trending.js';
 import { renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
@@ -28,6 +29,8 @@ export interface ServeOptions {
   libraryReadRunner?: LibraryReadRunner;
   /** Test-only / override: agent used for Complete setup generate. */
   setupRuntime?: AgentRuntime;
+  /** Test/override: 热榜 loader. Default is fetchTrendingPapers with a short timeout. */
+  trendingLoader?: HomeTrendingLoader;
 }
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
@@ -59,7 +62,7 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   }
 
   const server = createServer((req, res) => {
-    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime).catch((err) => {
+    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime, opts.trendingLoader).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
     });
   });
@@ -86,13 +89,16 @@ async function handle(
   registry: TaskRegistry,
   libraryReadRunner: LibraryReadRunner,
   setupRuntime?: AgentRuntime,
+  trendingLoader?: HomeTrendingLoader,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const path = url.pathname;
 
   // GET /
   if (req.method === 'GET' && path === '/') {
-    return send(res, 200, 'text/html; charset=utf-8', renderWorkspaceHome(loadWorkspaceHome(root)));
+    const home = loadWorkspaceHome(root);
+    home.trending = await loadHomeTrending({ root, loader: trendingLoader });
+    return send(res, 200, 'text/html; charset=utf-8', renderWorkspaceHome(home));
   }
   // GET /topics
   if (req.method === 'GET' && path === '/topics') {
@@ -139,7 +145,9 @@ async function handle(
     if (!input) return send(res, 400, 'text/plain', 'missing paper source');
     const topic = form.get('topic')?.trim() ?? '';
     if (topic && !resolveTopicDir(root, topic)) return send(res, 400, 'text/plain', 'unknown topic');
+    let paperId: string;
     try {
+      paperId = paperIdForSource(normalizePaperInput(input));
       runLibraryAdd({
         cwd: root,
         input,
@@ -147,11 +155,13 @@ async function handle(
         write: () => {},
       });
       if (topic) {
-        const paperId = paperIdForSource(normalizePaperInput(input));
         runLibraryLink({ cwd: root, paperId, topic, write: () => {} });
       }
     } catch (err) {
       return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
+    }
+    if (form.get('next') === 'paper') {
+      return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
     }
     return redirect(res, '/library');
   }

@@ -1201,6 +1201,27 @@ function homeMetric(
   return `<a class="${classes}" href="${href}"><b>${display}</b><span>${escapeHtml(label)}</span></a>`;
 }
 
+function homeTrending(m: WorkspaceHomeModel): string {
+  const items = m.trending ?? [];
+  if (items.length === 0) return '';
+  const rows = items.map((p) =>
+    `<li class="trending-item">` +
+      `<form class="trending-form" action="/library/add" method="post">` +
+        `<input type="hidden" name="input" value="${escapeHtml(p.input)}">` +
+        `<input type="hidden" name="next" value="paper">` +
+        `<button type="submit" class="trending-submit">` +
+          `<span class="trending-title">${escapeHtml(p.title)}</span>` +
+          `<span class="trending-heat mono" title="heat index">${escapeHtml(String(p.heatIndex))}</span>` +
+        `</button>` +
+      `</form>` +
+    `</li>`,
+  ).join('');
+  return `<section class="home-panel home-trending" data-home-trending>` +
+    `<h2>Trending</h2>` +
+    `<ul class="home-list trending-list">${rows}</ul>` +
+  `</section>`;
+}
+
 function homeAttention(m: WorkspaceHomeModel): string {
   if (m.attention.length === 0) {
     return `<div class="home-panel home-attention">` +
@@ -1313,6 +1334,7 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
         homeAttention(m) +
         homeTopics(m) +
       `</section>` +
+      homeTrending(m) +
       homeLibrary(m) +
     `</main>` +
     renderAddPaperModal(m.topicPaths) +

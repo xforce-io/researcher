@@ -49,6 +49,7 @@ milkie agent 运行时。所有持久化状态 ——
 - `run` —— 自动 tick：discover → triage →（挑一篇）深读 → synthesize → package
 - `methodology install / show / edit` —— 管理可移植的方法论包
 - `serve [path]` —— 在工作区超级仓上启动本地 web 控制台（Home / Library / Topics）
+- `papers trending | search | show | read` —— 热榜 / 查篇 / 写入 default workspace Library 的深读（agent 用 JSON；`skills/papers/SKILL.md`）
 
 尚未接入：focused-instruction 模式（手动覆盖 triage 决策）。
 

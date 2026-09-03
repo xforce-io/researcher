@@ -440,6 +440,7 @@ describe('renderWorkspaceHome', () => {
       },
     ],
     topicPaths: ['trace', 'decision'],
+    trending: [],
   };
 
   it('renders decision-oriented home: hero, metrics, attention, library health', () => {
@@ -480,6 +481,35 @@ describe('renderWorkspaceHome', () => {
     expect(html).toMatch(/<button class="primary home-cta"[^>]*data-open-add-paper[^>]*>Add paper<\/button>/);
     // no duplicate secondary when primary is already Add paper
     expect(html).not.toContain('home-cta-secondary');
+  });
+
+  it('renders a Trending panel with scannable title and heat', () => {
+    const html = renderWorkspaceHome({
+      ...m,
+      trending: [{
+        paperId: 'paper_arxiv_2609_01597',
+        input: 'arxiv:2609.01597',
+        title: 'Verbal RL',
+        heatIndex: 88,
+        heatLevel: 5,
+      }],
+    });
+    expect(html).toContain('data-home-trending');
+    expect(html).toContain('<h2>Trending</h2>');
+    expect(html).toContain('Verbal RL');
+    expect(html).toContain('88');
+    expect(html).toContain('name="next" value="paper"');
+    expect(html).toContain('name="input" value="arxiv:2609.01597"');
+    expect(html).toContain('action="/library/add"');
+  });
+
+  it('omits Trending chrome when there are no items', () => {
+    const html = renderWorkspaceHome(m);
+    expect(html).not.toContain('data-home-trending');
+    expect(html).not.toContain('<h2>Trending</h2>');
+    expect(html).toContain('Needs attention');
+    expect(html).toContain('Library health');
+    expect(html).toContain('Active Topics');
   });
 });
 

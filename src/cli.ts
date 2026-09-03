@@ -82,6 +82,49 @@ library
     runLibraryDelete({ paperId, cwd: process.cwd() });
   });
 
+const papers = program.command('papers').description('Trending papers, lookup, and Library deep-read');
+papers
+  .command('trending')
+  .description('Fetch a heat-ranked paper list (HuggingFace Daily Papers, arXiv fallback)')
+  .option('--limit <n>', 'max papers', '10')
+  .option('--format <fmt>', 'json | report', 'json')
+  .option('--source <src>', 'huggingface | arxiv | both', 'huggingface')
+  .option('--category <cat>', 'arXiv category when using arxiv/both', 'cs.AI')
+  .action(async (opts: { limit: string; format: string; source: string; category: string }) => {
+    const { runPapersTrending } = await import('./commands/papers.js');
+    await runPapersTrending({
+      limit: Number(opts.limit),
+      format: parsePapersFormat(opts.format),
+      source: parsePapersSource(opts.source),
+      category: opts.category,
+    });
+  });
+papers
+  .command('search <query>')
+  .description('Search arXiv by title keyword')
+  .option('--limit <n>', 'max papers', '5')
+  .option('--format <fmt>', 'json | report', 'json')
+  .action(async (query: string, opts: { limit: string; format: string }) => {
+    const { runPapersSearch } = await import('./commands/papers.js');
+    await runPapersSearch({ query, limit: Number(opts.limit), format: parsePapersFormat(opts.format) });
+  });
+papers
+  .command('show <arxiv-id>')
+  .description('Fetch metadata for one arXiv id')
+  .option('--format <fmt>', 'json | report', 'json')
+  .action(async (arxivId: string, opts: { format: string }) => {
+    const { runPapersShow } = await import('./commands/papers.js');
+    await runPapersShow({ arxivId, format: parsePapersFormat(opts.format) });
+  });
+papers
+  .command('read <arxiv-id>')
+  .description('Deep-read into the default workspace Library')
+  .option('--workspace <path>', 'absolute super-repo path (overrides config/env)')
+  .action(async (arxivId: string, opts: { workspace?: string }) => {
+    const { runPapersRead } = await import('./commands/papers.js');
+    await runPapersRead({ input: arxivId, workspace: opts.workspace });
+  });
+
 program
   .command('add <input>')
   .description('Manually add a paper (arxiv id or http(s) URL) to the current topic')
@@ -213,4 +256,14 @@ function parseZone(raw: string | undefined): 'active' | 'buffer' | 'history' | u
   if (raw === undefined) return undefined;
   if (raw === 'active' || raw === 'buffer' || raw === 'history') return raw;
   throw new Error(`invalid zone: ${raw}. expected one of active, buffer, history`);
+}
+
+function parsePapersFormat(raw: string): 'json' | 'report' {
+  if (raw === 'json' || raw === 'report') return raw;
+  throw new Error(`invalid --format: ${raw}. expected json or report`);
+}
+
+function parsePapersSource(raw: string): 'huggingface' | 'arxiv' | 'both' {
+  if (raw === 'huggingface' || raw === 'arxiv' || raw === 'both') return raw;
+  throw new Error(`invalid --source: ${raw}. expected huggingface, arxiv, or both`);
 }
