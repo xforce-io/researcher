@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -174,6 +175,7 @@ describe('runWorkspaceSync', () => {
     expect(res.actions.pull).toBe(true);
     expect(res.actions.pushTopics).toBe(false);
     expect(res.actions.pointers).toBe(false);
+    expect(res.actions.library).toBe(false);
     expect(res.topics).toHaveLength(1);
     expect(res.topics[0].pull?.status).toBe('skipped');
   });
@@ -344,6 +346,161 @@ describe('runWorkspaceSync', () => {
     expect(res.topics.map((t) => t.path)).toEqual(['a', 'b']);
     expect(res.dormant).toEqual([]);
   });
+
+  it('library-only does not implicit-pull', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-flags-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.actions).toEqual({
+      pull: false,
+      pushTopics: false,
+      pointers: false,
+      library: true,
+    });
+    expect(res.topics[0].pull).toBeUndefined();
+  });
+});
+
+function seedLibrary(root: string): void {
+  const lib = join(root, '.researcher-workspace/library');
+  const paper = join(lib, 'papers/paper_arxiv_2401_00001');
+  mkdirSync(join(paper, 'reads'), { recursive: true });
+  mkdirSync(join(paper, '_extracted'), { recursive: true });
+  writeFileSync(join(lib, 'papers.jsonl'), '{"id":"paper_arxiv_2401_00001"}\n');
+  writeFileSync(join(lib, 'reads.jsonl'), '{"id":"r1","paperId":"paper_arxiv_2401_00001"}\n');
+  writeFileSync(join(lib, 'links.jsonl'), '');
+  writeFileSync(join(lib, 'integrations.jsonl'), '');
+  writeFileSync(join(lib, 'notes.jsonl'), '{"id":"n1","paperId":"paper_arxiv_2401_00001","body":"note"}\n');
+  writeFileSync(join(paper, 'reads/read_paper_arxiv_2401_00001.md'), '# Essence\n');
+  writeFileSync(join(paper, 'paper.pdf'), '%PDF-fake\n');
+  writeFileSync(join(paper, '_extracted/x.txt'), 'extracted\n');
+}
+
+function libraryTracked(root: string): string[] {
+  return execaSync('git', ['ls-files', '--', '.researcher-workspace/library'], { cwd: root })
+    .stdout.split('\n')
+    .filter(Boolean)
+    .sort();
+}
+
+describe('workspace sync --library', () => {
+  it('commits allowlisted library files and excludes pdf/_extracted', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    seedLibrary(root);
+
+    const before = execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim();
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.actions.library).toBe(true);
+    expect(res.library?.status).toBe('committed');
+    expect(res.library?.count).toBeGreaterThan(0);
+    expect(execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim()).not.toBe(before);
+    expect(execaSync('git', ['log', '-1', '--pretty=%s'], { cwd: root }).stdout.trim()).toMatch(
+      /workspace sync: commit library state/i,
+    );
+
+    const tracked = libraryTracked(root);
+    expect(tracked).toEqual(
+      expect.arrayContaining([
+        '.researcher-workspace/library/notes.jsonl',
+        '.researcher-workspace/library/papers.jsonl',
+        '.researcher-workspace/library/papers/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md',
+      ]),
+    );
+    expect(tracked.join('\n')).not.toMatch(/\.pdf|_extracted/i);
+
+    const again = await runWorkspaceSync({ cwd: root, library: true });
+    expect(again.library?.status).toBe('no-op');
+  });
+
+  it('commits deletions of previously tracked allowlisted files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-del-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    seedLibrary(root);
+    const first = await runWorkspaceSync({ cwd: root, library: true });
+    expect(first.library?.status).toBe('committed');
+
+    const md =
+      '.researcher-workspace/library/papers/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md';
+    rmSync(join(root, md));
+    writeFileSync(join(root, '.researcher-workspace/library/notes.jsonl'), '');
+
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.library?.status).toBe('committed');
+    const tracked = libraryTracked(root);
+    expect(tracked).not.toContain(md);
+    expect(tracked).toContain('.researcher-workspace/library/notes.jsonl');
+  });
+
+  it('dry-run and missing library dir do not write', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-dry-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    seedLibrary(root);
+    const before = execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim();
+
+    const dry = await runWorkspaceSync({ cwd: root, library: true, dryRun: true });
+    expect(dry.library?.status).toBe('dry-run');
+    expect(dry.library?.count).toBeGreaterThan(0);
+    expect(execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim()).toBe(before);
+    expect(libraryTracked(root)).toEqual([]);
+
+    const empty = mkdtempSync(join(tmpdir(), 'r-sync-lib-empty-'));
+    gitInit(empty);
+    writeManifest(empty, [{ path: 't' }]);
+    gitInit(join(empty, 't'));
+    writeFileSync(join(empty, 't', 'a'), '1');
+    gitCommitAll(join(empty, 't'), 'init');
+    gitCommitAll(empty, 'super');
+    const none = await runWorkspaceSync({ cwd: empty, library: true });
+    expect(none.library?.status).toBe('no-op');
+  });
+
+  it('refuses to commit when index has staged content', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-staged-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    seedLibrary(root);
+
+    writeFileSync(join(root, 'unrelated.txt'), 'staged');
+    execaSync('git', ['add', 'unrelated.txt'], { cwd: root });
+    const before = execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim();
+
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.library).toEqual(
+      expect.objectContaining({ status: 'failed', message: expect.stringContaining('unrelated.txt') }),
+    );
+    expect(res.failed).toBe(1);
+    expect(execaSync('git', ['rev-parse', 'HEAD'], { cwd: root }).stdout.trim()).toBe(before);
+    expect(execaSync('git', ['diff', '--cached', '--name-only'], { cwd: root }).stdout.trim()).toBe(
+      'unrelated.txt',
+    );
+    expect(libraryTracked(root)).toEqual([]);
+  });
 });
 
 describe('workspace publish policy', () => {
@@ -381,7 +538,7 @@ describe('workspace publish policy', () => {
     expect(sanitizeRemoteForDisplay('user@example.com/org/repo.git')).toBe('example.com/org/repo.git');
 
     const summary = formatSyncSummary({
-      actions: { pull: true, pushTopics: false, pointers: false },
+      actions: { pull: true, pushTopics: false, pointers: false, library: false },
       topics: [
         {
           path: 'topic',

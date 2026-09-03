@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { execaSync } from 'execa';
 import {
   assertNoStagedChanges,
   commitIfStaged,
@@ -6,7 +9,9 @@ import {
   pullFfCurrent,
   pushHead,
   stageGitlink,
+  stagePaths,
 } from '../git/workspace-ops.js';
+import { LIBRARY_DIR } from '../library/store.js';
 import { classifyTopicGit, type TopicGitInfo } from './topic-git.js';
 import {
   activeTopics,
@@ -42,6 +47,7 @@ export interface WorkspaceSyncActions {
   pull: boolean;
   pushTopics: boolean;
   pointers: boolean;
+  library: boolean;
 }
 
 export interface WorkspaceSyncResult {
@@ -49,6 +55,7 @@ export interface WorkspaceSyncResult {
   topics: TopicSyncResult[];
   dormant: string[];
   pointers?: PointersResult;
+  library?: PointersResult;
   failed: number;
 }
 
@@ -58,6 +65,7 @@ export interface WorkspaceSyncOptions {
   pull?: boolean;
   pushTopics?: boolean;
   pointers?: boolean;
+  library?: boolean;
   all?: boolean;
   dryRun?: boolean;
 }
@@ -76,14 +84,75 @@ function resolveActions(opts: WorkspaceSyncOptions): WorkspaceSyncActions {
   const pull = opts.pull === true;
   const pushTopics = opts.pushTopics === true;
   const pointers = opts.pointers === true;
+  const library = opts.library === true;
   // No action flags at all → safe default: pull-only.
-  if (!pull && !pushTopics && !pointers
+  if (!pull && !pushTopics && !pointers && !library
       && opts.pull === undefined
       && opts.pushTopics === undefined
-      && opts.pointers === undefined) {
-    return { pull: true, pushTopics: false, pointers: false };
+      && opts.pointers === undefined
+      && opts.library === undefined) {
+    return { pull: true, pushTopics: false, pointers: false, library: false };
   }
-  return { pull, pushTopics, pointers };
+  return { pull, pushTopics, pointers, library };
+}
+
+const LIBRARY_LEDGERS = [
+  'papers.jsonl',
+  'reads.jsonl',
+  'links.jsonl',
+  'integrations.jsonl',
+  'notes.jsonl',
+] as const;
+
+function isAllowlistedLibraryPath(rel: string): boolean {
+  const prefix = `${LIBRARY_DIR}/`;
+  if (!rel.startsWith(prefix)) return false;
+  const rest = rel.slice(prefix.length);
+  if ((LIBRARY_LEDGERS as readonly string[]).includes(rest)) return true;
+  return /^papers\/[^/]+\/reads\/[^/]+\.md$/.test(rest);
+}
+
+function listTrackedAllowlistedLibraryPaths(root: string): string[] {
+  try {
+    const { stdout } = execaSync('git', ['ls-files', '-z', '--', LIBRARY_DIR], { cwd: root });
+    return stdout.split('\0').filter((p) => p && isAllowlistedLibraryPath(p));
+  } catch {
+    return [];
+  }
+}
+
+/** Allowlisted Library paths relative to the workspace root, including tracked deletions. */
+export function listLibrarySyncPaths(root: string): string[] {
+  const seen = new Set<string>(listTrackedAllowlistedLibraryPaths(root));
+  const lib = join(root, LIBRARY_DIR);
+  if (!existsSync(lib) || !statSync(lib).isDirectory()) return [...seen];
+  for (const name of LIBRARY_LEDGERS) {
+    const rel = `${LIBRARY_DIR}/${name}`;
+    const abs = join(root, rel);
+    if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
+  }
+  const papers = join(lib, 'papers');
+  if (!existsSync(papers) || !statSync(papers).isDirectory()) return [...seen];
+  for (const paperId of readdirSync(papers)) {
+    const readsDir = join(papers, paperId, 'reads');
+    if (!existsSync(readsDir) || !statSync(readsDir).isDirectory()) continue;
+    for (const fname of readdirSync(readsDir)) {
+      if (!fname.endsWith('.md')) continue;
+      const rel = `${LIBRARY_DIR}/papers/${paperId}/reads/${fname}`;
+      const abs = join(root, rel);
+      if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
+    }
+  }
+  return [...seen];
+}
+
+function pathNeedsCommit(root: string, rel: string): boolean {
+  const { stdout } = execaSync(
+    'git',
+    ['status', '--porcelain', '--untracked-files=all', '--', rel],
+    { cwd: root },
+  );
+  return Boolean(stdout.trim());
 }
 
 function selectTopics(
@@ -202,7 +271,13 @@ export async function runWorkspaceSync(opts: WorkspaceSyncOptions): Promise<Work
     if (pointers.status === 'failed') failed += 1;
   }
 
-  return { actions, topics, dormant, pointers, failed };
+  let library: PointersResult | undefined;
+  if (actions.library) {
+    library = await commitLibrary({ root: opts.cwd, dryRun });
+    if (library.status === 'failed') failed += 1;
+  }
+
+  return { actions, topics, dormant, pointers, library, failed };
 }
 
 async function bumpPointers(o: {
@@ -254,6 +329,38 @@ async function bumpPointers(o: {
   }
 }
 
+async function commitLibrary(o: {
+  root: string;
+  dryRun: boolean;
+}): Promise<PointersResult> {
+  try {
+    execaSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: o.root });
+  } catch {
+    return { status: 'failed', count: 0, message: 'super-repo is not a git repository' };
+  }
+
+  const pending = listLibrarySyncPaths(o.root).filter((rel) => pathNeedsCommit(o.root, rel));
+  if (pending.length === 0) {
+    return { status: o.dryRun ? 'dry-run' : 'no-op', count: 0 };
+  }
+  if (o.dryRun) {
+    return { status: 'dry-run', count: pending.length };
+  }
+
+  try {
+    await assertNoStagedChanges(o.root);
+    await stagePaths(o.root, pending);
+    const { committed } = await commitIfStaged(
+      o.root,
+      'workspace sync: commit library state',
+    );
+    if (!committed) return { status: 'no-op', count: 0 };
+    return { status: 'committed', count: pending.length };
+  } catch (err) {
+    return { status: 'failed', count: 0, message: errMsg(err) };
+  }
+}
+
 export function formatSyncSummary(res: WorkspaceSyncResult): string {
   const lines: string[] = ['workspace sync'];
   for (const t of res.topics) {
@@ -273,6 +380,13 @@ export function formatSyncSummary(res: WorkspaceSyncResult): string {
       `pointers: ${res.pointers.status}` +
         (res.pointers.count ? ` count=${res.pointers.count}` : '') +
         (res.pointers.message ? ` (${sanitizeErrorText(res.pointers.message)})` : ''),
+    );
+  }
+  if (res.library) {
+    lines.push(
+      `library: ${res.library.status}` +
+        (res.library.count ? ` count=${res.library.count}` : '') +
+        (res.library.message ? ` (${sanitizeErrorText(res.library.message)})` : ''),
     );
   }
   return lines.join('\n');

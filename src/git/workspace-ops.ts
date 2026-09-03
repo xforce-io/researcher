@@ -35,6 +35,11 @@ export async function stageGitlink(root: string, relPath: string, sha: string): 
   });
 }
 
+export async function stagePaths(root: string, paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  await execa('git', ['add', '--', ...paths], { cwd: root });
+}
+
 export async function commitIfStaged(
   root: string,
   message: string,

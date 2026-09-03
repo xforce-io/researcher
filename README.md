@@ -247,7 +247,8 @@ push+PR).
 ```bash
 # default: fetch + ff-only pull on active topics that have origin
 researcher workspace sync
-researcher workspace sync --pull --push-topics --pointers
+researcher workspace sync --pull --push-topics --pointers --library
+researcher workspace sync --library
 researcher workspace sync --all --dry-run
 
 # promote a local pillar (manifest must set publish: true)
@@ -272,12 +273,13 @@ topics:
 - `--pull` — ff when origin exists; skip/fail otherwise
 - `--push-topics` — push current branch to origin (no PR)
 - `--pointers` — bump gitlinks only for existing submodules; one super-repo commit
+- `--library` — commit allowlisted Library ledgers and `reads/*.md` in the super-repo (no PR, no push); PDFs excluded
 - `publish` — default off; only topics with `publish: true` may add origin, push, write `.gitmodules` + gitlink
 - `--yes` — non-interactive confirmation only; never bypasses the topic allowlist
 - `--dry-run` — no writes; unauthorized topics report `blocked: publish not enabled`
 - one topic failing does not abort the rest; exit 1 if any failed
 
-See `docs/design/130-workspace-sync.md`.
+See `docs/design/130-workspace-sync.md` and `docs/design/173-library-workspace-sync.md`.
 
 
 ## Commands
@@ -292,7 +294,7 @@ See `docs/design/130-workspace-sync.md`.
 | `researcher methodology show` | Print currently installed methodology |
 | `researcher methodology edit <name>` | Open a methodology file in `$EDITOR` |
 | `researcher serve [path]` | Local web console: workspace home, Library (deep-read + paper notes), topics + run |
-| `researcher workspace sync` | Super-repo: pull / push topics / bump submodule pointers (explicit; orthogonal to delivery) |
+| `researcher workspace sync` | Super-repo: pull / push topics / bump pointers / commit Library (explicit; orthogonal to delivery) |
 | `researcher workspace publish <path>` | Promote an allowlisted local pillar to a submodule with origin (`--yes` for non-interactive) |
 | `researcher version` | Print version |
 

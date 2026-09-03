@@ -9,3 +9,7 @@
 | thesis | 单个 topic 的工作论题，驱动该支柱的 triage / 综合，不驱动热榜。 | 研究 spec、主张文档 |
 | papers CLI | `researcher papers` 子命令组：热榜、按名搜索、按 ID 取元数据、写入 default workspace Library 的深读。 | paper-discovery、热榜脚本 |
 | 热榜 | `papers trending` 按社区热度列出的当日论文列表；不进入 thesis discover。 | trending 种子、discover 热门 |
+| Workspace sync | 超级仓根的显式 git 对齐动作，不改 `delivery.mode`。 | 自动同步 |
+| Topic delivery | `.researcher/project.yaml` 的 `delivery.mode`，只决定 package 是否 push 并开 PR。 | — |
+| Library sync | `workspace sync --library`：把允许的 Library 文件提交进超级仓，不开 PR、不 push。 | library publish、library delivery |
+| Pointer | 超级仓中记录的 submodule commit SHA（gitlink）。 | — |
