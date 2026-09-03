@@ -13,29 +13,59 @@ export interface HomeTrendingItem {
   title: string;
   heatIndex: number;
   heatLevel: number;
+  blurb: string;
+  upvotes?: number;
+}
+
+export interface HomeTrendingPage {
+  items: HomeTrendingItem[];
+  nextOffset: number;
 }
 
 export type HomeTrendingLoader = () => Promise<PapersItem[]>;
+
+export function trendingBlurb(item: PapersItem): string {
+  const raw = (item.ai_summary || item.abstract || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
+}
 
 export function selectHomeTrending(
   items: PapersItem[],
   libraryPaperIds: Set<string>,
   cap = HOME_TRENDING_CAP,
+  offset = 0,
 ): HomeTrendingItem[] {
-  const out: HomeTrendingItem[] = [];
+  return pageHomeTrending(items, libraryPaperIds, cap, offset).items;
+}
+
+export function pageHomeTrending(
+  items: PapersItem[],
+  libraryPaperIds: Set<string>,
+  cap = HOME_TRENDING_CAP,
+  offset = 0,
+): HomeTrendingPage {
+  const all: HomeTrendingItem[] = [];
   for (const item of items) {
     const paperId = paperIdForSource(normalizePaperInput(item.paper_id));
     if (libraryPaperIds.has(paperId)) continue;
-    out.push({
+    all.push({
       paperId,
       input: item.id,
       title: item.title,
       heatIndex: item.heat_index,
       heatLevel: item.heat_level,
+      blurb: trendingBlurb(item),
+      upvotes: item.upvotes,
     });
-    if (out.length >= cap) break;
   }
-  return out;
+  if (all.length === 0) return { items: [], nextOffset: 0 };
+  const start = ((offset % all.length) + all.length) % all.length;
+  const page: HomeTrendingItem[] = [];
+  for (let i = 0; i < Math.min(cap, all.length); i++) {
+    page.push(all[(start + i) % all.length]);
+  }
+  return { items: page, nextOffset: (start + page.length) % all.length };
 }
 
 export function libraryPaperIdSet(root: string): Set<string> {
@@ -46,13 +76,14 @@ export async function loadHomeTrending(opts: {
   root: string;
   loader?: HomeTrendingLoader;
   timeoutMs?: number;
-}): Promise<HomeTrendingItem[]> {
+  offset?: number;
+}): Promise<HomeTrendingPage> {
   const budget = opts.timeoutMs ?? HOME_TRENDING_TIMEOUT_MS;
   try {
     const items = await withTimeout((opts.loader ?? defaultTrendingLoader)(), budget);
-    return selectHomeTrending(items, libraryPaperIdSet(opts.root));
+    return pageHomeTrending(items, libraryPaperIdSet(opts.root), HOME_TRENDING_CAP, opts.offset ?? 0);
   } catch {
-    return [];
+    return { items: [], nextOffset: 0 };
   }
 }
 

@@ -185,7 +185,7 @@ function trendingPaper(paperId: string, title: string, heat: number): PapersItem
     paper_id: paperId,
     title,
     authors: [],
-    abstract: '',
+    abstract: `${title} is a one-line abstract.`,
     arxiv_url: `https://arxiv.org/abs/${paperId}`,
     pdf_url: `https://arxiv.org/pdf/${paperId}`,
     source: 'arxiv',
@@ -205,14 +205,16 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
   expect(homeHtml).toContain('data-trending-slot');
   expect(homeHtml).toContain('<h2>Trending</h2>');
   expect(homeHtml).toContain('Fetching today’s papers…');
-  expect(homeHtml).not.toContain('data-home-trending');
+  expect(homeHtml).not.toContain('data-home-trending>');
   const first = await fetch(base + '/trending');
   const html = await first.text();
   expect(first.status).toBe(200);
   expect(html).toContain('data-home-trending');
   expect(html).toContain('<h2>Trending</h2>');
   expect(html).toContain('Trending Paper 1');
-  expect(html).toContain('11');
+  expect(html).toContain('Trending Paper 1 is a one-line abstract.');
+  expect(html).toContain('data-trending-more');
+  expect(html).not.toContain('>11<');
   expect(html).not.toContain('Trending Paper 6');
   const second = await fetch(base + '/trending');
   expect(await second.text()).toContain('Trending Paper 1');

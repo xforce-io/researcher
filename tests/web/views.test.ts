@@ -492,12 +492,17 @@ describe('renderWorkspaceHome', () => {
         title: 'Verbal RL',
         heatIndex: 88,
         heatLevel: 5,
+        blurb: 'Language feedback is the main channel.',
+        upvotes: 12,
       }],
     });
     expect(html).toContain('data-home-trending');
     expect(html).toContain('<h2>Trending</h2>');
     expect(html).toContain('Verbal RL');
-    expect(html).toContain('88');
+    expect(html).toContain('Language feedback is the main channel.');
+    expect(html).toContain('▲ 12');
+    expect(html).not.toContain('88');
+    expect(html).toContain('data-trending-more');
     expect(html).toContain('name="next" value="paper"');
     expect(html).toContain('name="input" value="arxiv:2609.01597"');
     expect(html).toContain('action="/library/add"');
@@ -505,7 +510,7 @@ describe('renderWorkspaceHome', () => {
 
   it('shows a Trending loading slot when items are not yet loaded', () => {
     const html = renderWorkspaceHome(m);
-    expect(html).not.toContain('data-home-trending');
+    expect(html).not.toContain('data-home-trending>');
     expect(html).toContain('data-trending-slot');
     expect(html).toContain('<h2>Trending</h2>');
     expect(html).toContain('Fetching today’s papers…');

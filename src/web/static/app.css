@@ -439,7 +439,7 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
 .trending-submit {
   display:flex;
   width:100%;
-  align-items:baseline;
+  align-items:flex-start;
   justify-content:space-between;
   gap:12px;
   padding:8px 0;
@@ -451,14 +451,35 @@ a.metric.metric-zero b { color:var(--ink-faint); font-weight:500; }
   font:inherit;
 }
 .trending-submit:hover .trending-title { color:var(--accent-ink); }
+.trending-copy {
+  min-width:0;
+  display:grid;
+  gap:4px;
+}
 .trending-title {
   min-width:0;
   font-weight:600;
+}
+.trending-blurb {
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  font-size:13px;
+  line-height:1.4;
 }
 .trending-heat {
   flex:none;
   color:var(--ink-faint);
   font-size:12px;
+}
+.trending-more {
+  border:0;
+  background:transparent;
+  color:var(--accent-ink);
+  font:650 13px var(--sans);
+  cursor:pointer;
+  padding:0;
 }
 .home-panel {
   min-width:0;

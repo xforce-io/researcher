@@ -1203,34 +1203,59 @@ function homeMetric(
 
 const HOME_TRENDING_JS = `
 (function () {
+  function fill(el, url) {
+    fetch(url).then(function (r) { return r.text(); }).then(function (html) {
+      if (!el.isConnected) return;
+      if (html && html.trim()) el.outerHTML = html;
+      else el.remove();
+    }).catch(function () {
+      if (el.isConnected) el.remove();
+    });
+  }
   var slot = document.querySelector('[data-trending-slot]');
-  if (!slot) return;
-  fetch('/trending').then(function (r) { return r.text(); }).then(function (html) {
-    if (!slot.isConnected) return;
-    if (html && html.trim()) slot.outerHTML = html;
-    else slot.remove();
-  }).catch(function () {
-    if (slot.isConnected) slot.remove();
+  if (slot) fill(slot, '/trending');
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-trending-more]') : null;
+    if (!btn) return;
+    ev.preventDefault();
+    var panel = btn.closest('[data-home-trending]');
+    if (!panel) return;
+    fill(panel, '/trending?offset=' + encodeURIComponent(btn.getAttribute('data-offset') || '0'));
   });
 })();
 `;
 
-export function renderHomeTrendingPanel(items: { input: string; title: string; heatIndex: number }[]): string {
+export function renderHomeTrendingPanel(
+  items: { input: string; title: string; heatIndex: number; blurb?: string; upvotes?: number }[],
+  nextOffset = 0,
+): string {
   if (items.length === 0) return '';
-  const rows = items.map((p) =>
-    `<li class="trending-item">` +
+  const rows = items.map((p) => {
+    const heat = typeof p.upvotes === 'number' && p.upvotes > 0
+      ? `<span class="trending-heat mono" title="upvotes">▲ ${escapeHtml(String(p.upvotes))}</span>`
+      : '';
+    const blurb = p.blurb
+      ? `<span class="trending-blurb muted">${escapeHtml(p.blurb)}</span>`
+      : '';
+    return `<li class="trending-item">` +
       `<form class="trending-form" action="/library/add" method="post">` +
         `<input type="hidden" name="input" value="${escapeHtml(p.input)}">` +
         `<input type="hidden" name="next" value="paper">` +
         `<button type="submit" class="trending-submit">` +
-          `<span class="trending-title">${escapeHtml(p.title)}</span>` +
-          `<span class="trending-heat mono" title="heat index">${escapeHtml(String(p.heatIndex))}</span>` +
+          `<span class="trending-copy">` +
+            `<span class="trending-title">${escapeHtml(p.title)}</span>` +
+            blurb +
+          `</span>` +
+          heat +
         `</button>` +
       `</form>` +
-    `</li>`,
-  ).join('');
+    `</li>`;
+  }).join('');
   return `<section class="home-panel home-trending" data-home-trending>` +
-    `<h2>Trending</h2>` +
+    `<div class="home-library-head">` +
+      `<h2>Trending</h2>` +
+      `<button type="button" class="trending-more" data-trending-more data-offset="${escapeHtml(String(nextOffset))}">More</button>` +
+    `</div>` +
     `<ul class="home-list trending-list">${rows}</ul>` +
   `</section>`;
 }
