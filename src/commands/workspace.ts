@@ -18,6 +18,7 @@ export interface WorkspaceSyncCliOpts {
   pull?: boolean;
   pushTopics?: boolean;
   pointers?: boolean;
+  library?: boolean;
   all?: boolean;
   dryRun?: boolean;
 }
@@ -91,6 +92,7 @@ export async function runWorkspaceSyncCli(opts: WorkspaceSyncCliOpts = {}): Prom
       pull: opts.pull,
       pushTopics: opts.pushTopics,
       pointers: opts.pointers,
+      library: opts.library,
       all: opts.all,
       dryRun: opts.dryRun,
     });

@@ -118,10 +118,11 @@ program
 const workspace = program.command('workspace').description('Workspace super-repo git alignment');
 workspace
   .command('sync')
-  .description('Pull / push topics / bump submodule pointers (explicit; orthogonal to delivery.mode)')
+  .description('Pull / push topics / bump submodule pointers / commit Library (explicit; orthogonal to delivery.mode)')
   .option('--pull', 'fetch + ff-only current branch on topics with origin')
   .option('--push-topics', 'push current branch to origin')
   .option('--pointers', 'commit submodule gitlink bumps in the super-repo')
+  .option('--library', 'commit allowlisted Library files in the super-repo')
   .option('--all', 'include dormant topics')
   .option('--dry-run', 'report only; no push/commit/gitmodules writes')
   .option('--cwd <path>', 'workspace root (default: cwd)')
@@ -129,6 +130,7 @@ workspace
     pull?: boolean;
     pushTopics?: boolean;
     pointers?: boolean;
+    library?: boolean;
     all?: boolean;
     dryRun?: boolean;
     cwd?: string;
@@ -139,6 +141,7 @@ workspace
       pull: opts.pull,
       pushTopics: opts.pushTopics,
       pointers: opts.pointers,
+      library: opts.library,
       all: opts.all,
       dryRun: opts.dryRun,
     });

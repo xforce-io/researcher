@@ -199,7 +199,8 @@ PR。Dormant（`active: false`）支柱完全不碰。某个支柱失败不会�
 ```bash
 # 默认：对 active topics 做 fetch + ff-only pull（有 origin 的）
 researcher workspace sync
-researcher workspace sync --pull --push-topics --pointers
+researcher workspace sync --pull --push-topics --pointers --library
+researcher workspace sync --library
 researcher workspace sync --all --dry-run
 
 # 本地 pillar 晋升（manifest 必须显式 publish: true）
@@ -224,12 +225,13 @@ topics:
 - `--pull`：有 origin 则 ff；无 origin / 非 git → skipped 或 failed
 - `--push-topics`：推送当前分支到 origin（不开 PR）
 - `--pointers`：仅 bump 已是 submodule 的 gitlink，并在 super-repo 打一次 commit
+- `--library`：把允许的 Library 账本与 `reads/*.md` commit 进超级仓（不开 PR、不 push）；不含 PDF
 - `publish`：默认关闭；仅 `publish: true` 的 topic 可加 origin、push、写 `.gitmodules` + gitlink
 - `--yes`：仅跳过人工确认，不能绕过 topic allowlist
 - `--dry-run`：无写副作用；未授权时输出 `blocked: publish not enabled`
 - 单 topic 失败不中止其余；存在 failed 时 exit 1
 
-详见 `docs/design/130-workspace-sync.md`。
+详见 `docs/design/130-workspace-sync.md`、`docs/design/173-library-workspace-sync.md`。
 
 ### `researcher serve [path]`
 
@@ -274,7 +276,7 @@ Notes 存在 `.researcher-workspace/library/notes.jsonl`，force 重跑机器精
 | `researcher methodology show` | 打印当前已装的方法论 |
 | `researcher methodology edit <name>` | 用 `$EDITOR` 打开某个方法论文件 |
 | `researcher serve [path]` | 本地 web 控制台：Home、Library（精读 + paper notes）、Topics + run |
-| `researcher workspace sync` | 超级仓：pull / push topics / bump submodule pointers（显式；与 delivery 正交） |
+| `researcher workspace sync` | 超级仓：pull / push topics / bump pointers / commit Library（显式；与 delivery 正交） |
 | `researcher workspace publish <path>` | 把已 allowlist 的本地 pillar 晋升为带 origin 的 submodule（非交互需 `--yes`） |
 | `researcher version` | 打印版本 |
 
