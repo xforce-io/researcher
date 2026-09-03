@@ -212,6 +212,16 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
   trendingResult = [];
 });
 
+it('returns 400 for an invalid library add instead of 500', async () => {
+  const res = await fetch(base + '/library/add', {
+    method: 'POST',
+    body: new URLSearchParams({ input: 'ftp://not-a-paper', next: 'paper' }),
+    redirect: 'manual',
+  });
+  expect(res.status).toBe(400);
+  expect(await res.text()).toMatch(/canonicalizeUrl|invalid|ftp/i);
+});
+
 it('adds a trending paper then lands on its detail without Deep read', async () => {
   const form = new URLSearchParams({
     input: 'arxiv:2609.01597',

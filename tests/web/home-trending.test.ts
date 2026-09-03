@@ -63,4 +63,13 @@ describe('loadHomeTrending', () => {
     });
     expect(rows).toEqual([]);
   });
+
+  it('returns an empty list when the loader exceeds the home budget', async () => {
+    const rows = await loadHomeTrending({
+      root: '/tmp/researcher-home-trending-timeout',
+      timeoutMs: 20,
+      loader: () => new Promise(() => {}),
+    });
+    expect(rows).toEqual([]);
+  });
 });

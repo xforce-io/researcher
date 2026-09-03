@@ -44,13 +44,25 @@ export function libraryPaperIdSet(root: string): Set<string> {
 export async function loadHomeTrending(opts: {
   root: string;
   loader?: HomeTrendingLoader;
+  timeoutMs?: number;
 }): Promise<HomeTrendingItem[]> {
+  const budget = opts.timeoutMs ?? HOME_TRENDING_TIMEOUT_MS;
   try {
-    const items = await (opts.loader ?? defaultTrendingLoader)();
+    const items = await withTimeout((opts.loader ?? defaultTrendingLoader)(), budget);
     return selectHomeTrending(items, libraryPaperIdSet(opts.root));
   } catch {
     return [];
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('home trending timeout')), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
 }
 
 export function defaultTrendingLoader(): Promise<PapersItem[]> {

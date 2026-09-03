@@ -145,8 +145,9 @@ async function handle(
     if (!input) return send(res, 400, 'text/plain', 'missing paper source');
     const topic = form.get('topic')?.trim() ?? '';
     if (topic && !resolveTopicDir(root, topic)) return send(res, 400, 'text/plain', 'unknown topic');
-    const paperId = paperIdForSource(normalizePaperInput(input));
+    let paperId: string;
     try {
+      paperId = paperIdForSource(normalizePaperInput(input));
       runLibraryAdd({
         cwd: root,
         input,
