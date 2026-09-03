@@ -1,6 +1,7 @@
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
 import { fetchTrendingPapers, type PapersItem } from '../sources/papers-radar.js';
+import { readTrendingDayCache, trendingDay, writeTrendingDayCache } from '../sources/trending-cache.js';
 
 export const HOME_TRENDING_CAP = 5;
 export const HOME_TRENDING_FETCH_LIMIT = 10;
@@ -103,11 +104,19 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-export function defaultTrendingLoader(): Promise<PapersItem[]> {
-  return fetchTrendingPapers({
+export async function defaultTrendingLoader(opts?: {
+  fetch?: typeof fetch;
+  now?: Date;
+}): Promise<PapersItem[]> {
+  const day = trendingDay(opts?.now);
+  const hit = readTrendingDayCache(day);
+  if (hit) return hit;
+  const papers = await fetchTrendingPapers({
     limit: HOME_TRENDING_FETCH_LIMIT,
-    fetch: fetchWithTimeout(HOME_TRENDING_TIMEOUT_MS),
+    fetch: opts?.fetch ?? fetchWithTimeout(HOME_TRENDING_TIMEOUT_MS),
   });
+  writeTrendingDayCache(papers, day);
+  return papers;
 }
 
 function fetchWithTimeout(ms: number): typeof fetch {
