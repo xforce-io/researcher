@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+vi.mock('execa', () => ({ execa: vi.fn() }));
+
+import { execa } from 'execa';
 import { canonicalizeArxivId, arxivAbsUrl, arxivPdfUrl, fetchArxivMetadata } from '../../src/sources/arxiv.js';
 import { writeJsonCache } from '../../src/sources/cache.js';
+
+const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
 
 // arxiv.ts now applies a preventive min-interval throttle by default. Disable it
 // for every existing test (interval 0 = no wait) so their timing assertions are
@@ -391,5 +397,55 @@ describe('arxiv rate-limit hardening', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('fetchArxivMetadata curl fallback', () => {
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'r-arxiv-curl-'));
+    process.env.RESEARCHER_HOME = home;
+    process.env.RESEARCHER_ARXIV_MIN_INTERVAL_MS = '0';
+  });
+  afterEach(() => {
+    delete process.env.RESEARCHER_HOME;
+    rmSync(home, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    execaMock.mockReset();
+  });
+
+  const atom = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2608.25518v1</id>
+    <title>Agentic Game Development as a Verifiable Trajectory Data Engine for Scaling World Models</title>
+    <summary>abstract</summary>
+    <author><name>X</name></author>
+  </entry>
+</feed>`;
+
+  function econnreset(): TypeError {
+    const cause = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+    return new TypeError('fetch failed', { cause });
+  }
+
+  it('falls back to curl when Node fetch is reset', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw econnreset(); }));
+    execaMock.mockImplementation(async (_bin: string, args: string[]) => {
+      const out = args[args.indexOf('-o') + 1];
+      writeFileSync(out, atom);
+      return { stdout: '200\napplication/atom+xml' };
+    });
+
+    const meta = await fetchArxivMetadata('arxiv:2608.25518');
+    expect(meta.title).toContain('Agentic Game Development');
+    expect(execaMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('includes the fetch cause when curl also fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw econnreset(); }));
+    execaMock.mockRejectedValue(new Error('curl: (56) Recv failure'));
+
+    await expect(fetchArxivMetadata('arxiv:2608.25518')).rejects.toThrow(/ECONNRESET/);
   });
 });
