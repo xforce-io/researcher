@@ -1,6 +1,13 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execa } from 'execa';
 import { readJsonCache, writeJsonCache } from './cache.js';
+import { formatNetworkError } from './url-fetch.js';
 
 const ID_RE = /(\d{4}\.\d{4,5})(?:v\d+)?/;
+const FETCH_TIMEOUT_MS = 60_000;
+const USER_AGENT = 'researcher-library/0.0 (+https://github.com/xforce-io/researcher)';
 
 export function canonicalizeArxivId(input: string): string {
   const m = ID_RE.exec(input);
@@ -87,7 +94,52 @@ async function throttledFetch(url: string): Promise<Response> {
     if (wait > 0) await sleep(wait);
   }
   lastArxivRequestAt = Date.now();
-  return fetch(url);
+  try {
+    return await fetch(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      headers: { 'user-agent': USER_AGENT },
+    });
+  } catch (err) {
+    try {
+      return await curlGetResponse(url);
+    } catch {
+      throw new Error(`arxiv fetch failed: ${formatNetworkError(err)} for ${url}`);
+    }
+  }
+}
+
+/** Same curl fallback as URL sources: Node fetch to arXiv often ECONNRESET. */
+async function curlGetResponse(url: string): Promise<Response> {
+  const dir = mkdtempSync(join(tmpdir(), 'researcher-arxiv-get-'));
+  const out = join(dir, 'body');
+  try {
+    const { stdout } = await execa(
+      'curl',
+      [
+        '-sS',
+        '-L',
+        '-o', out,
+        '-w', '%{http_code}\n%{content_type}',
+        '--max-time', String(Math.floor(FETCH_TIMEOUT_MS / 1000)),
+        '-A', USER_AGENT,
+        url,
+      ],
+      { timeout: FETCH_TIMEOUT_MS + 5_000 },
+    );
+    const lines = stdout.replace(/\r/g, '').trimEnd().split('\n');
+    const contentType = (lines.length >= 2 ? lines.pop() ?? '' : '').toLowerCase();
+    const status = Number(lines.pop() || '0');
+    if (!Number.isFinite(status) || status <= 0) {
+      throw new Error(`curl produced no HTTP status for ${url}`);
+    }
+    const buf = existsSync(out) ? readFileSync(out) : Buffer.alloc(0);
+    return new Response(buf, {
+      status,
+      headers: contentType ? { 'content-type': contentType } : undefined,
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 interface RetryOutcome {
