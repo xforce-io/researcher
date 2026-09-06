@@ -77,21 +77,19 @@ Use this exact body structure and section order:
 
 ### Section quality bar
 
-**Frame** (blockquote under H1) — one sentence only, hard cap. Pattern:
+**Frame** (blockquote under H1) — one sentence only, hard cap ≈50 Chinese characters (~25 English words). Pattern:
 
-`旧做法/问题 → 本文做法 → 一个立刻能懂的好处`
+`你现在怎么做 → 这篇改哪一步 → 立刻能懂的好处`
 
-- Include: concrete mechanism words a non-author can picture (e.g. "读打分 token 的概率分布算期望，而不是吐一个整数分").
-- Exclude: pure academic positioning with no mechanism ("提出新的 scaling 轴" alone).
+- Must be a scene a practitioner can picture (a task they already run).
+- Exclude: stacking three or more unexplained technical terms in that one line; academic positioning with no scene ("提出新的 scaling 轴").
 
-**Essence** — the only first-screen explanation a skimming reader must grasp (~half screen / ~120–250 Chinese words or equivalent). Prefer short structured blocks over abstract prose. Use bold lead-ins for the four blocks (labels may be written in the output language):
+**Essence** — the only first-screen explanation a skimming reader must grasp (~half screen). Use four `###` headings (labels in the output language):
 
-1. **问题** — prior practice friction (1–2 sentences).
-2. **做法** — the mechanism in plain language; allow a mini process flow or before/after contrast (still thesis-neutral).
-3. **证据** — **one** central number and what it shows (not a leaderboard dump).
-4. **边界** — one sentence: what not to misread this as / hard dependency (e.g. needs logprobs).
-
-Encourage (still neutral): open with a common misconception when useful ("not X — Y"); make the mechanism picturable.
+1. **场景** — one concrete task or situation (1–3 sentences). Not a research-gap paragraph.
+2. **对照** — three short paths: old practice / naive expensive path / this paper. One or two sentences each, or a 3-row list. Do not expand "this paper" into a component inventory.
+3. **步骤** — at most four process steps (numbered). Name what happens, not module names. A tiny mermaid/flow is allowed.
+4. **证据** — **one** central number or checkable assertion, then one **别误读** sentence: what this does *not* prove / the hard dependency.
 
 Do not dump the abstract. Do not preview every later section. Do not give workspace/topic product advice. Do **not** emit a `## Brief` section — Essence fully replaces Brief.
 
@@ -132,8 +130,8 @@ No thesis coaching. No "we should integrate this into topic X".
 
 ### Anti-patterns for this stage
 
-- Frame that only names a research program without a mechanism picture.
-- Essence written as a compressed abstract without 问题/做法/证据/边界.
+- Frame that only names a research program, or stacks unexplained jargon past the ~50-character cap.
+- Essence written as a compressed abstract (including old 问题/做法/证据/边界 prose blocks) instead of ### 场景 / 对照 / 步骤 / 证据.
 - Emitting `## Brief` instead of (or in addition to) `## Essence`.
 - Claims that are a flat SOTA list with the key insight buried mid-list.
 - Method that jumps to equations with zero before/after intuition.

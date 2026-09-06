@@ -1799,6 +1799,21 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   margin:14px 0; padding:2px 16px; border-left:3px solid var(--accent);
   color:var(--ink-soft);
 }
+.reader h3.essence-lead {
+  font:600 12px/1.3 var(--mono);
+  letter-spacing:.06em;
+  color:var(--accent-ink);
+  margin:20px 0 8px;
+}
+.reader h3.essence-lead + p,
+.reader h3.essence-lead + ul,
+.reader h3.essence-lead + ol {
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:14px 16px;
+  margin:0 0 14px;
+}
 .reader table { border-collapse:collapse; font-size:13px; }
 .reader th, .reader td { border:1px solid var(--line); padding:6px 10px; }
 

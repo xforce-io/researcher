@@ -5,6 +5,7 @@ import {
   displayLibraryReadMarkdown,
   firstScreenSection,
   libraryReadBodyHasRequiredSections,
+  markEssenceLeadHeadings,
   PAPER_READ_SECTIONS,
   requiredPaperReadSections,
 } from '../../src/web/library-read-sections.js';
@@ -28,12 +29,18 @@ describe('library-read section contract (Essence replaces Brief)', () => {
     expect(structure).toContain('## Essence');
     expect(structure).not.toContain('## Brief');
     expect(structure.indexOf('## Essence')).toBeLessThan(structure.indexOf('## Claims'));
-    // Quality bar documents the four blocks.
+    // Quality bar documents the four teaching blocks.
     expect(prompt).toMatch(/\*\*Essence\*\*/);
-    expect(prompt).toMatch(/问题/);
-    expect(prompt).toMatch(/做法/);
-    expect(prompt).toMatch(/证据/);
-    expect(prompt).toMatch(/边界/);
+    expect(prompt).toMatch(/\*\*场景\*\*/);
+    expect(prompt).toMatch(/\*\*对照\*\*/);
+    expect(prompt).toMatch(/\*\*步骤\*\*/);
+    expect(prompt).toMatch(/\*\*证据\*\*/);
+    expect(prompt).toMatch(/别误读/);
+    expect(prompt).toMatch(/50/);
+    // Old compressed-abstract lead-ins are not the first-screen contract.
+    expect(prompt).not.toMatch(/\*\*问题\*\*/);
+    expect(prompt).not.toMatch(/\*\*做法\*\*/);
+    expect(prompt).not.toMatch(/\*\*边界\*\*/);
     // Old Brief quality bar must not remain as the required section name.
     expect(prompt).not.toMatch(/\*\*Brief\*\*/);
   });
@@ -44,7 +51,21 @@ describe('library-read section contract (Essence replaces Brief)', () => {
     expect(structure).toContain('## Essence');
     expect(structure).not.toContain('## Brief');
     expect(prompt).toMatch(/\*\*Essence\*\*/);
+    expect(prompt).toMatch(/\*\*场景\*\*/);
+    expect(prompt).toMatch(/\*\*对照\*\*/);
+    expect(prompt).toMatch(/\*\*步骤\*\*/);
+    expect(prompt).toMatch(/\*\*证据\*\*/);
+    expect(prompt).toMatch(/别误读/);
+    expect(prompt).not.toMatch(/\*\*问题\*\*/);
+    expect(prompt).not.toMatch(/\*\*做法\*\*/);
+    expect(prompt).not.toMatch(/\*\*边界\*\*/);
     expect(prompt).not.toMatch(/\*\*Brief\*\*/);
+  });
+
+  it('writing discipline carves out Frame+Essence teaching copy', () => {
+    const md = readFileSync(join(process.cwd(), 'methodology/06-writing.md'), 'utf8');
+    expect(md).toMatch(/Library first-screen exception/);
+    expect(md).toMatch(/场景 \/ 对照 \/ 步骤 \/ 证据/);
   });
 });
 
@@ -81,6 +102,23 @@ describe('firstScreenSection / displayLibraryReadMarkdown', () => {
   it('does not rename Brief when Essence is already present', () => {
     const md = '## Essence\n\ne\n\n## Brief\n\nb';
     expect(displayLibraryReadMarkdown(md)).toBe(md);
+  });
+});
+
+describe('markEssenceLeadHeadings', () => {
+  it('adds essence-lead class to h3s between Essence and the next h2', () => {
+    const html = [
+      '<h2>Essence</h2>',
+      '<h3>场景</h3><p>s</p>',
+      '<h3>对照</h3><ul><li>a</li></ul>',
+      '<h2>Claims</h2>',
+      '<h3>not first screen</h3>',
+    ].join('');
+    const marked = markEssenceLeadHeadings(html);
+    expect(marked).toMatch(/<h3 class="essence-lead">场景<\/h3>/);
+    expect(marked).toMatch(/<h3 class="essence-lead">对照<\/h3>/);
+    expect(marked).toContain('<h3>not first screen</h3>');
+    expect(marked).not.toMatch(/<h3 class="essence-lead">not first screen<\/h3>/);
   });
 });
 
@@ -160,7 +198,22 @@ describe('renderLibraryPaper Brief fallback', () => {
           '',
           '## Essence',
           '',
-          '**问题** x. **做法** y. **证据** z. **边界** w.',
+          '### 场景',
+          '',
+          'a runnable agent already exists.',
+          '',
+          '### 对照',
+          '',
+          '- old: rewrite the loop in the trainer',
+          '- this: swap the LLM endpoint',
+          '',
+          '### 步骤',
+          '',
+          '1. point the harness at a proxy',
+          '',
+          '### 证据',
+          '',
+          'one number. 别误读: not a continuous token trajectory.',
           '',
           '## Claims',
           '',
@@ -170,7 +223,12 @@ describe('renderLibraryPaper Brief fallback', () => {
     };
     const html = renderLibraryPaper(v);
     expect(html).toMatch(/<h2[^>]*>Essence<\/h2>/);
-    expect(html).toContain('**问题**'.replace(/\*/g, '') || '问题');
-    expect(html).toContain('问题');
+    expect(html).toContain('场景');
+    expect(html).toContain('对照');
+    expect(html).toContain('步骤');
+    expect(html).toContain('证据');
+    expect(html).toContain('别误读');
+    expect(html).toMatch(/<h3[^>]*class="[^"]*essence-lead[^"]*"[^>]*>场景<\/h3>/);
+    expect(html).not.toContain('**问题**');
   });
 });

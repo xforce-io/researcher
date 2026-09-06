@@ -6,6 +6,7 @@
 | workspace | 含 `researcher.workspace.yml` 的超级仓：多 topic 的控制面，一份 Library 挂在这里。 | 超级仓根、多仓、instance |
 | default workspace | `$RESEARCHER_HOME/config.yaml` 里登记的当前超级仓路径，是 `papers read` 的 Library 落盘目标。 | 当前工作区、默认主题、researcher instance |
 | Library | workspace 级论文对象库：元数据、深读证据卡与 topic 链接，不属于任何一个 topic。 | 论文库、inbox、notes |
+| Essence | Library 深读首屏：场景 / 对照 / 步骤 / 证据（含别误读），不是摘要腔 Brief。 | Brief、问题/做法四段 |
 | thesis | 单个 topic 的工作论题，驱动该支柱的 triage / 综合，不驱动热榜。 | 研究 spec、主张文档 |
 | papers CLI | `researcher papers` 子命令组：热榜、按名搜索、按 ID 取元数据、写入 default workspace Library 的深读。 | paper-discovery、热榜脚本 |
 | 热榜 | `papers trending` 按社区热度列出的当日论文列表；不进入 thesis discover。 | trending 种子、discover 热门 |

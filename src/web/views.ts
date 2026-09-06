@@ -2,7 +2,7 @@ import { marked } from 'marked';
 import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
 import { HOME_TRENDING_CAP, type HomeTrendingItem } from './home-trending.js';
-import { displayLibraryReadMarkdown } from './library-read-sections.js';
+import { displayLibraryReadMarkdown, markEssenceLeadHeadings } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
 import {
@@ -307,7 +307,7 @@ export function renderDoc(markdown: string, opts: RenderDocOptions = {}): string
     const head =
       (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
       renderLibraryReadIdentityFm(fm);
-    return head + markedHtml(displayBody);
+    return head + markEssenceLeadHeadings(markedHtml(displayBody));
   }
   if (fm) {
     const title = unquote(fm.paper ?? fm.title ?? '');
@@ -424,7 +424,7 @@ function renderLibraryReadBody(markdown: string, paperTitle: string): string {
   displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
   // Historical ## Brief shares the Essence first-screen slot (#98).
   displayBody = displayLibraryReadMarkdown(displayBody);
-  return markedHtml(displayBody);
+  return markEssenceLeadHeadings(markedHtml(displayBody));
 }
 
 /**

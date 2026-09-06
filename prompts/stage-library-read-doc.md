@@ -80,14 +80,14 @@ Use this exact body structure:
 
 ### Section quality bar
 
-**Frame** — one sentence: situation → what the doc decides/specifies → why that matters in plain terms.
+**Frame** — one sentence, hard cap ≈50 Chinese characters (~25 English words): situation → what the doc decides → why that matters. No unexplained jargon stack.
 
-**Essence** — shortest graspable explanation of the document (~half screen). Structure with four lead-ins (output language):
+**Essence** — shortest graspable explanation (~half screen). Use four `###` headings (output language):
 
-1. **问题** — what situation the doc addresses.
-2. **做法** — what it decides or specifies (mechanism / policy in plain terms).
-3. **证据** — the load-bearing decision or constraint that makes it real (quote or concrete rule when possible).
-4. **边界** — what it does *not* settle / hard limits.
+1. **场景** — what situation the doc addresses.
+2. **对照** — previous practice vs this doc's choice (two or three short paths).
+3. **步骤** — what it specifies, in order (at most four steps).
+4. **证据** — the load-bearing decision or quoted rule, then one **别误读** sentence: what it does *not* settle.
 
 Do **not** emit `## Brief`. No product-roadmap coaching for a workspace thesis.
 

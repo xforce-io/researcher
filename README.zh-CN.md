@@ -256,7 +256,7 @@ researcher serve ../research -p 8080
 **双轨（Library vs Topic）：** Library 精读与 paper notes 是中立、可复用的证据与注意力；
 Topic 侧仍是 thesis 驱动的综合。把论文 link 进 topic 是显式接合，notes 不会自动改写支柱。
 
-Library 精读首屏是 **`## Essence`**（问题 / 做法 / 证据 / 边界），不再用摘要腔 Brief。
+Library 精读首屏是 **`## Essence`**（场景 / 对照 / 步骤 / 证据），讲解腔半屏，不再用摘要腔 Brief。
 旧产物若仍是 `## Brief`，显示时落在同一槽位。详见 `docs/design/98-essence-replaces-brief.md`。
 
 Notes 存在 `.researcher-workspace/library/notes.jsonl`，force 重跑机器精读不会清掉。
