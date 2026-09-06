@@ -80,6 +80,33 @@ export function displayLibraryReadMarkdown(markdown: string): string {
   return markdown.replace(/^##[ \t]+Brief[ \t]*$/m, '## Essence');
 }
 
+/** Drop model scratch / tool-narration that appears before the card H1, Frame, or Essence. */
+export function stripLibraryReadPreamble(markdown: string): string {
+  const text = markdown.replace(/^\uFEFF/, '');
+  const lineH1 = /^#[ \t]+\S/m.exec(text);
+  if (lineH1?.index !== undefined) {
+    return text.slice(lineH1.index).trimStart();
+  }
+  const glued = /[。．；！？]\s*(#[ \t]+\S)/.exec(text);
+  if (glued && glued.index !== undefined) {
+    const hashAt = text.indexOf('#', glued.index);
+    if (hashAt >= 0) return text.slice(hashAt).trimStart();
+  }
+  const essence = /^##[ \t]+Essence\b/m.exec(text);
+  const frame = /^>[ \t]+\S/m.exec(text);
+  if (
+    frame?.index !== undefined &&
+    essence?.index !== undefined &&
+    frame.index < essence.index
+  ) {
+    return text.slice(frame.index).trimStart();
+  }
+  if (essence?.index !== undefined) {
+    return text.slice(essence.index).trimStart();
+  }
+  return text.trimStart();
+}
+
 /** Mark `h3` inside the Essence section so the paper page can style first-screen lead-ins. */
 export function markEssenceLeadHeadings(html: string): string {
   return html.replace(

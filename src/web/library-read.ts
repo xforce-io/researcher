@@ -14,6 +14,7 @@ import {
   DOC_READ_SECTIONS,
   PAPER_READ_SECTIONS,
   libraryReadBodyHasRequiredSections,
+  stripLibraryReadPreamble,
 } from './library-read-sections.js';
 
 /** Align with topic `read` (15min). 5min was a hang bound; GLM reasoning + ZH cards overrun it. */
@@ -248,7 +249,7 @@ function normalizeLibraryReadBody(output: string): string {
   body = body.replace(/^```(?:markdown)?\s*/i, '').replace(/\s*```$/i, '').trim();
   body = body.replace(/^\s*---[\s\S]*?---\s*/, '').trim();
   body = body.replace(/\n+FILES_MODIFIED:\s*\n[\s\S]*$/i, '').trim();
-  return body;
+  return stripLibraryReadPreamble(body);
 }
 
 /** Prefer structured adapter error / stderr over a bare exit code. */

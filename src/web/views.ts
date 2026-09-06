@@ -2,7 +2,11 @@ import { marked } from 'marked';
 import katex from 'katex';
 import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
 import { HOME_TRENDING_CAP, type HomeTrendingItem } from './home-trending.js';
-import { displayLibraryReadMarkdown, markEssenceLeadHeadings } from './library-read-sections.js';
+import {
+  displayLibraryReadMarkdown,
+  markEssenceLeadHeadings,
+  stripLibraryReadPreamble,
+} from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
 import {
@@ -302,7 +306,8 @@ export function renderDoc(markdown: string, opts: RenderDocOptions = {}): string
   if (fm && isLibraryReadFrontmatter(fm)) {
     // Top-level library-read artifact opened as a doc: compact identity, no system keys.
     const title = unquote(fm.paper ?? fm.title ?? '');
-    let displayBody = stripDuplicateLeadingH1(body, title);
+    let displayBody = stripLibraryReadPreamble(body);
+    displayBody = stripDuplicateLeadingH1(displayBody, title);
     displayBody = displayLibraryReadMarkdown(displayBody);
     const head =
       (title ? `<h1 class="note-title">${escapeHtml(title)}</h1>` : '') +
@@ -420,7 +425,8 @@ function liftNestedLibraryReadFrontmatter(md: string): string {
 function renderLibraryReadBody(markdown: string, paperTitle: string): string {
   const { fm, body } = splitFrontmatter(markdown);
   const title = unquote(fm?.paper ?? fm?.title ?? '') || paperTitle;
-  let displayBody = stripDuplicateLeadingH1(body, title);
+  let displayBody = stripLibraryReadPreamble(body);
+  displayBody = stripDuplicateLeadingH1(displayBody, title);
   displayBody = stripDuplicateLeadingH1(displayBody, paperTitle);
   // Historical ## Brief shares the Essence first-screen slot (#98).
   displayBody = displayLibraryReadMarkdown(displayBody);
