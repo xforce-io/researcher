@@ -4,6 +4,8 @@
 
 Information-dense. Cut every sentence that doesn't add a claim, a number, or a relation.
 
+**Library first-screen exception:** `Frame` and `## Essence` (场景 / 对照 / 步骤 / 证据) are teaching copy — a picturable scene, a short contrast, process steps, one number plus a misread warning. Do not compress them into an abstract. From `## Claims` (or `## Key takeaways` on docs) onward, stay information-dense.
+
 - Cut: "This paper presents an interesting approach to agent trajectory evaluation."
 - Keep: "Signals achieves 82% informativeness on τ-bench, vs. 54% random baseline [1: §4.1]."
 

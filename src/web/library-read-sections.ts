@@ -79,3 +79,18 @@ export function displayLibraryReadMarkdown(markdown: string): string {
   if (firstScreenSection(markdown) !== 'Brief') return markdown;
   return markdown.replace(/^##[ \t]+Brief[ \t]*$/m, '## Essence');
 }
+
+/** Mark `h3` inside the Essence section so the paper page can style first-screen lead-ins. */
+export function markEssenceLeadHeadings(html: string): string {
+  return html.replace(
+    /(<h2\b[^>]*>\s*Essence\s*<\/h2>)([\s\S]*?)(?=<h2\b|$)/i,
+    (_all, h2: string, body: string) =>
+      h2 +
+      body.replace(/<h3\b([^>]*)>/gi, (_tag, attrs: string) => {
+        if (/\bclass\s*=/.test(attrs)) {
+          return `<h3${attrs.replace(/class=(["'])([^"']*)\1/i, (_m: string, q: string, c: string) => `class=${q}${c} essence-lead${q}`)}>`;
+        }
+        return `<h3 class="essence-lead"${attrs}>`;
+      }),
+  );
+}
