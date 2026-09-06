@@ -85,7 +85,7 @@ library
 const papers = program.command('papers').description('Trending papers, lookup, and Library deep-read');
 papers
   .command('trending')
-  .description('Fetch a heat-ranked paper list (HuggingFace Daily Papers, arXiv fallback)')
+  .description('Fetch a community-heat ranked paper list (HuggingFace Daily Papers, arXiv fallback)')
   .option('--limit <n>', 'max papers', '10')
   .option('--format <fmt>', 'json | report', 'json')
   .option('--source <src>', 'huggingface | arxiv | both', 'huggingface')

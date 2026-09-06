@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { calculateHeatIndex, calculateHeatLevel } from '../../src/sources/paper-heat.js';
+import { calculateHeatIndex, calculateHeatLevel, hasCommunityHeat } from '../../src/sources/paper-heat.js';
+
+describe('hasCommunityHeat', () => {
+  it('is false when upvotes and stars are missing or zero', () => {
+    expect(hasCommunityHeat({})).toBe(false);
+    expect(hasCommunityHeat({ upvotes: 0 })).toBe(false);
+    expect(hasCommunityHeat({ github_stars: 0 })).toBe(false);
+    expect(hasCommunityHeat({ upvotes: 0, github_stars: 0 })).toBe(false);
+  });
+
+  it('is true when upvotes or stars are positive', () => {
+    expect(hasCommunityHeat({ upvotes: 1 })).toBe(true);
+    expect(hasCommunityHeat({ github_stars: 4 })).toBe(true);
+    expect(hasCommunityHeat({ upvotes: 0, github_stars: 4 })).toBe(true);
+  });
+});
 
 describe('calculateHeatIndex', () => {
   it('scores huggingface source with no other signals as 35', () => {
