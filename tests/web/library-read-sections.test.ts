@@ -8,6 +8,7 @@ import {
   markEssenceLeadHeadings,
   PAPER_READ_SECTIONS,
   requiredPaperReadSections,
+  stripLibraryReadPreamble,
 } from '../../src/web/library-read-sections.js';
 import { renderLibraryPaper } from '../../src/web/views.js';
 import type { LibraryPaperDetailView } from '../../src/web/discovery.js';
@@ -102,6 +103,31 @@ describe('firstScreenSection / displayLibraryReadMarkdown', () => {
   it('does not rename Brief when Essence is already present', () => {
     const md = '## Essence\n\ne\n\n## Brief\n\nb';
     expect(displayLibraryReadMarkdown(md)).toBe(md);
+  });
+});
+
+describe('stripLibraryReadPreamble', () => {
+  it('drops narration before a line-start H1', () => {
+    const raw = [
+      '先读取完整请求与常驻技能，再按 Library 深读规范产出笔记。',
+      '',
+      '# Compile by Training',
+      '',
+      '> frame',
+      '',
+      '## Essence',
+    ].join('\n');
+    const out = stripLibraryReadPreamble(raw);
+    expect(out.startsWith('# Compile by Training')).toBe(true);
+    expect(out).not.toContain('先读取完整请求');
+  });
+
+  it('splits a title glued after a fullwidth period', () => {
+    const raw =
+      '随后只输出 artifact body。# Compile by Training: Turning Natural-Language Specifications into Local Neural Functions\n\n> frame\n\n## Essence\n';
+    const out = stripLibraryReadPreamble(raw);
+    expect(out.startsWith('# Compile by Training')).toBe(true);
+    expect(out).not.toContain('artifact body');
   });
 });
 
@@ -230,5 +256,35 @@ describe('renderLibraryPaper Brief fallback', () => {
     expect(html).toContain('别误读');
     expect(html).toMatch(/<h3[^>]*class="[^"]*essence-lead[^"]*"[^>]*>场景<\/h3>/);
     expect(html).not.toContain('**问题**');
+  });
+
+  it('hides glued model narration before the card title on the paper page', () => {
+    const v: LibraryPaperDetailView = {
+      ...base,
+      latestReadArtifact: {
+        path: 'read.md',
+        markdown: [
+          '---',
+          'title: "Sample Paper"',
+          'kind: library-read',
+          '---',
+          '',
+          '先读取完整请求与常驻技能，再按 Library 深读规范产出笔记。随后只输出 artifact body。# Sample Paper',
+          '',
+          '> Frame lede.',
+          '',
+          '## Essence',
+          '',
+          '### 场景',
+          '',
+          'a task.',
+        ].join('\n'),
+      },
+    };
+    const html = renderLibraryPaper(v);
+    expect(html).not.toContain('先读取完整请求与常驻技能');
+    expect(html).not.toContain('随后只输出 artifact body');
+    expect(html).toContain('Frame lede.');
+    expect(html).toMatch(/<h2[^>]*>Essence<\/h2>/);
   });
 });

@@ -248,6 +248,35 @@ function sampleArxivPaper(): Paper {
 }
 
 describe('runLibraryRead', () => {
+  it('strips model narration before the card H1 when writing the artifact', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-preamble-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+    class PrefixAdapter implements AgentRuntime {
+      id = 'prefix-stub';
+      async invoke(): Promise<InvokeResult> {
+        return {
+          output:
+            '先读取完整请求与常驻技能，再按 Library 深读规范产出笔记。随后只输出 artifact body。' +
+            COMPLETE_PAPER_BODY,
+          modifiedFiles: [],
+          exitCode: 0,
+        };
+      }
+    }
+    const result = await runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new PrefixAdapter(),
+    });
+    const body = readFileSync(join(root, result.artifactPath), 'utf8');
+    const afterFm = body.replace(/^---[\s\S]*?---\s*/, '');
+    expect(afterFm.startsWith('# Library Read Paper')).toBe(true);
+    expect(body).not.toContain('先读取完整请求');
+    expect(body).toContain('## Essence');
+  });
+
   it('writes a standalone workspace library read without topic context', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-'));
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
