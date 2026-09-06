@@ -22,6 +22,13 @@ export function calculateHeatIndex(paper: HeatSignals): number {
   return Math.min(100, score);
 }
 
+export function hasCommunityHeat(paper: {
+  upvotes?: number;
+  github_stars?: number;
+}): boolean {
+  return (paper.upvotes ?? 0) > 0 || (paper.github_stars ?? 0) > 0;
+}
+
 export function calculateHeatLevel(heatIndex: number): number {
   if (heatIndex >= 80) return 5;
   if (heatIndex >= 60) return 4;

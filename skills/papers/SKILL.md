@@ -23,6 +23,7 @@ JSON is the agent contract. Errors go to stderr; stdout is payload only.
 ```bash
 researcher papers trending --format json --limit 10
 researcher papers trending --format report --limit 10
+# 成功列表只含社区热度（HF upvote>0 或 GitHub stars>0）；可短于 --limit
 researcher papers search "SkillCraft" --format json
 researcher papers show 2401.12345 --format json
 researcher papers read 2401.12345
@@ -57,7 +58,7 @@ Each item includes: `id` (`arxiv:YYMM.NNNNN`), `paper_id`, `title`, `authors`, `
 researcher papers trending --format json --limit 10
 ```
 
-Then format for the user: title + heat, upvotes/stars, abstract or `ai_summary`, links. Optional agent-side interpretation (核心创新点 / 可复用技术点 / 落地价值) — **you** write that from the JSON; do not invent CLI flags for it.
+Trending drops papers with no community heat (HF upvote and GitHub stars both 0/absent). The list may be shorter than `--limit`. Then format for the user: title + heat, upvotes/stars, abstract or `ai_summary`, links. Optional agent-side interpretation (核心创新点 / 可复用技术点 / 落地价值) — **you** write that from the JSON; do not invent CLI flags for it.
 
 ## Deep read
 

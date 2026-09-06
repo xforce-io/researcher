@@ -106,6 +106,40 @@ describe('fetchTrendingPapers', () => {
     expect(papers[0].ai_keywords).toEqual(['LLM', 'agents']);
     expect(papers[0].source).toBe('huggingface');
     expect(papers[0].heat_index).toBeGreaterThan(papers[1].heat_index);
+    expect(papers.map((p) => p.paper_id)).not.toContain('2401.00002');
+  });
+
+  it('drops HuggingFace daily papers with no community heat even if they would fill the limit', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      expect(url).toContain(HF_DAILY);
+      return jsonResponse([
+        {
+          paper: {
+            id: '2401.00020',
+            title: 'Zero Heat',
+            authors: [{ name: 'A' }],
+            summary: 'No votes.',
+            publishedAt: '2026-09-03T00:00:00.000Z',
+            upvotes: 0,
+          },
+        },
+        {
+          paper: {
+            id: '2401.00021',
+            title: 'Has Votes',
+            authors: [{ name: 'B' }],
+            summary: 'Hot.',
+            publishedAt: '2026-09-03T00:00:00.000Z',
+            upvotes: 12,
+          },
+        },
+      ]);
+    };
+    const papers = await fetchTrendingPapers({ limit: 10, source: 'huggingface', fetch: fetchImpl });
+    expect(papers).toHaveLength(1);
+    expect(papers[0].paper_id).toBe('2401.00021');
+    expect(papers[0].upvotes).toBe(12);
   });
 
   it('reads githubRepo string and githubStars from the paper object (live HF API)', async () => {
@@ -145,10 +179,20 @@ describe('fetchTrendingPapers', () => {
     expect(withRepo!.heat_index).toBeGreaterThan(without!.heat_index);
   });
 
-  it('falls back to arXiv when HuggingFace fails', async () => {
+  it('falls back to arXiv when HuggingFace daily fails and keeps papers with HF community heat', async () => {
     const fetchImpl: typeof fetch = async (input) => {
       const url = String(input);
-      if (url.includes('huggingface.co')) return jsonResponse({ error: 'nope' }, 502);
+      if (url.includes('daily_papers')) return jsonResponse({ error: 'nope' }, 502);
+      if (url.includes(`${HF_PAPER}2401.55555`)) {
+        return jsonResponse({
+          id: '2401.55555',
+          title: 'Arxiv Only',
+          authors: [{ name: 'Ada' }],
+          summary: 'From arxiv.',
+          publishedAt: '2026-01-02T00:00:00.000Z',
+          upvotes: 12,
+        });
+      }
       expect(url).toContain(ARXIV);
       expect(url).toMatch(/cat(:|%3A)cs\.AI/);
       return textResponse(atomFeed(atomEntry('2401.55555', 'Arxiv Only', 'From arxiv.')));
@@ -157,8 +201,54 @@ describe('fetchTrendingPapers', () => {
     expect(papers).toHaveLength(1);
     expect(papers[0].paper_id).toBe('2401.55555');
     expect(papers[0].source).toBe('arxiv');
+    expect(papers[0].upvotes).toBe(12);
     expect(papers[0].abstract).toContain('From arxiv');
     requiredFields(papers[0]);
+  });
+
+  it('fails closed when arXiv fallback papers still have no community heat', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes('daily_papers')) return jsonResponse({ error: 'nope' }, 502);
+      if (url.includes(HF_PAPER)) return jsonResponse({ error: 'missing' }, 404);
+      return textResponse(atomFeed(atomEntry('2401.55555', 'Arxiv Only', 'From arxiv.')));
+    };
+    await expect(
+      fetchTrendingPapers({ limit: 5, source: 'huggingface', fetch: fetchImpl }),
+    ).rejects.toBeInstanceOf(PapersRadarError);
+  });
+
+  it('enriches --source arxiv via the HuggingFace paper API then drops zero-heat rows', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes(`${HF_PAPER}2401.10001`)) {
+        return jsonResponse({
+          id: '2401.10001',
+          title: 'Hot Arxiv',
+          authors: [{ name: 'Ada' }],
+          summary: 'Has votes.',
+          publishedAt: '2026-01-02T00:00:00.000Z',
+          upvotes: 7,
+          githubRepo: 'https://github.com/a/b',
+          githubStars: 3,
+        });
+      }
+      if (url.includes(HF_PAPER)) return jsonResponse({ error: 'missing' }, 404);
+      expect(url).toContain(ARXIV);
+      return textResponse(
+        atomFeed(
+          atomEntry('2401.10001', 'Hot Arxiv', 'Has votes.'),
+          atomEntry('2401.10002', 'Cold Arxiv', 'No page.'),
+        ),
+      );
+    };
+    const papers = await fetchTrendingPapers({ limit: 5, source: 'arxiv', fetch: fetchImpl });
+    expect(papers).toHaveLength(1);
+    expect(papers[0].paper_id).toBe('2401.10001');
+    expect(papers[0].source).toBe('arxiv');
+    expect(papers[0].upvotes).toBe(7);
+    expect(papers[0].github_stars).toBe(3);
+    expect(papers[0].github_repo).toBe('https://github.com/a/b');
   });
 
   it('throws when every source fails', async () => {

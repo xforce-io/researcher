@@ -1,5 +1,5 @@
 import { arxivAbsUrl, arxivPdfUrl, canonicalizeArxivId } from './arxiv.js';
-import { calculateHeatIndex, calculateHeatLevel } from './paper-heat.js';
+import { calculateHeatIndex, calculateHeatLevel, hasCommunityHeat } from './paper-heat.js';
 
 const HF_DAILY = 'https://huggingface.co/api/daily_papers';
 const HF_PAPER = 'https://huggingface.co/api/papers';
@@ -80,9 +80,13 @@ export async function fetchTrendingPapers(opts: {
     }
   }
 
-  const ranked = [...byId.values()].sort((a, b) => b.heat_index - a.heat_index || a.paper_id.localeCompare(b.paper_id));
+  const enriched = await enrichCommunitySignals([...byId.values()], fetchFn);
+  const gated = enriched.filter(hasCommunityHeat);
+  const ranked = gated.sort((a, b) => b.heat_index - a.heat_index || a.paper_id.localeCompare(b.paper_id));
   const sliced = ranked.slice(0, limit);
-  if (sliced.length === 0) throw new PapersRadarError('no papers found from any source');
+  if (sliced.length === 0) {
+    throw new PapersRadarError('no papers with community heat (upvotes or GitHub stars)');
+  }
   return sliced;
 }
 
@@ -263,6 +267,34 @@ function parseAtomPapers(xml: string, source: 'arxiv'): PapersItem[] {
     );
   }
   return papers;
+}
+
+function needsCommunityEnrichment(paper: PapersItem): boolean {
+  if (hasCommunityHeat(paper)) return false;
+  return paper.upvotes === undefined && paper.github_stars === undefined;
+}
+
+async function enrichCommunitySignals(papers: PapersItem[], fetchFn: FetchFn): Promise<PapersItem[]> {
+  return Promise.all(
+    papers.map(async (paper) => {
+      if (!needsCommunityEnrichment(paper)) return paper;
+      try {
+        const hf = await fetchHuggingFacePaper(paper.paper_id, fetchFn);
+        if (!hf) return paper;
+        return withHeat({
+          ...paper,
+          upvotes: hf.upvotes ?? paper.upvotes,
+          github_stars: hf.github_stars ?? paper.github_stars,
+          github_repo: hf.github_repo ?? paper.github_repo,
+          hf_url: hf.hf_url ?? paper.hf_url,
+          ai_summary: hf.ai_summary ?? paper.ai_summary,
+          ai_keywords: hf.ai_keywords ?? paper.ai_keywords,
+        });
+      } catch {
+        return paper;
+      }
+    }),
+  );
 }
 
 function withHeat(item: Omit<PapersItem, 'heat_index' | 'heat_level'>): PapersItem {

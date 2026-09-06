@@ -55,7 +55,7 @@ Implemented:
 - `run` — autonomous tick: discover → triage → (deep-read pick) → synthesize → package; workspace-aware (at a super-repo root, advances every active pillar)
 - `methodology install / show / edit` — manage the portable methodology bundle
 - `serve [path]` — local web console over a workspace super-repo
-- `papers trending | search | show | read` — heat-ranked digest / lookup / Library deep-read into the default workspace (`skills/papers/SKILL.md`)
+- `papers trending | search | show | read` — community-heat digest / lookup / Library deep-read into the default workspace (`skills/papers/SKILL.md`)
 
 Not yet wired: focused-instruction mode (manual override of triage decisions).
 
