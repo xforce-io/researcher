@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,9 @@ import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryUnlink } from '../commands/library.js';
-import { PaperLibrary, newDocumentId, newReadId } from '../library/store.js';
+import { isSafeLibraryId, PaperLibrary, newDocumentId, newReadId } from '../library/store.js';
+import { isNoteDocType, parseDocType } from '../library/doc-type.js';
+import { normalizePaperInput } from '../library/identity.js';
 import { acquireSharedLease } from '../library/maintenance.js';
 import type { Stage } from '../state/runs.js';
 
@@ -170,232 +173,23 @@ async function handle(
   if (req.method === 'POST' && path === '/library/documents') {
     return handleCreateNote(req, res, root);
   }
-  // POST /library/add
-  if (req.method === 'POST' && path === '/library/add') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const input = form.get('input')?.trim() ?? '';
-    if (!input) return send(res, 400, 'text/plain', 'missing paper source');
-    const topic = form.get('topic')?.trim() ?? '';
-    if (topic && !resolveTopicDir(root, topic)) return send(res, 400, 'text/plain', 'unknown topic');
-    let paperId: string;
-    try {
-      paperId = runLibraryAdd({
-        cwd: root,
-        input,
-        tags: form.has('tags') ? parseTags(form.get('tags') ?? '') : undefined,
-        write: () => {},
-      }).id;
-      if (topic) {
-        runLibraryLink({ cwd: root, paperId, topic, write: () => {} });
-      }
-    } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
-    }
-    if (form.get('next') === 'paper') {
-      return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
-    }
-    return redirect(res, '/library');
+  if (req.method === 'POST' && path === '/library/documents/import') {
+    return handleImportDocument(req, res, root);
   }
-  // POST /library/read
-  if (req.method === 'POST' && path === '/library/read') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const paperId = form.get('paperId')?.trim() ?? '';
-    const force = form.get('force') === '1';
-    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    const lib = new PaperLibrary(root);
-    const paper = lib.getPaper(paperId);
-    if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
-    if (!force && hasCompletedRead(lib, root, paperId)) {
-      return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
-    }
-    const taskKey = libraryReadTaskKey(paperId);
-    if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
-    const readId = newReadId();
-    lib.upsertRead({ id: readId, paperId, status: 'reading', lastError: undefined });
-    registry.startJob(taskKey, async (onLine, onEvent) => {
-      onEvent({ type: 'plan', stages: LIBRARY_READ_STAGES });
-      try {
-        const result = await libraryReadRunner({
-          workspaceRoot: root,
-          paper,
-          readId,
-          onLine,
-          onEvent,
-        });
-        if (result.title && !paper.title) {
-          lib.upsertPaper({ ...paper, title: result.title });
-        }
-        lib.upsertRead({
-          id: readId,
-          paperId,
-          status: 'read',
-          artifactPath: result.artifactPath,
-          lastError: undefined,
-        });
-        return 0;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        onLine(message);
-        lib.upsertRead({ id: readId, paperId, status: 'failed', lastError: message });
-        return 1;
-      }
+  const docSub = path.match(/^\/library\/documents\/([^/]+)(?:\/(.*))?$/);
+  if (docSub && docSub[1] !== 'new' && docSub[1] !== 'import') {
+    const documentId = decodeURIComponent(docSub[1]);
+    const rest = docSub[2] ?? '';
+    if (!isSafeLibraryId(documentId)) return sendJsonErr(res, 400, 'invalid_id', 'invalid document id');
+    const handled = await handleDocumentResource(req, res, {
+      root,
+      documentId,
+      rest,
+      registry,
+      libraryReadRunner,
+      url,
     });
-    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
-  }
-  // POST /library/delete — only unlinked papers
-  if (req.method === 'POST' && path === '/library/delete') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const paperId = form.get('paperId')?.trim() ?? '';
-    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    try {
-      runLibraryDelete({ cwd: root, paperId, write: () => {} });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const status = /unknown paper/i.test(message) ? 404 : 400;
-      return send(res, status, 'text/plain', message);
-    }
-    return redirect(res, '/library');
-  }
-  // POST /library/note — paper-local human notes (create / pin / unpin / delete)
-  if (req.method === 'POST' && path === '/library/note') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const action = form.get('action')?.trim() || 'create';
-    const paperId = form.get('paperId')?.trim() ?? '';
-    const noteId = form.get('noteId')?.trim() ?? '';
-    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    const lib = new PaperLibrary(root);
-    if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
-    const back = `/library/p/${encodeURIComponent(paperId)}#annotations`;
-    try {
-      if (action === 'create') {
-        const text = form.get('body')?.trim() ?? '';
-        if (!text) return send(res, 400, 'text/plain', 'note body is required');
-        const kindRaw = form.get('kind')?.trim() || 'note';
-        const kind = parsePaperNoteKind(kindRaw);
-        const pinned = form.get('pinned') === '1' || form.get('pinned') === 'on';
-        lib.upsertNote({
-          id: `note_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-          paperId,
-          body: text,
-          kind,
-          pinned,
-        });
-      } else if (action === 'pin' || action === 'unpin') {
-        if (!noteId) return send(res, 400, 'text/plain', 'missing note id');
-        const existing = lib.getNote(noteId);
-        if (!existing || existing.paperId !== paperId) return send(res, 404, 'text/plain', 'unknown note');
-        lib.upsertNote({ ...existing, pinned: action === 'pin' });
-      } else if (action === 'delete') {
-        if (!noteId) return send(res, 400, 'text/plain', 'missing note id');
-        const existing = lib.getNote(noteId);
-        if (!existing || existing.paperId !== paperId) return send(res, 404, 'text/plain', 'unknown note');
-        lib.deleteNote(noteId);
-      } else {
-        return send(res, 400, 'text/plain', `unknown note action: ${action}`);
-      }
-    } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
-    }
-    return redirect(res, back);
-  }
-  // POST /library/link
-  if (req.method === 'POST' && path === '/library/link') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const paperId = form.get('paperId')?.trim() ?? '';
-    const topic = form.get('topic')?.trim() ?? '';
-    const rationale = form.get('rationale')?.trim() || undefined;
-    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    if (!topic) return send(res, 400, 'text/plain', 'missing topic');
-    if (!resolveTopicDir(root, topic)) return send(res, 404, 'text/plain', 'unknown topic');
-    const lib = new PaperLibrary(root);
-    if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
-    try {
-      runLibraryLink({ cwd: root, paperId, topic, rationale, write: () => {} });
-    } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
-    }
-    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
-  }
-  // POST /library/unlink
-  if (req.method === 'POST' && path === '/library/unlink') {
-    const body = await readBody(req);
-    const form = new URLSearchParams(body);
-    const paperId = form.get('paperId')?.trim() ?? '';
-    const topic = form.get('topic')?.trim() ?? '';
-    if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
-    if (!topic) return send(res, 400, 'text/plain', 'missing topic');
-    try {
-      runLibraryUnlink({ cwd: root, paperId, topic, write: () => {} });
-    } catch (err) {
-      return send(res, 400, 'text/plain', err instanceof Error ? err.message : String(err));
-    }
-    return redirect(res, `/library/p/${encodeURIComponent(paperId)}`);
-  }
-  const lsm = path.match(/^\/library\/read\/([^/]+)\/stream$/);
-  if (req.method === 'GET' && lsm) {
-    const taskId = decodeURIComponent(lsm[1]);
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-    const unsub = registry.subscribe(
-      taskId,
-      (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
-      (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
-      (task) => {
-        res.write(
-          `event: end\ndata: ${JSON.stringify({
-            status: task.status,
-            exitCode: task.exitCode,
-            endReason: task.endReason,
-          })}\n\n`,
-        );
-        res.end();
-      },
-    );
-    req.on('close', unsub);
-    return;
-  }
-  const docPath = path.match(/^\/library\/(?:documents|p)\/([^/]+)$/);
-  if (req.method === 'GET' && docPath && docPath[1] !== 'new' && docPath[1] !== 'import') {
-    const documentId = decodeURIComponent(docPath[1]);
-    const accept = req.headers.accept ?? '';
-    const lib = new PaperLibrary(root);
-    const doc = lib.getDocument(documentId);
-    if (!doc) return send(res, 404, 'text/plain', 'unknown document');
-    if (accept.includes('application/json')) {
-      return send(res, 200, 'application/json; charset=utf-8', JSON.stringify(doc));
-    }
-    if (doc.docType === 'note') {
-      return send(res, 200, 'text/html; charset=utf-8', renderNoteReader(doc));
-    }
-    const paper = loadLibraryPaper(root, documentId);
-    if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
-    const active = registry.activeTask(libraryReadTaskKey(documentId));
-    const activeRead = active ? { taskId: active.id, startedAt: active.startedAt } : null;
-    const editTopic = url.searchParams.get('edit')?.trim() || undefined;
-    return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopic));
-  }
-  const editPath = path.match(/^\/library\/documents\/([^/]+)\/edit$/);
-  if (req.method === 'GET' && editPath) {
-    const documentId = decodeURIComponent(editPath[1]);
-    const lib = new PaperLibrary(root);
-    const doc = lib.getDocument(documentId);
-    if (!doc) return send(res, 404, 'text/plain', 'unknown document');
-    if (doc.docType !== 'note') return send(res, 422, 'text/plain', 'only notes are editable');
-    return send(res, 200, 'text/html; charset=utf-8', renderNoteEditor({
-      id: doc.id,
-      title: doc.title,
-      body: doc.body,
-      isNew: false,
-      revision: doc.revision,
-    }));
-  }
-  if (req.method === 'PATCH') {
-    const patch = path.match(/^\/library\/documents\/([^/]+)$/);
-    if (patch) return handlePatchNote(req, res, root, decodeURIComponent(patch[1]));
+    if (handled) return;
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {
@@ -561,15 +355,15 @@ function readWorkspaceLibraryArtifact(workspaceRoot: string, relPath: string): s
   }
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, maxBytes = 2 * 1024 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     req.setEncoding('utf8');
     req.on('data', (chunk: string) => {
       data += chunk;
-      if (data.length > 1024 * 1024) {
+      if (data.length > maxBytes) {
         req.destroy();
-        reject(new Error('request body too large'));
+        reject(Object.assign(new Error('request body too large'), { status: 413 }));
       }
     });
     req.on('end', () => resolve(data));
@@ -604,15 +398,549 @@ function sendJsonDocuments(
   }
 }
 
-async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
-  const raw = await readBody(req);
-  let payload: { docType?: string; id?: string; title?: string; body?: string; mutationId?: string };
+function sendJsonErr(res: ServerResponse, status: number, code: string, message: string, extra?: Record<string, unknown>): void {
+  send(res, status, 'application/json; charset=utf-8', JSON.stringify({ code, message, ...extra }));
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  send(res, status, 'application/json; charset=utf-8', JSON.stringify(body));
+}
+
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  const host = req.headers.host;
+  if (!host) return false;
   try {
-    payload = JSON.parse(raw) as typeof payload;
+    return new URL(origin).host === host;
   } catch {
-    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_json', message: 'invalid JSON' }));
+    return false;
+  }
+}
+
+function assertWriteAccess(req: IncomingMessage, res: ServerResponse, opts: { json?: boolean } = {}): boolean {
+  if (!sameOrigin(req)) {
+    sendJsonErr(res, 403, 'forbidden_origin', 'cross-origin writes are not allowed');
+    return false;
+  }
+  if (opts.json !== false) {
+    const ct = String(req.headers['content-type'] ?? '').toLowerCase();
+    if (!ct.includes('application/json')) {
+      sendJsonErr(res, 415, 'unsupported_media_type', 'Content-Type must be application/json');
+      return false;
+    }
+  }
+  return true;
+}
+
+function documentUrl(id: string, hash = ''): string {
+  return `/library/documents/${encodeURIComponent(id)}${hash}`;
+}
+
+function noteActionBlocked(res: ServerResponse, docType: string | undefined): boolean {
+  if (!isNoteDocType(docType)) return false;
+  sendJsonErr(res, 422, 'unsupported_action', 'this action is not supported for notes');
+  return true;
+}
+
+async function readJsonBody<T>(req: IncomingMessage, res: ServerResponse): Promise<T | undefined> {
+  if (!assertWriteAccess(req, res)) return undefined;
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    sendJsonErr(res, status, status === 413 ? 'payload_too_large' : 'read_failed', err instanceof Error ? err.message : String(err));
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    sendJsonErr(res, 400, 'invalid_json', 'invalid JSON');
+    return undefined;
+  }
+}
+
+async function handleDocumentResource(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: {
+    root: string;
+    documentId: string;
+    rest: string;
+    registry: TaskRegistry;
+    libraryReadRunner: LibraryReadRunner;
+    url: URL;
+  },
+): Promise<boolean> {
+  const { root, documentId, rest, registry, libraryReadRunner, url } = ctx;
+  const lib = new PaperLibrary(root);
+  const doc = lib.getDocument(documentId);
+
+  if (req.method === 'GET' && rest === '') {
+    if (!doc) {
+      send(res, 404, 'text/plain', 'unknown document');
+      return true;
+    }
+    const accept = req.headers.accept ?? '';
+    if (accept.includes('application/json')) {
+      sendJson(res, 200, doc);
+      return true;
+    }
+    if (doc.docType === 'note') {
+      send(res, 200, 'text/html; charset=utf-8', renderNoteReader(doc));
+      return true;
+    }
+    const paper = loadLibraryPaper(root, documentId);
+    if (!paper) {
+      send(res, 404, 'text/plain', 'unknown paper');
+      return true;
+    }
+    const active = registry.activeTask(libraryReadTaskKey(documentId));
+    const reading = lib.listReads(documentId).find((r) => r.status === 'reading');
+    const activeRead = active
+      ? { taskId: active.id, startedAt: active.startedAt, readId: reading?.id, documentId }
+      : null;
+    const editTopic = url.searchParams.get('edit')?.trim() || undefined;
+    send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopic));
+    return true;
+  }
+
+  if (req.method === 'GET' && rest === 'edit') {
+    if (!doc) {
+      send(res, 404, 'text/plain', 'unknown document');
+      return true;
+    }
+    if (doc.docType !== 'note') {
+      send(res, 422, 'text/plain', 'only notes are editable');
+      return true;
+    }
+    send(res, 200, 'text/html; charset=utf-8', renderNoteEditor({
+      id: doc.id,
+      title: doc.title,
+      body: doc.body,
+      isNew: false,
+      revision: doc.revision,
+    }));
+    return true;
+  }
+
+  if (req.method === 'PATCH' && rest === '') {
+    await handlePatchNote(req, res, root, documentId);
+    return true;
+  }
+
+  if (req.method === 'DELETE' && rest === '') {
+    if (!assertWriteAccess(req, res, { json: false })) return true;
+    if (!doc) {
+      sendJsonErr(res, 404, 'not_found', 'unknown document');
+      return true;
+    }
+    if (noteActionBlocked(res, doc.docType)) return true;
+    try {
+      runLibraryDelete({ cwd: root, paperId: documentId, write: () => {} });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = /unknown paper/i.test(message) ? 404 : /linked|integrated/i.test(message) ? 409 : 400;
+      sendJsonErr(res, status, 'delete_failed', message);
+      return true;
+    }
+    sendJson(res, 200, { url: '/library' });
+    return true;
+  }
+
+  if (rest === 'reads' || rest.startsWith('reads/')) {
+    await handleReads(req, res, { root, lib, doc, documentId, rest, registry, libraryReadRunner });
+    return true;
+  }
+  if (rest === 'annotations' || rest.startsWith('annotations/')) {
+    await handleAnnotations(req, res, { lib, doc, documentId, rest });
+    return true;
+  }
+  if (rest === 'links' || rest.startsWith('links/')) {
+    await handleLinks(req, res, { root, lib, doc, documentId, rest });
+    return true;
+  }
+  if (rest === 'integrations' && req.method === 'GET') {
+    if (!doc) {
+      sendJsonErr(res, 404, 'not_found', 'unknown document');
+      return true;
+    }
+    sendJson(res, 200, lib.listIntegrations(documentId).map((i) => ({
+      documentId: i.paperId,
+      topicId: i.topicId,
+      notePath: i.notePath,
+      zone: i.zone,
+      integratedAt: i.integratedAt,
+      summary: i.summary,
+    })));
+    return true;
+  }
+  return false;
+}
+
+async function handleImportDocument(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
+  const payload = await readJsonBody<{
+    input?: string;
+    tags?: string | string[];
+    docType?: string;
+    topic?: string;
+  }>(req, res);
+  if (!payload) return;
+  const input = typeof payload.input === 'string' ? payload.input.trim() : '';
+  if (!input) {
+    sendJsonErr(res, 400, 'invalid_fields', 'input is required');
     return;
   }
+  const topic = typeof payload.topic === 'string' ? payload.topic.trim() : '';
+  if (topic && !resolveTopicDir(root, topic)) {
+    sendJsonErr(res, 400, 'unknown_topic', 'unknown topic');
+    return;
+  }
+  let docType;
+  try {
+    docType = payload.docType ? parseDocType(payload.docType) : undefined;
+  } catch (err) {
+    sendJsonErr(res, 400, 'invalid_type', err instanceof Error ? err.message : String(err));
+    return;
+  }
+  const tags = Array.isArray(payload.tags)
+    ? payload.tags.map(String)
+    : typeof payload.tags === 'string' && payload.tags.trim()
+      ? parseTags(payload.tags)
+      : undefined;
+  const lib = new PaperLibrary(root);
+  let existed = false;
+  try {
+    const source = normalizePaperInput(input);
+    existed = Boolean(lib.findByCanonicalSource(source.id));
+    const paperId = runLibraryAdd({
+      cwd: root,
+      input,
+      tags,
+      docType,
+      write: () => {},
+    }).id;
+    if (topic) runLibraryLink({ cwd: root, paperId, topic, write: () => {} });
+    sendJson(res, existed ? 200 : 201, { id: paperId, url: documentUrl(paperId) });
+  } catch (err) {
+    sendJsonErr(res, 400, 'import_failed', err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function handleReads(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: {
+    root: string;
+    lib: PaperLibrary;
+    doc: ReturnType<PaperLibrary['getDocument']>;
+    documentId: string;
+    rest: string;
+    registry: TaskRegistry;
+    libraryReadRunner: LibraryReadRunner;
+  },
+): Promise<void> {
+  const { root, lib, doc, documentId, rest, registry, libraryReadRunner } = ctx;
+  if (!doc) {
+    sendJsonErr(res, 404, 'not_found', 'unknown document');
+    return;
+  }
+  if (noteActionBlocked(res, doc.docType)) return;
+  const paper = lib.getPaper(documentId);
+  if (!paper) {
+    sendJsonErr(res, 404, 'not_found', 'unknown document');
+    return;
+  }
+
+  if (rest === 'reads' && req.method === 'GET') {
+    sendJson(res, 200, lib.listReads(documentId).map(readJson));
+    return;
+  }
+  if (rest === 'reads' && req.method === 'POST') {
+    const payload = await readJsonBody<{ force?: boolean; mutationId?: string }>(req, res);
+    if (!payload) return;
+    const force = payload.force === true;
+    const mutationId = typeof payload.mutationId === 'string' ? payload.mutationId : undefined;
+    if (mutationId) {
+      const prior = lib.listReads(documentId).find((r) => r.mutationId === mutationId);
+      if (prior) {
+        sendJson(res, prior.status === 'reading' ? 202 : 200, { readId: prior.id, url: documentUrl(documentId) });
+        return;
+      }
+    }
+    if (!force && hasCompletedRead(lib, root, documentId)) {
+      const last = lib.listReads(documentId).filter((r) => r.status === 'read').at(-1);
+      sendJson(res, 200, { readId: last?.id, url: documentUrl(documentId) });
+      return;
+    }
+    const taskKey = libraryReadTaskKey(documentId);
+    if (registry.isBusy(taskKey)) {
+      sendJsonErr(res, 409, 'busy', 'a read is already running');
+      return;
+    }
+    const readId = newReadId();
+    lib.upsertRead({ id: readId, paperId: documentId, status: 'reading', lastError: undefined, mutationId });
+    registry.startJob(taskKey, async (onLine, onEvent) => {
+      onEvent({ type: 'plan', stages: LIBRARY_READ_STAGES });
+      try {
+        const result = await libraryReadRunner({
+          workspaceRoot: root,
+          paper,
+          readId,
+          onLine,
+          onEvent,
+        });
+        if (result.title && !paper.title) {
+          lib.upsertPaper({ ...paper, title: result.title });
+        }
+        lib.upsertRead({
+          id: readId,
+          paperId: documentId,
+          status: 'read',
+          artifactPath: result.artifactPath,
+          lastError: undefined,
+          mutationId,
+        });
+        return 0;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        onLine(message);
+        lib.upsertRead({ id: readId, paperId: documentId, status: 'failed', lastError: message, mutationId });
+        return 1;
+      }
+    });
+    sendJson(res, 202, { readId, url: documentUrl(documentId) });
+    return;
+  }
+
+  const readMatch = rest.match(/^reads\/([^/]+)(?:\/(artifact|stream))?$/);
+  if (!readMatch) {
+    sendJsonErr(res, 404, 'not_found', 'unknown read resource');
+    return;
+  }
+  const readId = decodeURIComponent(readMatch[1]);
+  const sub = readMatch[2];
+  const read = lib.listReads(documentId).find((r) => r.id === readId);
+  if (!read || read.paperId !== documentId) {
+    sendJsonErr(res, 404, 'not_found', 'unknown read');
+    return;
+  }
+  if (req.method === 'GET' && !sub) {
+    sendJson(res, 200, readJson(read));
+    return;
+  }
+  if (req.method === 'GET' && sub === 'artifact') {
+    if (!read.artifactPath || !existsSync(join(root, read.artifactPath))) {
+      send(res, 404, 'text/plain', 'artifact not found');
+      return;
+    }
+    send(res, 200, 'text/markdown; charset=utf-8', readFileSync(join(root, read.artifactPath), 'utf8'));
+    return;
+  }
+  if (req.method === 'GET' && sub === 'stream') {
+    const task = ctx.registry.activeTask(libraryReadTaskKey(documentId))
+      ?? ctx.registry.latestTask(libraryReadTaskKey(documentId));
+    if (!task) {
+      send(res, 404, 'text/plain', 'no active read');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+    const unsub = ctx.registry.subscribe(
+      task.id,
+      (line) => res.write(`event: line\ndata: ${JSON.stringify(line)}\n\n`),
+      (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`),
+      (task) => {
+        res.write(
+          `event: end\ndata: ${JSON.stringify({
+            status: task.status,
+            exitCode: task.exitCode,
+            endReason: task.endReason,
+          })}\n\n`,
+        );
+        res.end();
+      },
+    );
+    req.on('close', unsub);
+    return;
+  }
+  sendJsonErr(res, 404, 'not_found', 'unknown read resource');
+}
+
+function readJson(read: { id: string; paperId: string; status: string; createdAt: string; updatedAt: string; artifactPath?: string; lastError?: string; mutationId?: string }) {
+  return {
+    id: read.id,
+    documentId: read.paperId,
+    status: read.status,
+    createdAt: read.createdAt,
+    updatedAt: read.updatedAt,
+    artifactPath: read.artifactPath,
+    lastError: read.lastError,
+    mutationId: read.mutationId,
+  };
+}
+
+async function handleAnnotations(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: { lib: PaperLibrary; doc: ReturnType<PaperLibrary['getDocument']>; documentId: string; rest: string },
+): Promise<void> {
+  const { lib, doc, documentId, rest } = ctx;
+  if (!doc) {
+    sendJsonErr(res, 404, 'not_found', 'unknown document');
+    return;
+  }
+  if (noteActionBlocked(res, doc.docType)) return;
+
+  if (rest === 'annotations' && req.method === 'GET') {
+    sendJson(res, 200, lib.listNotes(documentId).map((n) => ({
+      id: n.id,
+      documentId: n.paperId,
+      body: n.body,
+      kind: n.kind,
+      pinned: n.pinned,
+      createdAt: n.createdAt,
+      updatedAt: n.updatedAt,
+    })));
+    return;
+  }
+  if (rest === 'annotations' && req.method === 'POST') {
+    const payload = await readJsonBody<{ body?: string; kind?: string; pinned?: boolean | string }>(req, res);
+    if (!payload) return;
+    const text = typeof payload.body === 'string' ? payload.body.trim() : '';
+    if (!text) {
+      sendJsonErr(res, 400, 'invalid_fields', 'body is required');
+      return;
+    }
+    try {
+      const kind = parsePaperNoteKind(typeof payload.kind === 'string' && payload.kind ? payload.kind : 'note');
+      const note = lib.upsertNote({
+        id: `note_${randomUUID()}`,
+        paperId: documentId,
+        body: text,
+        kind,
+        pinned: payload.pinned === true || payload.pinned === '1' || payload.pinned === 'on',
+      });
+      sendJson(res, 201, { id: note.id, url: `${documentUrl(documentId)}#annotations` });
+    } catch (err) {
+      sendJsonErr(res, 400, 'save_failed', err instanceof Error ? err.message : String(err));
+    }
+    return;
+  }
+  const ann = rest.match(/^annotations\/([^/]+)$/);
+  if (!ann) {
+    sendJsonErr(res, 404, 'not_found', 'unknown annotation');
+    return;
+  }
+  const annotationId = decodeURIComponent(ann[1]);
+  const existing = lib.getNote(annotationId);
+  if (!existing || existing.paperId !== documentId) {
+    sendJsonErr(res, 404, 'not_found', 'unknown annotation');
+    return;
+  }
+  if (req.method === 'PATCH') {
+    const payload = await readJsonBody<{ pinned?: boolean | string }>(req, res);
+    if (!payload) return;
+    const pinned = payload.pinned === true || payload.pinned === '1' || payload.pinned === 'on'
+      ? true
+      : payload.pinned === false || payload.pinned === '0'
+        ? false
+        : existing.pinned;
+    const note = lib.upsertNote({ ...existing, pinned });
+    sendJson(res, 200, { id: note.id, pinned: note.pinned, url: `${documentUrl(documentId)}#annotations` });
+    return;
+  }
+  if (req.method === 'DELETE') {
+    if (!assertWriteAccess(req, res, { json: false })) return;
+    lib.deleteNote(annotationId);
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  sendJsonErr(res, 404, 'not_found', 'unknown annotation action');
+}
+
+async function handleLinks(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: { root: string; lib: PaperLibrary; doc: ReturnType<PaperLibrary['getDocument']>; documentId: string; rest: string },
+): Promise<void> {
+  const { root, lib, doc, documentId, rest } = ctx;
+  if (!doc) {
+    sendJsonErr(res, 404, 'not_found', 'unknown document');
+    return;
+  }
+  if (noteActionBlocked(res, doc.docType)) return;
+
+  if (rest === 'links' && req.method === 'GET') {
+    sendJson(res, 200, lib.listLinks(documentId).map((l) => ({
+      documentId: l.paperId,
+      surfaceType: l.surfaceType,
+      surfaceId: l.surfaceId,
+      rationale: l.rationale,
+      createdAt: l.createdAt,
+      updatedAt: l.updatedAt,
+    })));
+    return;
+  }
+  if (rest === 'links' && req.method === 'POST') {
+    const payload = await readJsonBody<{
+      surfaceType?: string;
+      surfaceId?: string;
+      topic?: string;
+      rationale?: string;
+    }>(req, res);
+    if (!payload) return;
+    const surfaceType = payload.surfaceType === 'topic' || !payload.surfaceType ? 'topic' : payload.surfaceType;
+    const topic = (payload.surfaceId ?? payload.topic ?? '').trim();
+    if (surfaceType !== 'topic' || !topic) {
+      sendJsonErr(res, 400, 'invalid_fields', 'surfaceType/topic is required');
+      return;
+    }
+    if (!resolveTopicDir(root, topic)) {
+      sendJsonErr(res, 404, 'unknown_topic', 'unknown topic');
+      return;
+    }
+    const existed = lib.listLinks(documentId).some((l) => l.surfaceType === 'topic' && l.surfaceId === topic);
+    try {
+      runLibraryLink({
+        cwd: root,
+        paperId: documentId,
+        topic,
+        rationale: typeof payload.rationale === 'string' ? payload.rationale.trim() || undefined : undefined,
+        write: () => {},
+      });
+      sendJson(res, existed ? 200 : 201, { url: documentUrl(documentId) });
+    } catch (err) {
+      sendJsonErr(res, 400, 'link_failed', err instanceof Error ? err.message : String(err));
+    }
+    return;
+  }
+  const del = rest.match(/^links\/([^/]+)\/(.+)$/);
+  if (del && req.method === 'DELETE') {
+    if (!assertWriteAccess(req, res, { json: false })) return;
+    const surfaceType = decodeURIComponent(del[1]);
+    const surfaceId = decodeURIComponent(del[2]);
+    if (surfaceType !== 'topic') {
+      sendJsonErr(res, 400, 'invalid_fields', 'only topic links can be removed');
+      return;
+    }
+    try {
+      runLibraryUnlink({ cwd: root, paperId: documentId, topic: surfaceId, write: () => {} });
+      res.writeHead(204);
+      res.end();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendJsonErr(res, /no link/i.test(message) ? 404 : 400, 'unlink_failed', message);
+    }
+    return;
+  }
+  sendJsonErr(res, 404, 'not_found', 'unknown link resource');
+}
+
+async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
+  const payload = await readJsonBody<{ docType?: string; id?: string; title?: string; body?: string; mutationId?: string }>(req, res);
+  if (!payload) return;
   if (payload.docType !== 'note') {
     send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_type', message: 'docType must be note' }));
     return;
@@ -647,14 +975,8 @@ async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root:
 }
 
 async function handlePatchNote(req: IncomingMessage, res: ServerResponse, root: string, id: string): Promise<void> {
-  const raw = await readBody(req);
-  let payload: { title?: string; body?: string; expectedRevision?: number; mutationId?: string };
-  try {
-    payload = JSON.parse(raw) as typeof payload;
-  } catch {
-    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_json', message: 'invalid JSON' }));
-    return;
-  }
+  const payload = await readJsonBody<{ title?: string; body?: string; expectedRevision?: number; mutationId?: string }>(req, res);
+  if (!payload) return;
   if (typeof payload.title !== 'string' || typeof payload.body !== 'string' || typeof payload.mutationId !== 'string' || typeof payload.expectedRevision !== 'number') {
     send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_fields', message: 'title, body, expectedRevision, mutationId required' }));
     return;

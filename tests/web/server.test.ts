@@ -224,29 +224,32 @@ it('shows at most 5 not-in-library trending papers with title and heat on /', as
 });
 
 it('returns 400 for an invalid library add instead of 500', async () => {
-  const res = await fetch(base + '/library/add', {
+  const res = await fetch(base + '/library/documents/import', {
     method: 'POST',
-    body: new URLSearchParams({ input: 'ftp://not-a-paper', next: 'paper' }),
-    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: 'ftp://not-a-paper' }),
   });
   expect(res.status).toBe(400);
   expect(await res.text()).toMatch(/canonicalizeUrl|invalid|ftp/i);
 });
 
 it('adds a trending paper then lands on its detail without Deep read', async () => {
-  const form = new URLSearchParams({
-    input: 'arxiv:2609.01597',
-    next: 'paper',
+  const res = await fetch(base + '/library/documents/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: 'arxiv:2609.01597' }),
   });
-  const res = await fetch(base + '/library/add', { method: 'POST', body: form, redirect: 'manual' });
-  expect(res.status).toBe(303);
-  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2609_01597');
+  expect(res.status).toBe(201);
+  expect(await res.json()).toEqual(expect.objectContaining({
+    id: 'paper_arxiv_2609_01597',
+    url: '/library/documents/paper_arxiv_2609_01597',
+  }));
 
   const lib = new PaperLibrary(root);
   expect(lib.getPaper('paper_arxiv_2609_01597')).toBeTruthy();
   expect(lib.listReads('paper_arxiv_2609_01597')).toEqual([]);
 
-  const page = await fetch(base + '/library/p/paper_arxiv_2609_01597');
+  const page = await fetch(base + '/library/documents/paper_arxiv_2609_01597');
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain('Deep read');
@@ -255,10 +258,10 @@ it('adds a trending paper then lands on its detail without Deep read', async () 
 });
 
 it('omits Trending chrome when the source is empty, already in Library, or fails', async () => {
-  await fetch(base + '/library/add', {
+  await fetch(base + '/library/documents/import', {
     method: 'POST',
-    body: new URLSearchParams({ input: '2401.12345' }),
-    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: '2401.12345' }),
   });
   const inLibrary = trendingPaper('2401.12345', 'Reusable Paper Cards', 99);
   trendingResult = [inLibrary];
@@ -412,18 +415,27 @@ it('serves the library page', async () => {
   const html = await res.text();
   expect(html).toContain('Library');
   expect(html).toContain('Add paper');
-  expect(html).toContain('action="/library/add"');
+  expect(html).toContain('action="/library/documents/import"');
 });
 
 it('adds a paper through the web library without duplicating arXiv ids', async () => {
-  const form = new URLSearchParams({ input: 'https://arxiv.org/abs/2401.12345v2', tags: 'survey', topic: 'trace' });
-  const first = await fetch(base + '/library/add', { method: 'POST', body: form, redirect: 'manual' });
-  expect(first.status).toBe(303);
-  expect(first.headers.get('location')).toBe('/library');
+  const first = await fetch(base + '/library/documents/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: 'https://arxiv.org/abs/2401.12345v2', tags: 'survey', topic: 'trace' }),
+  });
+  expect([200, 201]).toContain(first.status);
+  expect(await first.json()).toEqual(expect.objectContaining({
+    id: 'paper_arxiv_2401_12345',
+    url: '/library/documents/paper_arxiv_2401_12345',
+  }));
 
-  const dupe = new URLSearchParams({ input: '2401.12345', tags: 'benchmark' });
-  const second = await fetch(base + '/library/add', { method: 'POST', body: dupe, redirect: 'manual' });
-  expect(second.status).toBe(303);
+  const second = await fetch(base + '/library/documents/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: '2401.12345', tags: 'benchmark' }),
+  });
+  expect(second.status).toBe(200);
 
   const lib = new PaperLibrary(root);
   const paperId = 'paper_arxiv_2401_12345';
@@ -450,48 +462,43 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
 });
 
 it('deletes an unlinked library paper and refuses a linked one', async () => {
-  const add = new URLSearchParams({ input: 'https://example.com/ephemeral-doc' });
-  const added = await fetch(base + '/library/add', { method: 'POST', body: add, redirect: 'manual' });
-  expect(added.status).toBe(303);
+  const added = await fetch(base + '/library/documents/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: 'https://example.com/ephemeral-doc' }),
+  });
+  expect(added.status).toBe(201);
   const lib = new PaperLibrary(root);
   const paper = lib.listPapers().find((p) => p.canonicalSource.id.includes('ephemeral-doc'));
   expect(paper).toBeTruthy();
 
-  const del = await fetch(base + '/library/delete', {
-    method: 'POST',
-    body: new URLSearchParams({ paperId: paper!.id }),
-    redirect: 'manual',
-  });
-  expect(del.status).toBe(303);
-  expect(del.headers.get('location')).toBe('/library');
+  const del = await fetch(base + `/library/documents/${paper!.id}`, { method: 'DELETE' });
+  expect(del.status).toBe(200);
+  expect(await del.json()).toEqual({ url: '/library' });
   expect(new PaperLibrary(root).getPaper(paper!.id)).toBeUndefined();
 
   // paper_arxiv_2401_12345 is linked to trace from earlier test
-  const refuse = await fetch(base + '/library/delete', {
-    method: 'POST',
-    body: new URLSearchParams({ paperId: 'paper_arxiv_2401_12345' }),
-    redirect: 'manual',
-  });
-  expect(refuse.status).toBe(400);
+  const refuse = await fetch(base + '/library/documents/paper_arxiv_2401_12345', { method: 'DELETE' });
+  expect(refuse.status).toBe(409);
   expect(await refuse.text()).toMatch(/linked/i);
   expect(new PaperLibrary(root).getPaper('paper_arxiv_2401_12345')).toBeTruthy();
 });
 
 it('creates, pins, and deletes paper-local notes on the detail page', async () => {
   const paperId = 'paper_arxiv_2401_12345';
-  const create = await fetch(base + '/library/note', {
+  const create = await fetch(base + `/library/documents/${paperId}/annotations`, {
     method: 'POST',
-    body: new URLSearchParams({
-      action: 'create',
-      paperId,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
       body: 'LM judge selects among candidates',
       kind: 'clarification',
-      pinned: '1',
+      pinned: true,
     }),
-    redirect: 'manual',
   });
-  expect(create.status).toBe(303);
-  expect(create.headers.get('location')).toBe(`/library/p/${paperId}#annotations`);
+  expect(create.status).toBe(201);
+  expect(await create.json()).toEqual(expect.objectContaining({
+    url: `/library/documents/${paperId}#annotations`,
+  }));
 
   let lib = new PaperLibrary(root);
   const notes = lib.listNotes(paperId);
@@ -503,53 +510,55 @@ it('creates, pins, and deletes paper-local notes on the detail page', async () =
   }));
   const noteId = notes[0].id;
 
-  const detail = await fetch(base + `/library/p/${paperId}`);
+  const detail = await fetch(base + `/library/documents/${paperId}`);
   const html = await detail.text();
   expect(html).toContain('LM judge selects among candidates');
   expect(html).toContain('paper-notes-panel');
 
-  const unpin = await fetch(base + '/library/note', {
-    method: 'POST',
-    body: new URLSearchParams({ action: 'unpin', paperId, noteId }),
-    redirect: 'manual',
+  const unpin = await fetch(base + `/library/documents/${paperId}/annotations/${noteId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ pinned: false }),
   });
-  expect(unpin.status).toBe(303);
+  expect(unpin.status).toBe(200);
   lib = new PaperLibrary(root);
   expect(lib.getNote(noteId)?.pinned).toBe(false);
 
-  const del = await fetch(base + '/library/note', {
-    method: 'POST',
-    body: new URLSearchParams({ action: 'delete', paperId, noteId }),
-    redirect: 'manual',
-  });
-  expect(del.status).toBe(303);
+  const del = await fetch(base + `/library/documents/${paperId}/annotations/${noteId}`, { method: 'DELETE' });
+  expect(del.status).toBe(204);
   expect(new PaperLibrary(root).listNotes(paperId)).toEqual([]);
 });
 
 it('starts a library deep read and records read state', async () => {
   releaseLibraryRead = undefined;
-  const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345' });
-  const first = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
-  expect(first.status).toBe(303);
-  expect(first.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
+  const first = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mutationId: 'read-1' }),
+  });
+  expect(first.status).toBe(202);
+  const started = await first.json() as { readId: string; url: string };
+  expect(started.url).toBe('/library/documents/paper_arxiv_2401_12345');
+  expect(started.readId).toBeTruthy();
 
   const lib = new PaperLibrary(root);
   await waitFor(() => lib.listReads('paper_arxiv_2401_12345').some((r) => r.status === 'reading'));
 
-  const detailDuringRead = await fetch(base + '/library/p/paper_arxiv_2401_12345');
+  const detailDuringRead = await fetch(base + '/library/documents/paper_arxiv_2401_12345');
   const detailHtml = await detailDuringRead.text();
   expect(detailHtml).toContain('id="library-read-stages"');
   expect(detailHtml).toContain('data-library-task="');
   expect(detailHtml).toContain('Fetch source');
 
-  const taskId = /data-library-task="([^"]+)"/.exec(detailHtml)?.[1];
-  expect(taskId).toBeTruthy();
-
-  const second = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
+  const second = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mutationId: 'read-2' }),
+  });
   expect(second.status).toBe(409);
 
   releaseLibraryRead?.();
-  const sse = await fetch(base + `/library/read/${taskId}/stream`);
+  const sse = await fetch(base + `/library/documents/paper_arxiv_2401_12345/reads/${started.readId}/stream`);
   const sseText = await sse.text();
   expect(sseText).toContain('event: plan');
   expect(sseText).toContain('fetch-source');
@@ -559,7 +568,7 @@ it('starts a library deep read and records read state', async () => {
   expect(libraryReadCalls).toBe(1);
   expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
 
-  const completedDetail = await fetch(base + '/library/p/paper_arxiv_2401_12345');
+  const completedDetail = await fetch(base + '/library/documents/paper_arxiv_2401_12345');
   const completedHtml = await completedDetail.text();
   expect(completedHtml).toContain('paper-doc');
   expect(completedHtml).toContain('paper-identity-fm');
@@ -568,19 +577,27 @@ it('starts a library deep read and records read state', async () => {
 
 it('does not rerun an existing read unless force is explicit', async () => {
   const before = libraryReadCalls;
-  const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345', topic: 'trace' });
-  const res = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
-  expect(res.status).toBe(303);
-  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
+  const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual(expect.objectContaining({
+    url: '/library/documents/paper_arxiv_2401_12345',
+  }));
   expect(libraryReadCalls).toBe(before);
 });
 
 it('force reruns a Library read without forwarding topic context', async () => {
   releaseLibraryRead = undefined;
   const before = libraryReadCalls;
-  const form = new URLSearchParams({ paperId: 'paper_arxiv_2401_12345', topic: 'feeds/ai-safety', force: '1' });
-  const res = await fetch(base + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
-  expect(res.status).toBe(303);
+  const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ force: true, mutationId: 'force-1' }),
+  });
+  expect(res.status).toBe(202);
   await waitFor(() => libraryReadCalls === before + 1);
   expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
   releaseLibraryRead?.();
@@ -588,25 +605,25 @@ it('force reruns a Library read without forwarding topic context', async () => {
 });
 
 it('upserts topic links separately from Library reads', async () => {
-  const form = new URLSearchParams({
-    paperId: 'paper_arxiv_2401_12345',
-    topic: 'feeds/ai-safety',
-    rationale: 'matches the feed topic',
+  const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/links', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      topic: 'feeds/ai-safety',
+      rationale: 'matches the feed topic',
+    }),
   });
-  const res = await fetch(base + '/library/link', { method: 'POST', body: form, redirect: 'manual' });
-  expect(res.status).toBe(303);
+  expect(res.status).toBe(201);
   const lib = new PaperLibrary(root);
   expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual(expect.arrayContaining([
     expect.objectContaining({ surfaceId: 'trace' }),
     expect.objectContaining({ surfaceId: 'feeds/ai-safety', rationale: 'matches the feed topic' }),
   ]));
 
-  const unlink = new URLSearchParams({
-    paperId: 'paper_arxiv_2401_12345',
-    topic: 'feeds/ai-safety',
+  const second = await fetch(base + '/library/documents/paper_arxiv_2401_12345/links/topic/feeds/ai-safety', {
+    method: 'DELETE',
   });
-  const second = await fetch(base + '/library/unlink', { method: 'POST', body: unlink, redirect: 'manual' });
-  expect(second.status).toBe(303);
+  expect(second.status).toBe(204);
   expect(lib.listLinks('paper_arxiv_2401_12345').some((l) => l.surfaceId === 'feeds/ai-safety')).toBe(false);
 });
 
@@ -616,18 +633,17 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   const before = lib.listLinks(paperId).find((l) => l.surfaceId === 'trace');
   expect(before).toBeDefined();
 
-  const add = await fetch(base + '/library/link', {
+  const add = await fetch(base + `/library/documents/${paperId}/links`, {
     method: 'POST',
-    body: new URLSearchParams({
-      paperId,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
       topic: 'feeds/ai-safety',
       rationale: 'feed-side failure modes',
     }),
-    redirect: 'manual',
   });
-  expect(add.status).toBe(303);
+  expect(add.status).toBe(201);
 
-  const html = await (await fetch(base + `/library/p/${paperId}`)).text();
+  const html = await (await fetch(base + `/library/documents/${paperId}`)).text();
   expect(html).toContain('trace');
   expect(html).toContain('feeds/ai-safety');
   expect(html).toContain('feed-side failure modes');
@@ -640,38 +656,38 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   expect(map).toContain('trace');
   expect(map).toContain('feeds/ai-safety');
 
-  const editPage = await (await fetch(base + `/library/p/${paperId}?edit=trace`)).text();
+  const editPage = await (await fetch(base + `/library/documents/${paperId}?edit=trace`)).text();
   expect(editPage).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
 
-  const update = await fetch(base + '/library/link', {
+  const update = await fetch(base + `/library/documents/${paperId}/links`, {
     method: 'POST',
-    body: new URLSearchParams({ paperId, topic: 'trace', rationale: 'updated why for trace' }),
-    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ topic: 'trace', rationale: 'updated why for trace' }),
   });
-  expect(update.status).toBe(303);
+  expect(update.status).toBe(200);
   const afterUpdate = new PaperLibrary(root).listLinks(paperId);
   expect(afterUpdate).toHaveLength(2);
   expect(afterUpdate.find((l) => l.surfaceId === 'trace')?.rationale).toBe('updated why for trace');
   expect(afterUpdate.find((l) => l.surfaceId === 'feeds/ai-safety')?.rationale).toBe('feed-side failure modes');
 
-  const unlink = await fetch(base + '/library/unlink', {
-    method: 'POST',
-    body: new URLSearchParams({ paperId, topic: 'feeds/ai-safety' }),
-    redirect: 'manual',
+  const unlink = await fetch(base + `/library/documents/${paperId}/links/topic/feeds/ai-safety`, {
+    method: 'DELETE',
   });
-  expect(unlink.status).toBe(303);
+  expect(unlink.status).toBe(204);
   const leftover = new PaperLibrary(root).listLinks(paperId);
   expect(leftover).toEqual([expect.objectContaining({ surfaceId: 'trace', rationale: 'updated why for trace' })]);
   expect(new PaperLibrary(root).getPaper(paperId)).toBeDefined();
 });
 
-it('serves canonical paper detail URLs', async () => {
-  const res = await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' });
+it('serves canonical paper detail URLs and 404s old aliases', async () => {
+  const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
   expect(html).toContain('paper-doc-head');
   expect(html).toContain('Re-run read');
   expect(html).toContain('Link another topic');
+  expect((await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' })).status).toBe(404);
+  expect((await fetch(base + '/library/add', { method: 'POST' })).status).toBe(404);
 });
 
 it('rejects legacy selected-paper query URLs', async () => {
@@ -802,9 +818,12 @@ describe('library deep-read failure + orphan reclaim (#78)', () => {
     });
     const failBase = `http://127.0.0.1:${srv.port}`;
     try {
-      const form = new URLSearchParams({ paperId: 'paper_arxiv_2603_23971' });
-      const res = await fetch(failBase + '/library/read', { method: 'POST', body: form, redirect: 'manual' });
-      expect(res.status).toBe(303);
+      const res = await fetch(failBase + '/library/documents/paper_arxiv_2603_23971/reads', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(202);
       await waitFor(() => new PaperLibrary(failRoot).listReads('paper_arxiv_2603_23971').some((r) => r.status === 'failed'), 2000);
       const read = new PaperLibrary(failRoot).listReads('paper_arxiv_2603_23971')[0];
       expect(read).toMatchObject({
@@ -845,7 +864,7 @@ describe('library deep-read failure + orphan reclaim (#78)', () => {
       expect(after.status).toBe('failed');
       expect(after.lastError).toMatch(/restart|orphan|interrupted/i);
 
-      const page = await fetch(`http://127.0.0.1:${srv.port}/library/p/paper_arxiv_2603_23971`);
+      const page = await fetch(`http://127.0.0.1:${srv.port}/library/documents/paper_arxiv_2603_23971`);
       const html = await page.text();
       expect(html).toContain('failed');
       expect(html).not.toContain('Read interrupted');

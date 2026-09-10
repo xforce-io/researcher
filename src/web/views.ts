@@ -477,11 +477,47 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
   return rows.length ? `<dl class="fm paper-identity-fm">${rows.join('')}</dl>` : '';
 }
 
+const JSON_FORM_JS = `
+document.addEventListener('submit', function (e) {
+  var form = e.target;
+  if (!form || !form.getAttribute) return;
+  var action = form.getAttribute('data-json-action');
+  if (!action) return;
+  e.preventDefault();
+  var method = (form.getAttribute('data-json-method') || 'POST').toUpperCase();
+  var payload = {};
+  new FormData(form).forEach(function (v, k) {
+    if (k === 'force' || k === 'pinned') payload[k] = v === '1' || v === 'true' || v === 'on';
+    else payload[k] = v;
+  });
+  if ((method === 'POST') && /\\/reads$/.test(action) && !payload.mutationId) {
+    payload.mutationId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+  }
+  var opts = { method: method, headers: {} };
+  if (method !== 'DELETE' && method !== 'GET') {
+    opts.headers['content-type'] = 'application/json';
+    opts.body = JSON.stringify(payload);
+  }
+  fetch(action, opts).then(function (res) {
+    if (res.status === 204) { location.reload(); return; }
+    if (!res.ok) {
+      return res.text().then(function (t) { throw new Error(t || String(res.status)); });
+    }
+    return res.json().then(function (data) {
+      if (data && data.url) location.href = data.url;
+      else location.reload();
+    });
+  }).catch(function (err) {
+    alert(err && err.message ? err.message : 'request failed');
+  });
+});
+`;
+
 function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css"></head>` +
-    `<body>${body}</body></html>`;
+    `<body>${body}<script>${JSON_FORM_JS}</script></body></html>`;
 }
 
 function topbar(root: string, active: 'workspace' | 'library' | 'topics' | 'topic' = 'workspace'): string {
@@ -562,7 +598,7 @@ function renderAddPaperModal(topicPaths: string[]): string {
     `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">` +
       `<div class="modal-head"><h2 id="add-paper-title">Add paper</h2>` +
       `<button class="icon-button" type="button" data-close-add-paper aria-label="Close">x</button></div>` +
-      `<form class="modal-form add-paper-form" action="/library/add" method="post">` +
+      `<form class="modal-form add-paper-form" action="/library/documents/import" method="post" data-json-action="/library/documents/import">` +
         `<label><span>Paper source</span><input name="input" required placeholder="arXiv id, arXiv URL, or http(s) URL"></label>` +
         `<label><span>Tags</span><input name="tags" placeholder="survey, benchmark"></label>` +
         `<label><span>Topic context</span><select name="topic"><option value="">none</option>${topicOptions}</select></label>` +
@@ -596,7 +632,6 @@ const form = document.getElementById('note-form');
 const titleEl = form.querySelector('[name=title]');
 const bodyEl = form.querySelector('[name=body]');
 const saveBtn = form.querySelector('[data-save]');
-const cancel = form.querySelector('[data-cancel]');
 let mutationId = crypto.randomUUID();
 let dirty = false;
 function setEditingEnabled(on) {
@@ -609,8 +644,13 @@ form.addEventListener('input', () => {
   dirty = true;
   mutationId = crypto.randomUUID();
 });
-cancel?.addEventListener('click', (e) => {
-  if (!dirty) return;
+document.addEventListener('click', (e) => {
+  if (!dirty || form.dataset.saving === '1') return;
+  const a = e.target && e.target.closest ? e.target.closest('a') : null;
+  if (!a) return;
+  if (a.target === '_blank') return;
+  const href = a.getAttribute('href') || '';
+  if (!href || href.startsWith('#')) return;
   if (!confirm('Unsaved changes. Discard?')) e.preventDefault();
 });
 window.addEventListener('beforeunload', (e) => {
@@ -716,6 +756,8 @@ export function renderLibrary(v: LibraryView): string {
 interface ActiveTaskView {
   taskId: string;
   startedAt: number;
+  readId?: string;
+  documentId?: string;
 }
 
 const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
@@ -725,7 +767,8 @@ const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
 };
 
 function renderDeepReadForm(paperId: string, label: string, force = false): string {
-  return `<form class="deep-read-form" action="/library/read" method="post">` +
+  const action = `/library/documents/${encodeURIComponent(paperId)}/reads`;
+  return `<form class="deep-read-form" action="${escapeHtml(action)}" method="post" data-json-action="${escapeHtml(action)}">` +
     `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
     (force ? '<input type="hidden" name="force" value="1">' : '') +
     `<button class="primary" type="submit">${escapeHtml(label)}</button>` +
@@ -746,7 +789,7 @@ function renderDeepReadAction(
         renderDeepReadForm(paperId, 'Retry deep read', true) +
       `</div>`;
     }
-    const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}" data-paper-id="${escapeHtml(paperId)}"`;
+    const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}" data-paper-id="${escapeHtml(paperId)}" data-read-id="${escapeHtml(activeRead.readId ?? '')}"`;
     const stages = Object.entries(LIBRARY_READ_STAGE_LABELS).map(([name, label], i) =>
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
@@ -824,8 +867,10 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
   if (editing) {
     const why = escapeHtml(editing.rationale ?? '');
     const form =
-      `<form id="topic-link-form" class="topic-link-form" action="/library/link" method="post">` +
+      `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links">` +
         `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+        `<input type="hidden" name="surfaceType" value="topic">` +
+        `<input type="hidden" name="surfaceId" value="${escapeHtml(editing.surfaceId)}">` +
         `<input type="hidden" name="topic" value="${escapeHtml(editing.surfaceId)}">` +
         `<p class="topic-link-manual-head">Update <span class="mono">${escapeHtml(editing.surfaceId)}</span></p>` +
         `<div class="topic-link-fields">` +
@@ -847,8 +892,9 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
     unlinked.map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`).join('');
   const button = linkedTopicIds.size >= 1 ? 'Link another topic' : 'Link topic';
   const form =
-    `<form id="topic-link-form" class="topic-link-form" action="/library/link" method="post">` +
+    `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<input type="hidden" name="surfaceType" value="topic">` +
       (suggest
         ? `<div class="topic-link-manual-head muted">Details <span class="topic-link-manual-or">or pick topic yourself</span></div>`
         : '') +
@@ -921,7 +967,6 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
   ).join('');
   const items = v.notes.map((n) => {
     const pinLabel = n.pinned ? 'Unpin' : 'Pin';
-    const pinAction = n.pinned ? 'unpin' : 'pin';
     return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
       `<div class="paper-note-head">` +
         `<span class="note-kind">${escapeHtml(n.kind)}</span>` +
@@ -930,16 +975,11 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
       `</div>` +
       `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` +
       `<div class="paper-note-actions">` +
-        `<form action="/library/note" method="post">` +
-          `<input type="hidden" name="action" value="${pinAction}">` +
-          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="PATCH">` +
+          `<input type="hidden" name="pinned" value="${n.pinned ? '0' : '1'}">` +
           `<button class="secondary note-action-btn" type="submit">${pinLabel}</button>` +
         `</form>` +
-        `<form action="/library/note" method="post" onsubmit="return confirm('Delete this note?');">` +
-          `<input type="hidden" name="action" value="delete">` +
-          `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-          `<input type="hidden" name="noteId" value="${escapeHtml(n.id)}">` +
+        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="DELETE" onsubmit="return confirm('Delete this note?');">` +
           `<button class="danger note-action-btn" type="submit">Delete</button>` +
         `</form>` +
       `</div>` +
@@ -951,8 +991,7 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
       `<h2>Annotations</h2>` +
       `<span class="muted">Your attention on this paper — survives re-read</span>` +
     `</div>` +
-    `<form class="paper-note-form" action="/library/note" method="post">` +
-      `<input type="hidden" name="action" value="create">` +
+    `<form class="paper-note-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
       `<label class="note-body-label">New note` +
         `<textarea name="body" rows="3" required placeholder="Markdown ok — e.g. **selection** not generation"></textarea>` +
@@ -1044,9 +1083,7 @@ function renderLinkedTopicRows(v: LibraryPaperDetailView): string {
         `<b>${escapeHtml(l.surfaceId)}</b> ${badge}` +
         `<span class="linked-topic-actions">` +
           `<a class="link-button" href="${paperDetailHref(v.paper.id, l.surfaceId)}">Edit</a>` +
-          `<form class="inline-form" action="/library/unlink" method="post" onsubmit="return confirm('Remove this topic link?');">` +
-            `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-            `<input type="hidden" name="topic" value="${escapeHtml(l.surfaceId)}">` +
+          `<form class="inline-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links/topic/${encodeURIComponent(l.surfaceId)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links/topic/${encodeURIComponent(l.surfaceId)}" data-json-method="DELETE" onsubmit="return confirm('Remove this topic link?');">` +
             `<button type="submit" class="link-button">Unlink</button>` +
           `</form>` +
         `</span>` +
@@ -1082,9 +1119,9 @@ function renderPaperInspector(
   const deleteAction = canDelete
     ? `<section class="detail-panel danger-panel"><h2>Delete</h2>` +
       `<p class="muted">Remove this unlinked paper and its Library reads from the workspace.</p>` +
-      `<form class="deep-read-form" action="/library/delete" method="post"` +
+      `<form class="deep-read-form" action="/library/documents/${encodeURIComponent(v.paper.id)}" method="post"` +
+      ` data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}" data-json-method="DELETE"` +
       ` onsubmit="return confirm('Delete this paper from the Library? This cannot be undone.');">` +
-      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
       `<button class="danger" type="submit">Delete from Library</button>` +
       `</form></section>`
     : `<section class="detail-panel"><h2>Delete</h2>` +
@@ -1126,13 +1163,16 @@ function enableLibraryRetry() {
   libRetry.addEventListener('click', () => {
     const paperId = libStatus && libStatus.dataset.paperId;
     if (!paperId) { window.location.reload(); return; }
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/library/read';
-    form.innerHTML = '<input type="hidden" name="paperId" value="' + paperId + '">' +
-      '<input type="hidden" name="force" value="1">';
-    document.body.appendChild(form);
-    form.submit();
+    fetch('/library/documents/' + encodeURIComponent(paperId) + '/reads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true, mutationId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) }),
+    }).then(function (res) {
+      if (!res.ok) throw new Error('retry failed');
+      return res.json();
+    }).then(function (data) {
+      location.href = (data && data.url) || location.href;
+    }).catch(function () { window.location.reload(); });
   }, { once: true });
 }
 
@@ -1144,7 +1184,7 @@ function appendLibraryLog(line) {
 
 if (libStatus && libStatus.dataset.libraryTask) {
   renderLibraryStages();
-  const es = new EventSource('/library/read/' + encodeURIComponent(libStatus.dataset.libraryTask) + '/stream');
+  const es = new EventSource('/library/documents/' + encodeURIComponent(libStatus.dataset.paperId) + '/reads/' + encodeURIComponent(libStatus.dataset.readId) + '/stream');
   es.addEventListener('plan', (ev) => { libPlan = JSON.parse(ev.data).stages; renderLibraryStages(); });
   es.addEventListener('stage', (ev) => {
     libCurrent = JSON.parse(ev.data).name;
@@ -1366,7 +1406,7 @@ const HOME_TRENDING_JS = `
     var heat = (typeof p.upvotes === 'number' && p.upvotes > 0)
       ? '<span class="trending-heat mono" title="upvotes">▲ ' + esc(p.upvotes) + '</span>' : '';
     var blurb = p.blurb ? '<span class="trending-blurb">' + esc(p.blurb) + '</span>' : '';
-    return '<li class="trending-item"><form class="trending-form" action="/library/add" method="post">'
+    return '<li class="trending-item"><form class="trending-form" action="/library/documents/import" method="post" data-json-action="/library/documents/import">'
       + '<input type="hidden" name="input" value="' + esc(p.input) + '">'
       + '<input type="hidden" name="next" value="paper">'
       + '<button type="submit" class="trending-submit"><span class="trending-copy">'
@@ -1436,7 +1476,7 @@ function trendingRowHtml(p: {
     ? `<span class="trending-blurb">${escapeHtml(p.blurb)}</span>`
     : '';
   return `<li class="trending-item">` +
-    `<form class="trending-form" action="/library/add" method="post">` +
+    `<form class="trending-form" action="/library/documents/import" method="post" data-json-action="/library/documents/import">` +
       `<input type="hidden" name="input" value="${escapeHtml(p.input)}">` +
       `<input type="hidden" name="next" value="paper">` +
       `<button type="submit" class="trending-submit">` +

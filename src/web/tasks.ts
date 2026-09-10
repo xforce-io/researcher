@@ -138,6 +138,16 @@ export class TaskRegistry {
     return undefined;
   }
 
+  /** Most recently started task for a slug, including finished ones (SSE replay). */
+  latestTask(slug: string): RunTask | undefined {
+    let latest: RunTask | undefined;
+    for (const t of this.tasks.values()) {
+      if (t.slug !== slug) continue;
+      if (!latest || t.startedAt >= latest.startedAt) latest = t;
+    }
+    return latest;
+  }
+
   start(slug: string, cwd: string, workspaceRoot?: string, opts?: { discover?: boolean }): RunTask {
     return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent, workspaceRoot, opts));
   }

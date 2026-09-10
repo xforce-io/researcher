@@ -515,6 +515,79 @@ describe('workspace sync --library', () => {
     );
     expect(libraryTracked(root)).toEqual([]);
   });
+
+  it('commits deletions of tracked legacy library ledgers after migrate', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-legacy-del-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    const lib = join(root, '.researcher-workspace/library');
+    mkdirSync(join(lib, 'papers/paper_arxiv_2401_00001/reads'), { recursive: true });
+    writeFileSync(join(lib, 'papers.jsonl'), `${JSON.stringify({
+      id: 'paper_arxiv_2401_00001',
+      canonicalSource: { kind: 'arxiv', id: 'arxiv:2401.00001' },
+      sources: [{ kind: 'arxiv', id: 'arxiv:2401.00001' }],
+      identifiers: { arxiv: '2401.00001' },
+      tags: [],
+      docType: 'paper',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })}\n`);
+    writeFileSync(join(lib, 'notes.jsonl'), '');
+    writeFileSync(join(lib, 'reads.jsonl'), `${JSON.stringify({
+      id: 'read_paper_arxiv_2401_00001',
+      paperId: 'paper_arxiv_2401_00001',
+      status: 'unread',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })}\n`);
+    writeFileSync(join(lib, 'links.jsonl'), '');
+    writeFileSync(join(lib, 'integrations.jsonl'), '');
+    gitCommitAll(root, 'legacy library');
+    expect(libraryTracked(root)).toEqual(expect.arrayContaining([
+      '.researcher-workspace/library/papers.jsonl',
+      '.researcher-workspace/library/notes.jsonl',
+      '.researcher-workspace/library/reads.jsonl',
+    ]));
+
+    const { migrateLibrary } = await import('../../src/library/migrate-v2.js');
+    expect(migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} }).status).toBe('completed');
+
+    const res = await runWorkspaceSync({ cwd: root, library: true });
+    expect(res.library?.status).toBe('committed');
+    const tracked = libraryTracked(root);
+    expect(tracked).not.toContain('.researcher-workspace/library/papers.jsonl');
+    expect(tracked).not.toContain('.researcher-workspace/library/notes.jsonl');
+    expect(tracked).not.toContain('.researcher-workspace/library/reads.jsonl');
+    expect(tracked).toEqual(expect.arrayContaining([
+      '.researcher-workspace/library/schema.json',
+      '.researcher-workspace/library/documents/paper_arxiv_2401_00001/document.md',
+    ]));
+  });
+
+  it('refuses sync while an exclusive library lease is held', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-excl-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    const { addUsageLease, removeUsageLease } = await import('../../src/library/maintenance.js');
+    addUsageLease(root, {
+      pid: process.pid,
+      mode: 'exclusive',
+      command: 'researcher library migrate',
+      startedAt: new Date().toISOString(),
+    });
+    try {
+      await expect(runWorkspaceSync({ cwd: root, pull: true })).rejects.toThrow(/exclusive/);
+    } finally {
+      removeUsageLease(root, process.pid);
+    }
+  });
 });
 
 describe('workspace publish policy', () => {

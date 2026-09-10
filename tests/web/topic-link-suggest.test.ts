@@ -159,7 +159,7 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
     expect(html).toContain('data-suggest-topic="decision"');
     expect(html).toContain('selection gate / verifier');
     expect(html).toContain('pick → edit below → Link');
-    expect(html).toContain('action="/library/link"');
+    expect(html).toContain('/library/documents/paper_arxiv_2607_05391/links');
     expect(html).toContain('name="topic"');
     // Confirm is primary, panel-level — not a secondary buried control
     expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
@@ -176,7 +176,7 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
     const html = renderLibraryPaper(base({ topicSuggestions: [] }));
     expect(html).not.toContain('class="topic-suggest"');
     expect(html).not.toContain('pick → edit below → Link');
-    expect(html).toContain('action="/library/link"');
+    expect(html).toContain('/library/documents/paper_arxiv_2607_05391/links');
     expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
   });
 
