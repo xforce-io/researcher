@@ -164,7 +164,6 @@ function missingReadFiles(root: string, reads: PaperRead[]): string[] {
 }
 
 function runConvert(root: string, opts: MigrateOptions, write: (s: string) => void): MigrateResult {
-  writeMaintenanceStage(root, 'maintenance');
   const libRoot = join(root, LIBRARY_DIR);
   const papers = readJsonl<Paper>(join(libRoot, 'papers.jsonl'));
   const notes = readJsonl<PaperNote>(join(libRoot, 'notes.jsonl'));
@@ -172,10 +171,9 @@ function runConvert(root: string, opts: MigrateOptions, write: (s: string) => vo
   const links = readJsonl<PaperSurfaceLink>(join(libRoot, 'links.jsonl'));
   const integrations = readJsonl<TopicIntegration>(join(libRoot, 'integrations.jsonl'));
   const missing = missingReadFiles(root, reads);
-  if (missing.length) {
-    write(`library migrate: refused ${missing.join('; ')}\n`);
-    return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: missing, message: missing.join('; ') };
-  }
+  if (missing.length) return refuseBeforeActivate(root, missing, write);
+  const topicScan = previewTopicRewrites(root);
+  if (topicScan.blockers.length) return refuseBeforeActivate(root, topicScan.blockers, write);
 
   writeMaintenanceStage(root, 'converting');
   const staging = join(root, '.researcher-workspace', 'migrate-staging');
@@ -197,16 +195,7 @@ function runConvert(root: string, opts: MigrateOptions, write: (s: string) => vo
   for (const note of notes) live.writeAnnotation(note);
   for (const link of links) live.writeLink(link);
   for (const integration of integrations) live.writeIntegration(integration);
-  if (convertErrors.length) {
-    write(`library migrate: refused ${convertErrors.join('; ')}\n`);
-    return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: convertErrors, message: convertErrors.join('; ') };
-  }
-
-  const topicScan = scanAndRewriteTopics(root, write);
-  if (topicScan.blockers.length) {
-    write(`library migrate: refused ${topicScan.blockers.join('; ')}\n`);
-    return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: topicScan.blockers, message: topicScan.blockers.join('; ') };
-  }
+  if (convertErrors.length) return refuseBeforeActivate(root, convertErrors, write);
 
   writeMaintenanceStage(root, 'activating');
   const backup = join(root, '.researcher-workspace', `library-backup-${Date.now()}`);
@@ -293,6 +282,7 @@ function finishActivate(
   }
   if (existsSync(staging)) rmSync(staging, { recursive: true, force: true });
   writeBackupMeta(root, ctx.backup, false);
+  applyTopicRewrites(root, ctx.topicEdits, write);
   writeJournal(root, {
     stage: ctx.topicEdits.length ? 'references-pending' : 'completed',
     backup: ctx.backup,
@@ -364,6 +354,7 @@ function resumeActivating(root: string, opts: MigrateOptions, write: (s: string)
 }
 
 function finishCompletedOrPending(root: string, journal: MigrateJournal, write: (s: string) => void): MigrateResult {
+  applyTopicRewrites(root, journal.topicEdits, write);
   writeJournal(root, journal);
   if (journal.topicEdits.length) {
     writeMaintenanceStage(root, 'references-pending');
@@ -447,6 +438,7 @@ function rollback(root: string, opts: MigrateOptions, write: (s: string) => void
       write('library migrate: rollback refused (live library is not v2; refusing to delete)\n');
       return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: ['live not v2'], message: 'live not v2' };
     }
+    restoreTopicRewrites(root, write);
     renameSync(meta.backup, libRoot);
     writeBackupMeta(root, meta.backup, true);
     writeMaintenanceStage(root, 'completed');
@@ -457,7 +449,22 @@ function rollback(root: string, opts: MigrateOptions, write: (s: string) => void
   }
 }
 
-function scanAndRewriteTopics(root: string, write: (s: string) => void): {
+function refuseBeforeActivate(root: string, blockers: string[], write: (s: string) => void): MigrateResult {
+  const staging = join(root, '.researcher-workspace', 'migrate-staging');
+  if (existsSync(staging)) rmSync(staging, { recursive: true, force: true });
+  const stage = readMaintenanceStage(root);
+  if (stage === 'maintenance' || stage === 'converting') {
+    rmSync(join(maintenanceDir(root), 'stage.json'), { force: true });
+  }
+  write(`library migrate: refused ${blockers.join('; ')}\n`);
+  return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers, message: blockers.join('; ') };
+}
+
+function topicRefBackupRoot(root: string): string {
+  return join(maintenanceDir(root), 'topic-ref-backup');
+}
+
+function previewTopicRewrites(root: string): {
   edits: { topicPath: string; files: string[] }[];
   blockers: string[];
 } {
@@ -475,17 +482,67 @@ function scanAndRewriteTopics(root: string, write: (s: string) => void): {
     const files: string[] = [];
     for (const abs of walkMdFiles(topicDir)) {
       const before = readFileSync(abs, 'utf8');
-      const after = rewriteManagedRefs(before);
-      if (after === before) continue;
-      writeFileSync(abs, after);
+      if (rewriteManagedRefs(before) === before) continue;
       files.push(relative(topicDir, abs).replace(/\\/g, '/'));
     }
-    if (files.length) {
-      edits.push({ topicPath: topic.path, files });
-      write(`library migrate: rewrote ${files.length} file(s) in ${topic.path}\n`);
-    }
+    if (files.length) edits.push({ topicPath: topic.path, files });
   }
   return { edits, blockers };
+}
+
+function applyTopicRewrites(
+  root: string,
+  edits: { topicPath: string; files: string[] }[],
+  write: (s: string) => void,
+): void {
+  for (const edit of edits) {
+    const topicDir = join(root, edit.topicPath);
+    const rewritten: string[] = [];
+    for (const file of edit.files) {
+      const abs = join(topicDir, file);
+      if (!existsSync(abs)) continue;
+      const before = readFileSync(abs, 'utf8');
+      const after = rewriteManagedRefs(before);
+      if (after === before) continue;
+      const backup = join(topicRefBackupRoot(root), edit.topicPath, file);
+      mkdirSync(dirname(backup), { recursive: true });
+      if (!existsSync(backup)) writeFileSync(backup, before);
+      writeFileSync(abs, after);
+      rewritten.push(file);
+    }
+    if (rewritten.length) write(`library migrate: rewrote ${rewritten.length} file(s) in ${edit.topicPath}\n`);
+  }
+}
+
+function restoreTopicRewrites(root: string, write: (s: string) => void): void {
+  const backupRoot = topicRefBackupRoot(root);
+  if (!existsSync(backupRoot) || !statSync(backupRoot).isDirectory()) return;
+  let restored = 0;
+  for (const abs of walkFiles(backupRoot)) {
+    const rel = relative(backupRoot, abs).replace(/\\/g, '/');
+    const dest = join(root, rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, readFileSync(abs));
+    restored += 1;
+  }
+  if (restored) write(`library migrate: restored ${restored} topic managed ref file(s)\n`);
+}
+
+function walkFiles(dir: string): string[] {
+  const out: string[] = [];
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return out;
+  for (const name of readdirSync(dir)) {
+    const abs = join(dir, name);
+    let st;
+    try {
+      st = statSync(abs);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) out.push(...walkFiles(abs));
+    else out.push(abs);
+  }
+  return out;
 }
 
 function rewriteManagedRefs(text: string): string {

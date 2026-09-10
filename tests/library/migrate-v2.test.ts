@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 import { PaperLibrary } from '../../src/library/store.js';
-import { listResearcherWriters, listUsageLeases, writeMaintenanceStage } from '../../src/library/maintenance.js';
+import { listResearcherWriters, listUsageLeases, readMaintenanceStage, writeMaintenanceStage } from '../../src/library/maintenance.js';
 import { migrateLibrary } from '../../src/library/migrate-v2.js';
 
 function seedLegacy(root: string): void {
@@ -179,6 +179,7 @@ describe('library migrate v2 (S6)', () => {
     expect(result.blockers.join(' ')).toMatch(/missing read artifact/);
     expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
     expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(false);
+    expect(readMaintenanceStage(root)).toBeUndefined();
   });
 
   it('rewrites topic managed refs and stays references-pending until they are committed', () => {
@@ -192,6 +193,14 @@ describe('library migrate v2 (S6)', () => {
     expect(notes).toContain('/library/documents/paper_arxiv_2401_12345');
     expect(notes).not.toContain('/library/p/');
     expect(notes).not.toContain('/library/papers/');
+    const rolled = migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(rolled.status).toBe('rolled-back');
+    const restoredNotes = readFileSync(join(root, 't/notes.md'), 'utf8');
+    expect(restoredNotes).toContain('.researcher-workspace/library/papers/');
+    expect(restoredNotes).toContain('/library/p/paper_arxiv_2401_12345');
+    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    const remigrate = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    expect(remigrate.status).toBe('references-pending');
     const blocked = migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
     expect(blocked.status).toBe('references-pending');
     execaSync('git', ['add', '-A'], { cwd: join(root, 't') });
