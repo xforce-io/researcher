@@ -12,7 +12,7 @@ import {
   stagePaths,
 } from '../git/workspace-ops.js';
 import { LIBRARY_DIR } from '../library/store.js';
-import { readMaintenanceStage } from '../library/maintenance.js';
+import { acquireSharedLease, readMaintenanceStage } from '../library/maintenance.js';
 import { classifyTopicGit, type TopicGitInfo } from './topic-git.js';
 import {
   activeTopics,
@@ -113,6 +113,14 @@ function isAllowlistedLibraryPath(rel: string): boolean {
   return /^documents\/[^/]+\/reads\/[^/]+\.(md|json)$/.test(rest);
 }
 
+function isLegacyManagedLibraryPath(rel: string): boolean {
+  const prefix = `${LIBRARY_DIR}/`;
+  if (!rel.startsWith(prefix)) return false;
+  const rest = rel.slice(prefix.length);
+  if (rest === 'papers.jsonl' || rest === 'reads.jsonl' || rest === 'notes.jsonl') return true;
+  return /^papers\/[^/]+\/reads\/[^/]+\.md$/.test(rest);
+}
+
 function listTrackedAllowlistedLibraryPaths(root: string): string[] {
   try {
     const { stdout } = execaSync('git', ['ls-files', '-z', '--', LIBRARY_DIR], { cwd: root });
@@ -125,6 +133,16 @@ function listTrackedAllowlistedLibraryPaths(root: string): string[] {
 /** Allowlisted Library paths relative to the workspace root, including tracked deletions. */
 export function listLibrarySyncPaths(root: string): string[] {
   const seen = new Set<string>(listTrackedAllowlistedLibraryPaths(root));
+  try {
+    const { stdout } = execaSync('git', ['ls-files', '-z', '--', LIBRARY_DIR], { cwd: root });
+    for (const p of stdout.split('\0')) {
+      if (!p || !isLegacyManagedLibraryPath(p)) continue;
+      const abs = join(root, p);
+      if (!existsSync(abs)) seen.add(p);
+    }
+  } catch {
+    /* not a git repo */
+  }
   const lib = join(root, LIBRARY_DIR);
   if (!existsSync(lib) || !statSync(lib).isDirectory()) return [...seen];
   for (const name of LIBRARY_LEDGERS) {
@@ -239,56 +257,66 @@ export async function runWorkspaceSync(opts: WorkspaceSyncOptions): Promise<Work
       1,
     );
   }
-  const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(opts.cwd));
-  const actions = resolveActions(opts);
-  const dryRun = opts.dryRun === true;
-  const { selected, dormant } = selectTopics(manifest.topics, opts.all);
+  let releaseLease = () => {};
+  try {
+    releaseLease = acquireSharedLease(opts.cwd, 'researcher workspace sync');
+  } catch (err) {
+    throw new WorkspaceSyncError(err instanceof Error ? err.message : String(err), 1);
+  }
+  try {
+    const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(opts.cwd));
+    const actions = resolveActions(opts);
+    const dryRun = opts.dryRun === true;
+    const { selected, dormant } = selectTopics(manifest.topics, opts.all);
 
-  const topics: TopicSyncResult[] = [];
-  let failed = 0;
+    const topics: TopicSyncResult[] = [];
+    let failed = 0;
 
-  for (const t of selected) {
-    // Re-classify each time so pull can refresh head before pointers.
-    let info = classifyTopicGit(opts.cwd, t.path);
-    const row: TopicSyncResult = { path: t.path, kind: info.kind };
-    let topicFailed = false;
+    for (const t of selected) {
+      // Re-classify each time so pull can refresh head before pointers.
+      let info = classifyTopicGit(opts.cwd, t.path);
+      const row: TopicSyncResult = { path: t.path, kind: info.kind };
+      let topicFailed = false;
 
-    if (actions.pull) {
-      row.pull = await doPull(info, dryRun);
-      if (row.pull.status === 'failed') topicFailed = true;
-      // refresh after pull
-      info = classifyTopicGit(opts.cwd, t.path);
-      row.kind = info.kind;
+      if (actions.pull) {
+        row.pull = await doPull(info, dryRun);
+        if (row.pull.status === 'failed') topicFailed = true;
+        // refresh after pull
+        info = classifyTopicGit(opts.cwd, t.path);
+        row.kind = info.kind;
+      }
+
+      if (actions.pushTopics) {
+        row.push = await doPush(info, dryRun);
+        if (row.push.status === 'failed') topicFailed = true;
+        info = classifyTopicGit(opts.cwd, t.path);
+        row.kind = info.kind;
+      }
+
+      if (topicFailed) failed += 1;
+      topics.push(row);
     }
 
-    if (actions.pushTopics) {
-      row.push = await doPush(info, dryRun);
-      if (row.push.status === 'failed') topicFailed = true;
-      info = classifyTopicGit(opts.cwd, t.path);
-      row.kind = info.kind;
+    let pointers: PointersResult | undefined;
+    if (actions.pointers) {
+      pointers = await bumpPointers({
+        root: opts.cwd,
+        topics: selected.map((t) => t.path),
+        dryRun,
+      });
+      if (pointers.status === 'failed') failed += 1;
     }
 
-    if (topicFailed) failed += 1;
-    topics.push(row);
-  }
+    let library: PointersResult | undefined;
+    if (actions.library) {
+      library = await commitLibrary({ root: opts.cwd, dryRun });
+      if (library.status === 'failed') failed += 1;
+    }
 
-  let pointers: PointersResult | undefined;
-  if (actions.pointers) {
-    pointers = await bumpPointers({
-      root: opts.cwd,
-      topics: selected.map((t) => t.path),
-      dryRun,
-    });
-    if (pointers.status === 'failed') failed += 1;
+    return { actions, topics, dormant, pointers, library, failed };
+  } finally {
+    releaseLease();
   }
-
-  let library: PointersResult | undefined;
-  if (actions.library) {
-    library = await commitLibrary({ root: opts.cwd, dryRun });
-    if (library.status === 'failed') failed += 1;
-  }
-
-  return { actions, topics, dormant, pointers, library, failed };
 }
 
 async function bumpPointers(o: {

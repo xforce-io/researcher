@@ -459,7 +459,7 @@ describe('renderWorkspaceHome', () => {
     // contextual primary + secondary Add paper (same modal as Library)
     expect(html).toContain('data-open-add-paper');
     expect(html).toContain('id="add-paper-modal"');
-    expect(html).toContain('action="/library/add"');
+    expect(html).toContain('action="/library/documents/import"');
     expect(html).toMatch(/<button class="secondary home-cta-secondary"[^>]*>Add paper<\/button>/);
     expect(html).not.toContain('Workspace Home');
     expect(html).not.toContain('href="/">Workspace</a>');
@@ -505,7 +505,7 @@ describe('renderWorkspaceHome', () => {
     expect(html).not.toContain('data-trending-more');
     expect(html).toContain('name="next" value="paper"');
     expect(html).toContain('name="input" value="arxiv:2609.01597"');
-    expect(html).toContain('action="/library/add"');
+    expect(html).toContain('action="/library/documents/import"');
   });
 
   it('pages More from the embedded pack without a second radar fetch', () => {
@@ -710,9 +710,9 @@ describe('renderLibraryPaper delete affordance', () => {
       integrations: [],
       topicSuggestions: [],
     });
-    expect(html).toContain('action="/library/delete"');
+    expect(html).toContain('data-json-method="DELETE"');
+    expect(html).toContain(`/library/documents/${basePaper.id}`);
     expect(html).toContain('Delete from Library');
-    expect(html).toContain('name="paperId"');
   });
 
   it('hides delete form for linked papers', () => {
@@ -733,7 +733,7 @@ describe('renderLibraryPaper delete affordance', () => {
       integrations: [],
       topicSuggestions: [],
     });
-    expect(html).not.toContain('action="/library/delete"');
+    expect(html).not.toContain('Delete from Library');
     expect(html).toContain('cannot be deleted');
   });
 });
@@ -762,7 +762,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('id="add-paper-modal"');
     expect(html).toContain('data-open-add-paper');
     expect(html).toContain('data-close-add-paper');
-    expect(html).toContain('action="/library/add"');
+    expect(html).toContain('action="/library/documents/import"');
     expect(html).toContain('name="input"');
     expect(html).toContain('paper-card');
     expect(html).toContain('Reusable Paper Cards');
@@ -818,7 +818,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('/library');
     expect(html).toContain('paper-detail-main');
     expect(html).toContain('paper-inspector');
-    expect(html).toContain('action="/library/read"');
+    expect(html).toContain(`/library/documents/${library.papers[0].id}/reads`);
     expect(html).toContain('name="paperId"');
     expect(html).toContain('Re-run read');
     expect(html).toContain('name="force" value="1"');
@@ -828,7 +828,7 @@ describe('renderLibrary', () => {
     expect(html).not.toContain('Context<select');
     expect(html).toContain('<h2>Findings</h2>');
     expect(html).toContain('Linked topics');
-    expect(html).toContain('action="/library/unlink"');
+    expect(html).toContain(`/library/documents/${library.papers[0].id}/links/topic/trace`);
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
     expect(html).toContain('id="annotations"');
@@ -840,7 +840,7 @@ describe('renderLibrary', () => {
     expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#annotations"/);
     // Notes jump only in the page head (not duplicated in the reader chrome).
     expect(html.match(/href="#annotations"/g)?.length).toBe(1);
-    expect(html).toContain('action="/library/note"');
+    expect(html).toContain(`/library/documents/${library.papers[0].id}/annotations`);
     expect(html).toContain('paper-note-body');
     expect(html).toContain('<strong>Selection</strong>');
     expect(html).toContain('<code>generation</code>');
@@ -957,7 +957,8 @@ describe('renderLibrary', () => {
     expect(html).toContain("cls = 'error'");
     expect(html).toContain('data-library-task="task-9"');
     expect(html).toContain('data-started-at="1719000000000"');
-    expect(html).toContain('/library/read/');
+    expect(html).toContain('/library/documents/');
+    expect(html).toContain('/reads/');
   });
 });
 
@@ -1045,8 +1046,8 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(html).toContain('L1 triage');
     expect(html).toMatch(/linked-topic-row[\s\S]*trace[\s\S]*in landscape/);
     expect(html).toMatch(/linked-topic-row[\s\S]*decision[\s\S]*not in landscape/);
-    expect(html).toContain('name="topic" value="decision"');
-    expect(html).toContain('name="topic" value="trace"');
+    expect(html).toContain('/links/topic/decision');
+    expect(html).toContain('/links/topic/trace');
     expect(html).toContain(`href="/library/documents/${paper.id}?edit=decision"`);
     expect(html).toContain(`href="/library/documents/${paper.id}?edit=trace"`);
   });
@@ -1087,7 +1088,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
 
   it('S4 keeps a distinct Unlink control per linked topic', () => {
     const html = renderLibraryPaper(view());
-    const unlinks = html.match(/action="\/library\/unlink"/g) ?? [];
+    const unlinks = html.match(/class="link-button">Unlink<\/button>/g) ?? [];
     expect(unlinks).toHaveLength(2);
   });
 

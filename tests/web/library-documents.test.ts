@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+import { renderNoteReader } from '../../src/web/views.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -124,6 +126,12 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     expect(editor).toContain('setEditingEnabled');
     expect(editor).toContain('beforeunload');
     expect(editor).toContain('Unsaved changes. Discard?');
+    expect(editor).toContain("e.target.closest('a')");
+    expect(editor).toContain('class="brand"');
+    expect(editor).toContain('nav-link');
+    expect(editor).toContain('note-editor-form');
+    expect(editor).toContain('note-editor-actions');
+    expect(editor).toContain('autofocus');
     const payload = await created.json() as { id: string; url: string };
     const retry = await fetch(base + '/library/documents', {
       method: 'POST',
@@ -140,5 +148,75 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
       headers: { accept: 'application/json' },
     });
     expect(bad.status).toBe(400);
+  });
+
+  it('keeps the HTML collection complete when opening a search URL', async () => {
+    const html = await (await fetch(base + '/library?status=all&q=2401.99999')).text();
+    expect(html).toContain(linkedId);
+    expect(html).toContain(noteId);
+    expect(html).toContain('https://example.com/blog/x');
+    const json = await (await fetch(base + '/library/documents?q=2401.99999')).json() as { id: string }[];
+    expect(json.map((d) => d.id)).toEqual([linkedId]);
+  });
+
+  it('honors a cancelled submit before the JSON form handler sends a request', () => {
+    const html = renderNoteReader({ id: 'doc_test', title: '', body: 'test', updatedAt: '' });
+    const script = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g)).at(-1)![1];
+    let submit!: (event: unknown) => void;
+    let requests = 0;
+    runInNewContext(script, {
+      document: { addEventListener: (_: string, listener: typeof submit) => { submit = listener; } },
+      FormData: class { forEach() {} },
+      fetch: () => { requests++; return Promise.resolve({ status: 204 }); },
+      location: { reload() {} },
+    });
+    const form = { getAttribute: (key: string) => key === 'data-json-method' ? 'DELETE' : '/library/documents/id' };
+    submit({ target: form, defaultPrevented: true, preventDefault() {} });
+    expect(requests).toBe(0);
+    submit({ target: form, defaultPrevented: false, preventDefault() {} });
+    expect(requests).toBe(1);
+  });
+
+  it('rejects non-JSON and cross-origin writes on document endpoints', async () => {
+    const id = newDocumentId();
+    const foreign = await fetch(base + '/library/documents', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://foreign.example' },
+      body: JSON.stringify({ docType: 'note', id, title: '', body: 'x', mutationId: 'o1' }),
+    });
+    expect(foreign.status).toBe(403);
+    const plain = await fetch(base + '/library/documents', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ docType: 'note', id, title: '', body: 'x', mutationId: 'o1' }),
+    });
+    expect(plain.status).toBe(415);
+    expect(new PaperLibrary(root).getDocument(id)).toBeUndefined();
+  });
+
+  it('exposes unified import/reads/annotations JSON routes and 404s old entrypoints', async () => {
+    const imported = await fetch(base + '/library/documents/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input: '2401.55555' }),
+    });
+    expect(imported.status).toBe(201);
+    const { id } = await imported.json() as { id: string };
+    const listed = await fetch(base + `/library/documents/${id}/reads`);
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual([]);
+    const notes = await fetch(base + `/library/documents/${id}/annotations`);
+    expect(notes.status).toBe(200);
+    expect(await notes.json()).toEqual([]);
+    const created = await fetch(base + `/library/documents/${id}/annotations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'margin note', kind: 'idea' }),
+    });
+    expect(created.status).toBe(201);
+    expect((await fetch(base + '/library/add', { method: 'POST' })).status).toBe(404);
+    expect((await fetch(base + '/library/read', { method: 'POST' })).status).toBe(404);
+    expect((await fetch(base + '/library/note', { method: 'POST' })).status).toBe(404);
+    expect((await fetch(base + `/library/p/${id}`)).status).toBe(404);
   });
 });

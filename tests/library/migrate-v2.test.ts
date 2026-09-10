@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execaSync } from 'execa';
 import { PaperLibrary } from '../../src/library/store.js';
-import { listResearcherWriters, writeMaintenanceStage } from '../../src/library/maintenance.js';
+import { listResearcherWriters, listUsageLeases, readMaintenanceStage, writeMaintenanceStage } from '../../src/library/maintenance.js';
 import { migrateLibrary } from '../../src/library/migrate-v2.js';
 
 function seedLegacy(root: string): void {
@@ -53,6 +54,26 @@ function seedLegacy(root: string): void {
     join(lib, 'papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'),
     '# Essence\n\nkept\n',
   );
+  writeFileSync(join(lib, 'papers/paper_arxiv_2401_12345/source.pdf'), '%PDF-fake\n');
+}
+
+function gitInit(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  execaSync('git', ['init', '-b', 'main'], { cwd: dir });
+  execaSync('git', ['config', 'user.email', 't@t'], { cwd: dir });
+  execaSync('git', ['config', 'user.name', 't'], { cwd: dir });
+}
+
+function seedTopicWithOldRefs(root: string): void {
+  writeFileSync(join(root, 'researcher.workspace.yml'), 'version: 1\ntopics:\n  - { path: t, active: true }\n');
+  const topic = join(root, 't');
+  gitInit(topic);
+  writeFileSync(
+    join(topic, 'notes.md'),
+    'see .researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md and .researcher-workspace/library/papers/paper_arxiv_2401_12345/source.pdf and /library/p/paper_arxiv_2401_12345\n',
+  );
+  execaSync('git', ['add', '-A'], { cwd: topic });
+  execaSync('git', ['commit', '-m', 'init'], { cwd: topic });
 }
 
 describe('library migrate v2 (S6)', () => {
@@ -103,6 +124,8 @@ describe('library migrate v2 (S6)', () => {
     expect(lib.listIntegrations('paper_arxiv_2401_12345')).toHaveLength(1);
     expect(lib.listReads('paper_arxiv_2401_12345')[0].status).toBe('read');
     expect(readFileSync(join(root, '.researcher-workspace/library/documents/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'), 'utf8')).toContain('kept');
+    expect(existsSync(join(root, '.researcher-workspace/library/documents/paper_arxiv_2401_12345/assets/source.pdf'))).toBe(true);
+    expect(listUsageLeases(root).some((l) => l.mode === 'exclusive')).toBe(false);
     const second = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
     expect(second.status).toBe('no-op');
     expect(lib.listDocuments()).toHaveLength(1);
@@ -124,4 +147,157 @@ describe('library migrate v2 (S6)', () => {
     expect(() => new PaperLibrary(root).listDocuments()).toThrow(/maintenance|legacy layout/);
     writeMaintenanceStage(root, 'completed');
   });
+
+  it('resumes after live rename interrupt without emptying the library', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-resume-'));
+    seedLegacy(root);
+    const first = migrateLibrary({
+      cwd: root,
+      listWriters: () => [],
+      onAfterLiveRename: () => {
+        throw new Error('cut');
+      },
+      write: () => {},
+    });
+    expect(first.status).toBe('refused');
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(false);
+    expect(existsSync(join(root, '.researcher-workspace/migrate-staging/library/schema.json'))).toBe(true);
+    const withoutResume = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    expect(withoutResume.status).toBe('refused');
+    expect(withoutResume.blockers.join(' ')).toMatch(/--resume/);
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(false);
+    expect(existsSync(join(root, '.researcher-workspace/migrate-staging/library/schema.json'))).toBe(true);
+    const resumed = migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
+    expect(resumed.status).toBe('completed');
+    expect(resumed.documents).toBe(1);
+    const lib = new PaperLibrary(root);
+    expect(lib.getDocument('paper_arxiv_2401_12345')?.docType).toBe('paper');
+    expect(lib.listNotes('paper_arxiv_2401_12345')).toHaveLength(1);
+  });
+
+  it('refuses missing successful read artifacts and leaves the live v1 tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-miss-'));
+    seedLegacy(root);
+    rmSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'));
+    const result = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    expect(result.status).toBe('refused');
+    expect(result.blockers.join(' ')).toMatch(/missing read artifact/);
+    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(false);
+    expect(readMaintenanceStage(root)).toBeUndefined();
+  });
+
+  it('rewrites topic managed refs and stays references-pending until they are committed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-refs-'));
+    seedLegacy(root);
+    seedTopicWithOldRefs(root);
+    const first = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    expect(first.status).toBe('references-pending');
+    const notes = readFileSync(join(root, 't/notes.md'), 'utf8');
+    expect(notes).toContain('.researcher-workspace/library/documents/paper_arxiv_2401_12345/reads/');
+    expect(notes).toContain('.researcher-workspace/library/documents/paper_arxiv_2401_12345/assets/source.pdf');
+    expect(notes).toContain('/library/documents/paper_arxiv_2401_12345');
+    expect(notes).not.toContain('/library/p/');
+    expect(notes).not.toContain('/library/papers/');
+    expect(notes).not.toContain('/documents/paper_arxiv_2401_12345/source.pdf');
+    writeFileSync(join(root, 't/notes.md'), `${notes}\nhand-edited after migrate\n`);
+    const overwrite = migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(overwrite.status).toBe('refused');
+    expect(overwrite.blockers.join(' ')).toMatch(/post-migration edits/);
+    expect(readFileSync(join(root, 't/notes.md'), 'utf8')).toContain('hand-edited after migrate');
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(true);
+    writeFileSync(
+      join(root, 't/notes.md'),
+      'see .researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md and .researcher-workspace/library/papers/paper_arxiv_2401_12345/source.pdf and /library/p/paper_arxiv_2401_12345\n',
+    );
+    const restoredRefs = migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
+    expect(restoredRefs.status).toBe('references-pending');
+    expect(restoredRefs.blockers.join(' ')).toMatch(/legacy library refs/);
+    writeFileSync(join(root, 't/notes.md'), notes);
+    const rolled = migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(rolled.status).toBe('rolled-back');
+    const restoredNotes = readFileSync(join(root, 't/notes.md'), 'utf8');
+    expect(restoredNotes).toContain('.researcher-workspace/library/papers/');
+    expect(restoredNotes).toContain('/library/p/paper_arxiv_2401_12345');
+    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    const remigrate = migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    expect(remigrate.status).toBe('references-pending');
+    const blocked = migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
+    expect(blocked.status).toBe('references-pending');
+    execaSync('git', ['add', '-A'], { cwd: join(root, 't') });
+    execaSync('git', ['commit', '-m', 'rewrite refs'], { cwd: join(root, 't') });
+    const done = migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
+    expect(done.status).toBe('completed');
+  });
+
+  it('validates backup, preserves post-migration data, and makes a second rollback a no-op', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-rb-'));
+    seedLegacy(root);
+    expect(migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} }).status).toBe('completed');
+    const lib = new PaperLibrary(root);
+    lib.createNote({ id: 'doc_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', title: '', body: 'keep after migrate', mutationId: 'm1' });
+    const first = migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(first.status).toBe('rolled-back');
+    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(false);
+    const preserved = readdirSync(join(root, '.researcher-workspace')).filter((n) => n.startsWith('library-post-migration-'));
+    expect(preserved.length).toBe(1);
+    expect(existsSync(join(root, '.researcher-workspace', preserved[0], 'documents/doc_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/document.md'))).toBe(true);
+    const second = migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(second.status).toBe('no-op');
+    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    const missing = migrateLibrary({
+      cwd: mkdtempSync(join(tmpdir(), 'r-mig-nobak-')),
+      rollback: true,
+      listWriters: () => [],
+      write: () => {},
+    });
+    expect(missing.status).toBe('refused');
+    expect(missing.blockers.join(' ')).toMatch(/no backup/);
+  });
+  it('refuses rollback of committed nested topics and deleted files', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-nested-'));
+    seedLegacy(root);
+    const topic = join(root, 'feeds/topic');
+    gitInit(topic);
+    writeFileSync(join(root, 'researcher.workspace.yml'), 'version: 1\ntopics:\n  - { path: feeds/topic, active: true }\n');
+    writeFileSync(join(topic, 'note.md'), '/library/p/paper_arxiv_2401_12345\n');
+    execaSync('git', ['add', '-A'], { cwd: topic });
+    execaSync('git', ['commit', '-m', 'init'], { cwd: topic });
+    expect(migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} }).status).toBe('references-pending');
+    const rewritten = readFileSync(join(topic, 'note.md'), 'utf8');
+    execaSync('git', ['add', '-A'], { cwd: topic });
+    execaSync('git', ['commit', '-m', 'migrate'], { cwd: topic });
+    const rollback = () => migrateLibrary({ cwd: root, rollback: true, listWriters: () => [], write: () => {} });
+    expect(rollback().blockers.join(' ')).toContain('already committed');
+    expect(readFileSync(join(topic, 'note.md'), 'utf8')).toBe(rewritten);
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(true);
+    rmSync(join(topic, 'note.md'));
+    expect(rollback().blockers.join(' ')).toContain('deleted after migration');
+    expect(existsSync(join(topic, 'note.md'))).toBe(false);
+  });
+
+  it('keeps references-pending for missing targets and missing journals', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-mig-target-'));
+    seedLegacy(root);
+    seedTopicWithOldRefs(root);
+    migrateLibrary({ cwd: root, listWriters: () => [], write: () => {} });
+    const topic = join(root, 't');
+    const valid = readFileSync(join(topic, 'notes.md'), 'utf8');
+    writeFileSync(join(topic, 'notes.md'), valid.replace('reads/read_paper_arxiv_2401_12345.md', 'reads/missing.md'));
+    execaSync('git', ['add', '-A'], { cwd: topic });
+    execaSync('git', ['commit', '-m', 'broken target'], { cwd: topic });
+    const resume = () => migrateLibrary({ cwd: root, resume: true, listWriters: () => [], write: () => {} });
+    expect(resume().blockers.join(' ')).toContain('missing.md');
+    expect(readMaintenanceStage(root)).toBe('references-pending');
+    writeFileSync(join(topic, 'notes.md'), valid);
+    execaSync('git', ['add', '-A'], { cwd: topic });
+    execaSync('git', ['commit', '-m', 'valid target'], { cwd: topic });
+    expect(resume().status).toBe('completed');
+    writeMaintenanceStage(root, 'references-pending');
+    rmSync(join(root, '.researcher-workspace/maintenance/migrate-journal.json'));
+    expect(resume().status).toBe('refused');
+    expect(readMaintenanceStage(root)).toBe('references-pending');
+  });
+
 });

@@ -138,14 +138,25 @@ export class TaskRegistry {
     return undefined;
   }
 
+  /** Most recently started task for a slug, including finished ones (SSE replay). */
+  latestTask(slug: string): RunTask | undefined {
+    let latest: RunTask | undefined;
+    for (const t of this.tasks.values()) {
+      if (t.slug !== slug) continue;
+      if (!latest || t.startedAt >= latest.startedAt) latest = t;
+    }
+    return latest;
+  }
+
   start(slug: string, cwd: string, workspaceRoot?: string, opts?: { discover?: boolean }): RunTask {
     return this.startJob(slug, (onLine, onEvent) => this.runner(cwd, onLine, onEvent, workspaceRoot, opts));
   }
 
-  startJob(slug: string, job: TaskJob): RunTask {
+  startJob(slug: string, job: TaskJob, id = this.idSeq()): RunTask {
     if (this.isBusy(slug)) throw new Error('busy');
+    if (this.tasks.has(id)) throw new Error('task id already exists');
     const task: RunTask = {
-      id: this.idSeq(), slug, lines: [], status: 'running', exitCode: null,
+      id, slug, lines: [], status: 'running', exitCode: null,
       startedAt: Date.now(), plan: null, stage: null,
     };
     this.tasks.set(task.id, task);
