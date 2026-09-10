@@ -425,6 +425,19 @@ describe('workspace sync --library', () => {
     expect(again.library?.status).toBe('no-op');
   });
 
+  it('refuses sync while library maintenance stage is incomplete', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-sync-maint-'));
+    gitInit(root);
+    writeManifest(root, [{ path: 't' }]);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't', 'a'), '1');
+    gitCommitAll(join(root, 't'), 'init');
+    gitCommitAll(root, 'super');
+    const { writeMaintenanceStage } = await import('../../src/library/maintenance.js');
+    writeMaintenanceStage(root, 'activating');
+    await expect(runWorkspaceSync({ cwd: root, library: true })).rejects.toThrow(/maintenance in progress/);
+  });
+
   it('commits deletions of previously tracked allowlisted files', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-sync-lib-del-'));
     gitInit(root);

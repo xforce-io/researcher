@@ -776,7 +776,7 @@ describe('renderLibrary', () => {
     // Default inbox: Unlinked is active on first paint.
     expect(html).toMatch(/<button class="active"[^>]*data-filter="unlinked"[^>]*aria-pressed="true"/);
     expect(html).toMatch(/data-filter="all"[^>]*aria-pressed="false"/);
-    expect(html).toContain("activeLibraryFilter = 'unlinked'");
+    expect(html).toContain("params.get('status') || 'unlinked'");
     expect(html).toContain("activeLibraryFilter === 'unlinked'");
     expect(html).toContain('class="empty-state library-no-results" hidden');
     expect(html).toContain('applyLibraryFilters');

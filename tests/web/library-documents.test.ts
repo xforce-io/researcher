@@ -79,6 +79,8 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     expect(html).toContain('data-type="blog"');
     expect(html).toContain('data-type="note"');
     expect(html).toContain('>note</span>');
+    expect(html).toContain('syncLibraryUrl');
+    expect(html).toContain("history.replaceState");
     expect(html).not.toMatch(new RegExp(`data-status="read"[^>]*${noteId}|${noteId}[^>]*data-status="read"`));
     const unlinked = await (await fetch(base + '/library/documents?status=unlinked', {
       headers: { accept: 'application/json' },
@@ -112,10 +114,25 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
       body: JSON.stringify({ docType: 'note', id, title: '', body: 'from http', mutationId: 'h1' }),
     });
     expect(created.status).toBe(201);
+    const editor = await (await fetch(base + '/library/documents/new?type=note')).text();
+    expect(editor).toContain('setEditingEnabled');
+    expect(editor).toContain('beforeunload');
+    expect(editor).toContain('Unsaved changes. Discard?');
     const payload = await created.json() as { id: string; url: string };
+    const retry = await fetch(base + '/library/documents', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ docType: 'note', id, title: '', body: 'from http', mutationId: 'h1' }),
+    });
+    expect(retry.status).toBe(200);
     const page = await fetch(base + payload.url);
     expect(page.status).toBe(200);
     expect(await page.text()).toContain('from http');
     expect(new PaperLibrary(root).getDocument(id)?.body).toBe('from http');
+    expect(new PaperLibrary(root).listDocuments().filter((d) => d.id === id)).toHaveLength(1);
+    const bad = await fetch(base + '/library/documents?status=nope', {
+      headers: { accept: 'application/json' },
+    });
+    expect(bad.status).toBe(400);
   });
 });

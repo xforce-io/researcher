@@ -146,7 +146,13 @@ async function handle(
     if (accept.includes('application/json')) {
       return sendJsonDocuments(res, root, { type, status, query: q });
     }
-    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type, status, query: q })));
+    try {
+      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type, status, query: q })));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const code = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
+      return send(res, code, 'text/plain', message);
+    }
   }
   if (req.method === 'GET' && path === '/library/documents') {
     const status = url.searchParams.get('status') ?? 'all';
@@ -616,13 +622,15 @@ async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root:
     return;
   }
   try {
-    const doc = new PaperLibrary(root).createNote({
+    const lib = new PaperLibrary(root);
+    const existed = Boolean(lib.getDocument(payload.id));
+    const doc = lib.createNote({
       id: payload.id,
       title: payload.title,
       body: payload.body,
       mutationId: payload.mutationId,
     });
-    send(res, 201, 'application/json; charset=utf-8', JSON.stringify({
+    send(res, existed ? 200 : 201, 'application/json; charset=utf-8', JSON.stringify({
       id: doc.id,
       revision: doc.revision,
       updatedAt: doc.updatedAt,

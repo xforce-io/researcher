@@ -588,21 +588,43 @@ export function renderNoteEditor(opts: {
         `<label>Title<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note"></label>` +
         `<label>Body<textarea name="body" required rows="16">${escapeHtml(opts.body)}</textarea></label>` +
         `<button class="primary" type="submit" data-save>Save</button>` +
-        `<a href="/library">Cancel</a>` +
+        `<a href="/library" data-cancel>Cancel</a>` +
         `<p class="save-status" aria-live="polite"></p>` +
       `</form>` +
       `<script>
 const form = document.getElementById('note-form');
+const titleEl = form.querySelector('[name=title]');
+const bodyEl = form.querySelector('[name=body]');
+const saveBtn = form.querySelector('[data-save]');
+const cancel = form.querySelector('[data-cancel]');
 let mutationId = crypto.randomUUID();
-form.addEventListener('input', () => { mutationId = crypto.randomUUID(); });
+let dirty = false;
+function setEditingEnabled(on) {
+  titleEl.disabled = !on;
+  bodyEl.disabled = !on;
+  if (saveBtn) saveBtn.disabled = !on;
+}
+form.addEventListener('input', () => {
+  if (form.dataset.saving === '1') return;
+  dirty = true;
+  mutationId = crypto.randomUUID();
+});
+cancel?.addEventListener('click', (e) => {
+  if (!dirty) return;
+  if (!confirm('Unsaved changes. Discard?')) e.preventDefault();
+});
+window.addEventListener('beforeunload', (e) => {
+  if (!dirty || form.dataset.saving === '1') return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (form.dataset.saving === '1') return;
   form.dataset.saving = '1';
-  const saveBtn = form.querySelector('[data-save]');
-  if (saveBtn) saveBtn.disabled = true;
-  const title = form.querySelector('[name=title]').value;
-  const body = form.querySelector('[name=body]').value;
+  setEditingEnabled(false);
+  const title = titleEl.value;
+  const body = bodyEl.value;
   const isNew = form.dataset.new === '1';
   const status = form.querySelector('.save-status');
   status.textContent = 'Saving';
@@ -618,16 +640,17 @@ form.addEventListener('submit', async (e) => {
     if (!res.ok) {
       status.textContent = 'Not saved';
       form.dataset.saving = '0';
-      if (saveBtn) saveBtn.disabled = false;
+      setEditingEnabled(true);
       return;
     }
     const data = await res.json();
+    dirty = false;
     status.textContent = 'Saved';
     location.href = data.url;
   } catch {
     status.textContent = 'Not saved';
     form.dataset.saving = '0';
-    if (saveBtn) saveBtn.disabled = false;
+    setEditingEnabled(true);
   }
 });
 </script>` +
@@ -1181,8 +1204,10 @@ const libraryTypeButtons = Array.from(document.querySelectorAll('[data-type-filt
 const libraryCards = Array.from(document.querySelectorAll('.paper-card.row'));
 const libraryNoResults = document.querySelector('.library-no-results');
 // Default inbox: papers not yet linked to any topic.
-let activeLibraryFilter = 'unlinked';
-let activeTypeFilter = 'all';
+const params = new URLSearchParams(location.search);
+let activeLibraryFilter = params.get('status') || 'unlinked';
+let activeTypeFilter = params.get('type') || 'all';
+if (params.get('q') && librarySearch) librarySearch.value = params.get('q');
 
 function cardMatchesFilter(card) {
   if (activeTypeFilter !== 'all' && card.dataset.type !== activeTypeFilter) return false;
@@ -1191,6 +1216,15 @@ function cardMatchesFilter(card) {
   if (activeLibraryFilter === 'linked') return card.dataset.linked === '1';
   if (activeLibraryFilter === 'integrated') return card.dataset.integrated === '1';
   return card.dataset.status === activeLibraryFilter;
+}
+
+function syncLibraryUrl() {
+  const u = new URL(location.href);
+  u.searchParams.set('status', activeLibraryFilter);
+  u.searchParams.set('type', activeTypeFilter);
+  const q = (librarySearch?.value || '').trim();
+  if (q) u.searchParams.set('q', q); else u.searchParams.delete('q');
+  history.replaceState(null, '', u);
 }
 
 function applyLibraryFilters() {
@@ -1203,7 +1237,18 @@ function applyLibraryFilters() {
     if (show) visible += 1;
   });
   if (libraryNoResults) libraryNoResults.hidden = visible > 0 || libraryCards.length === 0;
+  syncLibraryUrl();
 }
+
+function setActiveButtons(buttons, attr, value) {
+  buttons.forEach((b) => {
+    const active = (b.getAttribute(attr) || '') === value;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+setActiveButtons(libraryFilterButtons, 'data-filter', activeLibraryFilter);
+setActiveButtons(libraryTypeButtons, 'data-type-filter', activeTypeFilter);
 
 librarySearch?.addEventListener('input', applyLibraryFilters);
 libraryFilterButtons.forEach((button) => button.addEventListener('click', () => {

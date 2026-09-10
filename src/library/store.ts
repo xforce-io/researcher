@@ -21,7 +21,7 @@ import type {
   TopicIntegration,
 } from './model.js';
 import type { LibraryDocType } from './doc-type.js';
-import { isNoteDocType } from './doc-type.js';
+import { isNoteDocType, parseLibraryDocType } from './doc-type.js';
 import { maintenanceStage, readMaintenanceStage, withDomainWriteLock } from './maintenance.js';
 
 export const WORKSPACE_STATE_DIR = '.researcher-workspace';
@@ -462,10 +462,14 @@ export class PaperLibrary {
     status?: LibraryStatusFilter | string;
     query?: string;
   }): LibraryDocument[] {
-    let docs = this.listDocuments();
     const type = (opts.type ?? 'all').toLowerCase();
-    if (type && type !== 'all') docs = docs.filter((d) => d.docType === type);
     const status = (opts.status ?? 'all') as string;
+    if (status && !['all', 'unlinked', 'unread', 'read', 'linked', 'integrated'].includes(status)) {
+      throw Object.assign(new Error(`unknown status: ${status}`), { status: 400 });
+    }
+    if (type && type !== 'all') parseLibraryDocType(type);
+    let docs = this.listDocuments();
+    if (type && type !== 'all') docs = docs.filter((d) => d.docType === type);
     if (status !== 'all') {
       docs = docs.filter((d) => documentMatchesStatus(this, d, status));
     }

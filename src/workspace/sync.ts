@@ -12,6 +12,7 @@ import {
   stagePaths,
 } from '../git/workspace-ops.js';
 import { LIBRARY_DIR } from '../library/store.js';
+import { readMaintenanceStage } from '../library/maintenance.js';
 import { classifyTopicGit, type TopicGitInfo } from './topic-git.js';
 import {
   activeTopics,
@@ -229,6 +230,13 @@ export async function runWorkspaceSync(opts: WorkspaceSyncOptions): Promise<Work
     throw new WorkspaceSyncError(
       `not a workspace root: missing researcher.workspace.yml in ${opts.cwd}`,
       2,
+    );
+  }
+  const stage = readMaintenanceStage(opts.cwd);
+  if (stage && stage !== 'completed') {
+    throw new WorkspaceSyncError(
+      `library maintenance in progress (${stage}); run: researcher library migrate --resume`,
+      1,
     );
   }
   const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(opts.cwd));
