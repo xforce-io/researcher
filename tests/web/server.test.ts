@@ -99,7 +99,7 @@ beforeAll(async () => {
     libraryReadRunner: async ({ onLine, topicContext, paper, readId }) => {
       libraryReadCalls++;
       libraryReadTopicContexts.push(topicContext);
-      onLine?.('mock library read');
+      onLine?.(`mock library read ${readId}`);
       await new Promise<void>((resolve) => { releaseLibraryRead = resolve; });
       const artifactPath = `.researcher-workspace/library/documents/${paper.id}/reads/${readId}.md`;
       mkdirSync(dirname(join(root, artifactPath)), { recursive: true });
@@ -602,6 +602,28 @@ it('force reruns a Library read without forwarding topic context', async () => {
   expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
   releaseLibraryRead?.();
   await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'));
+});
+
+it('replays the requested read stream while a later read is active', async () => {
+  const url = base + '/library/documents/paper_arxiv_2401_12345/reads';
+  const start = async (mutationId: string) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ force: true, mutationId }) });
+    expect(res.status).toBe(202);
+    return (await res.json() as { readId: string }).readId;
+  };
+  const first = await start('stream-first');
+  releaseLibraryRead?.();
+  await waitFor(() => new PaperLibrary(root).listReads().find((r) => r.id === first)?.status === 'read');
+  const second = await start('stream-second');
+  try {
+    const stream = await (await fetch(`${url}/${first}/stream`, { signal: AbortSignal.timeout(2000) })).text();
+    expect(stream).toContain(`mock library read ${first}`);
+    expect(stream).not.toContain(second);
+    expect(stream).toContain('"status":"done"');
+  } finally {
+    releaseLibraryRead?.();
+  }
+  await waitFor(() => new PaperLibrary(root).listReads().find((r) => r.id === second)?.status === 'read');
 });
 
 it('upserts topic links separately from Library reads', async () => {

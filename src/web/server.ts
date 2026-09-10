@@ -150,7 +150,7 @@ async function handle(
       return sendJsonDocuments(res, root, { type, status, query: q });
     }
     try {
-      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type: 'all', status: 'all', query: q })));
+      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type: 'all', status: 'all' })));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const code = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
@@ -709,7 +709,7 @@ async function handleReads(
         lib.upsertRead({ id: readId, paperId: documentId, status: 'failed', lastError: message, mutationId });
         return 1;
       }
-    });
+    }, readId);
     sendJson(res, 202, { readId, url: documentUrl(documentId) });
     return;
   }
@@ -739,9 +739,8 @@ async function handleReads(
     return;
   }
   if (req.method === 'GET' && sub === 'stream') {
-    const task = ctx.registry.activeTask(libraryReadTaskKey(documentId))
-      ?? ctx.registry.latestTask(libraryReadTaskKey(documentId));
-    if (!task) {
+    const task = registry.get(readId);
+    if (!task || task.slug !== libraryReadTaskKey(documentId)) {
       send(res, 404, 'text/plain', 'no active read');
       return;
     }

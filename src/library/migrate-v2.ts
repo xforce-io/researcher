@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { execaSync } from 'execa';
 import type { Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from './model.js';
 import { LIBRARY_DIR, PaperLibrary, SCHEMA_VERSION } from './store.js';
@@ -382,8 +382,7 @@ function finishCompletedOrPending(root: string, journal: MigrateJournal, write: 
 function resumeReferences(root: string, write: (s: string) => void): MigrateResult {
   const journal = readJournal(root);
   if (!journal) {
-    writeMaintenanceStage(root, 'completed');
-    return { status: 'completed', documents: 0, annotations: 0, reads: 0, blockers: [], message: 'resumed' };
+    return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: ['missing migration journal'], message: 'missing migration journal' };
   }
   const blockers: string[] = [];
   for (const edit of journal.topicEdits) {
@@ -399,7 +398,10 @@ function resumeReferences(root: string, write: (s: string) => void): MigrateResu
       if (rewriteManagedRefs(body) !== body || hasLegacyManagedRefs(body)) {
         blockers.push(`${edit.topicPath}/${file} still has legacy library refs`);
       }
-      if (gitPorcelain(topicDir, file)) blockers.push(`${edit.topicPath}/${file} not committed`);
+      if (gitPorcelain(topicDir, file) || gitFileAtHead(topicDir, file) !== body) {
+        blockers.push(`${edit.topicPath}/${file} not committed`);
+      }
+      blockers.push(...invalidManagedTargets(root, body).map((target) => `${edit.topicPath}/${file}: missing or invalid target ${target}`));
     }
   }
   if (blockers.length) {
@@ -532,61 +534,79 @@ function applyTopicRewrites(
 function topicRollbackConflicts(root: string): string[] {
   const backupRoot = topicRefBackupRoot(root);
   if (!existsSync(backupRoot) || !statSync(backupRoot).isDirectory()) return [];
+  const journal = readJournal(root);
+  if (!journal) return ['missing migration journal; cannot validate topic rollback'];
   const conflicts: string[] = [];
-  for (const abs of walkFiles(backupRoot)) {
-    const rel = relative(backupRoot, abs).replace(/\\/g, '/');
-    const dest = join(root, rel);
-    const original = readFileSync(abs, 'utf8');
-    const rewritten = rewriteManagedRefs(original);
-    if (!existsSync(dest)) continue;
-    const current = readFileSync(dest, 'utf8');
-    const slash = rel.indexOf('/');
-    const topicPath = slash === -1 ? rel : rel.slice(0, slash);
-    const file = slash === -1 ? rel : rel.slice(slash + 1);
-    const topicDir = join(root, topicPath);
-    const committed = existsSync(join(topicDir, '.git')) && !gitPorcelain(topicDir, file);
-    if (committed && current === rewritten) {
-      conflicts.push(`${rel} already committed; refusing to overwrite`);
-      continue;
-    }
-    if (current !== rewritten && current !== original) {
-      conflicts.push(`${rel} has post-migration edits; refusing to overwrite`);
+  for (const edit of journal.topicEdits) {
+    const topicDir = join(root, edit.topicPath);
+    for (const file of edit.files) {
+      const rel = `${edit.topicPath}/${file}`;
+      const backup = join(backupRoot, rel);
+      if (!existsSync(backup)) continue; // Activation may have stopped before this rewrite.
+      const dest = join(topicDir, file);
+      const original = readFileSync(backup, 'utf8');
+      const rewritten = rewriteManagedRefs(original);
+      if (!existsSync(dest)) {
+        conflicts.push(`${rel} deleted after migration; refusing to restore`);
+        continue;
+      }
+      const current = readFileSync(dest, 'utf8');
+      if (gitFileAtHead(topicDir, file) === rewritten) {
+        conflicts.push(`${rel} already committed; refusing to overwrite`);
+      } else if (current !== rewritten && current !== original) {
+        conflicts.push(`${rel} has post-migration edits; refusing to overwrite`);
+      }
     }
   }
   return conflicts;
+}
+
+function gitFileAtHead(dir: string, file: string): string | undefined {
+  try {
+    return execaSync('git', ['show', `HEAD:./${file}`], {
+      cwd: dir, timeout: 5000, stripFinalNewline: false,
+    }).stdout;
+  } catch {
+    return undefined;
+  }
+}
+
+function invalidManagedTargets(root: string, body: string): string[] {
+  const invalid: string[] = [];
+  const libraryRoot = resolve(root, LIBRARY_DIR, 'documents');
+  // Paths are workspace-relative even when a topic Markdown link has a ../ prefix.
+  const fileRefs = body.match(/\.researcher-workspace\/library\/documents\/[^\s<>"'`)\]]+/g) ?? [];
+  const documentRefs = body.matchAll(/(?<!library)\/library\/documents\/([^/\s<>"'`)\]?#]+)/g);
+  const targets = [...fileRefs, ...Array.from(documentRefs, (m) => `${LIBRARY_DIR}/documents/${m[1]}/document.md`)];
+  for (const target of targets) {
+    try {
+      const abs = resolve(root, decodeURIComponent(target.split(/[?#]/)[0]));
+      if (!abs.startsWith(libraryRoot + sep) || !existsSync(abs) || !statSync(abs).isFile()) invalid.push(target);
+    } catch {
+      invalid.push(target);
+    }
+  }
+  return invalid;
 }
 
 function restoreTopicRewrites(root: string, write: (s: string) => void): void {
   const backupRoot = topicRefBackupRoot(root);
   if (!existsSync(backupRoot) || !statSync(backupRoot).isDirectory()) return;
   let restored = 0;
-  for (const abs of walkFiles(backupRoot)) {
-    const rel = relative(backupRoot, abs).replace(/\\/g, '/');
-    const dest = join(root, rel);
-    const original = readFileSync(abs, 'utf8');
-    if (existsSync(dest) && readFileSync(dest, 'utf8') === original) continue;
-    mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, original);
-    restored += 1;
+  for (const edit of readJournal(root)?.topicEdits ?? []) {
+    for (const file of edit.files) {
+      const rel = `${edit.topicPath}/${file}`;
+      const backup = join(backupRoot, rel);
+      if (!existsSync(backup)) continue;
+      const dest = join(root, rel);
+      const original = readFileSync(backup, 'utf8');
+      if (existsSync(dest) && readFileSync(dest, 'utf8') === original) continue;
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, original);
+      restored += 1;
+    }
   }
   if (restored) write(`library migrate: restored ${restored} topic managed ref file(s)\n`);
-}
-
-function walkFiles(dir: string): string[] {
-  const out: string[] = [];
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) return out;
-  for (const name of readdirSync(dir)) {
-    const abs = join(dir, name);
-    let st;
-    try {
-      st = statSync(abs);
-    } catch {
-      continue;
-    }
-    if (st.isDirectory()) out.push(...walkFiles(abs));
-    else out.push(abs);
-  }
-  return out;
 }
 
 function rewriteManagedRefs(text: string): string {
