@@ -72,6 +72,13 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     expect(html).toMatch(/<article class="paper-card row" hidden[^>]*data-linked="1"/);
     expect(html).toMatch(/data-status="saved"/);
     expect(html).toContain('<div class="paper-state">Saved</div>');
+    expect(html).toContain('data-type-filter="paper"');
+    expect(html).toContain('data-type-filter="blog"');
+    expect(html).toContain('data-type-filter="note"');
+    expect(html).toContain('data-type="paper"');
+    expect(html).toContain('data-type="blog"');
+    expect(html).toContain('data-type="note"');
+    expect(html).toContain('>note</span>');
     expect(html).not.toMatch(new RegExp(`data-status="read"[^>]*${noteId}|${noteId}[^>]*data-status="read"`));
     const unlinked = await (await fetch(base + '/library/documents?status=unlinked', {
       headers: { accept: 'application/json' },

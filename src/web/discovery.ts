@@ -131,6 +131,7 @@ export interface LibraryPaperSummary {
   displayTitle: string;
   canonicalId: string;
   sourceLabel: string;
+  docType: string;
   tags: string[];
   readStatus: PaperRead['status'] | 'unread' | 'saved';
   linkedTopicCount: number;
@@ -293,6 +294,7 @@ function summarizeDocument(
     displayTitle: displayTitle(doc),
     canonicalId: note ? '—' : (doc.canonicalSource?.id ?? doc.id),
     sourceLabel: note ? '—' : sourceLabelFromDoc(doc),
+    docType: doc.docType,
     tags: doc.tags,
     readStatus: note ? 'saved' : latestReadStatus(reads),
     linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
@@ -323,6 +325,7 @@ function summarizePaper(
     displayTitle: paperDisplayTitle(paper),
     canonicalId: paper.canonicalSource.id,
     sourceLabel: sourceLabel(paper),
+    docType: paper.docType ?? 'paper',
     tags: paper.tags,
     readStatus: latestReadStatus(reads),
     linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,

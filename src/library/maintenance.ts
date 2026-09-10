@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 
@@ -112,6 +112,34 @@ export function tryAcquireExclusiveLease(workspaceRoot: string, command: string)
     startedAt: new Date().toISOString(),
   });
   return undefined;
+}
+
+export function withDomainWriteLock<T>(workspaceRoot: string, fn: () => T): T {
+  const dir = maintenanceDir(workspaceRoot);
+  mkdirSync(dir, { recursive: true });
+  const lockPath = join(dir, 'write.lock');
+  const deadline = Date.now() + 5000;
+  let locked = false;
+  while (!locked && Date.now() <= deadline) {
+    try {
+      writeFileSync(lockPath, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), { flag: 'wx' });
+      locked = true;
+    } catch {
+      try {
+        const raw = JSON.parse(readFileSync(lockPath, 'utf8')) as { pid?: number };
+        if (raw.pid && !processAlive(raw.pid)) rmSync(lockPath, { force: true });
+      } catch {
+        /* lock unreadable or already gone */
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+  if (!locked) throw Object.assign(new Error('write lock timeout'), { status: 503 });
+  try {
+    return fn();
+  } finally {
+    try { rmSync(lockPath, { force: true }); } catch { /* ignore */ }
+  }
 }
 
 export function processAlive(pid: number): boolean {

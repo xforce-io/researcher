@@ -48,6 +48,8 @@ describe('standalone notes (S1–S3)', () => {
     expect(() => lib.createNote({ id, title: '', body: '   ', mutationId: 'm1' })).toThrow(/non-empty/);
     expect(lib.listDocuments()).toHaveLength(0);
     lib.createNote({ id, title: '', body: 'ok', mutationId: 'm1' });
+    const createdAgain = lib.createNote({ id, title: '', body: 'ok', mutationId: 'm1' });
+    expect(createdAgain.revision).toBe(1);
     const again = lib.updateNote({ id, title: '', body: 'ok', expectedRevision: 1, mutationId: 'm1' });
     expect(again.revision).toBe(1);
     expect(lib.listDocuments()).toHaveLength(1);

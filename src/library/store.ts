@@ -22,7 +22,7 @@ import type {
 } from './model.js';
 import type { LibraryDocType } from './doc-type.js';
 import { isNoteDocType } from './doc-type.js';
-import { maintenanceStage, readMaintenanceStage } from './maintenance.js';
+import { maintenanceStage, readMaintenanceStage, withDomainWriteLock } from './maintenance.js';
 
 export const WORKSPACE_STATE_DIR = '.researcher-workspace';
 export const LIBRARY_DIR = `${WORKSPACE_STATE_DIR}/library`;
@@ -182,24 +182,34 @@ export class PaperLibrary {
     if (!/^doc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id)) {
       throw new Error('id must be doc_UUID');
     }
-    if (this.getDocument(input.id)) throw new Error(`document already exists: ${input.id}`);
     validateNoteFields(input.title, input.body);
-    const now = this.clock.now();
-    const doc: LibraryDocument = {
-      id: input.id,
-      docType: 'note',
-      title: input.title,
-      tags: [],
-      createdAt: now,
-      updatedAt: now,
-      revision: 1,
-      lastMutationId: input.mutationId,
-      body: input.body,
-      sources: [],
-      identifiers: {},
-    };
-    this.writeDocument(doc);
-    return doc;
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getDocument(input.id);
+      if (existing) {
+        if (!isNoteDocType(existing.docType)) throw new Error(`document already exists: ${input.id}`);
+        if (existing.lastMutationId === input.mutationId) {
+          if (existing.title === input.title && existing.body === input.body) return existing;
+          throw Object.assign(new Error('mutationId conflict'), { status: 409 });
+        }
+        throw new Error(`document already exists: ${input.id}`);
+      }
+      const now = this.clock.now();
+      const doc: LibraryDocument = {
+        id: input.id,
+        docType: 'note',
+        title: input.title,
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+        lastMutationId: input.mutationId,
+        body: input.body,
+        sources: [],
+        identifiers: {},
+      };
+      this.writeDocument(doc);
+      return doc;
+    });
   }
 
   updateNote(input: {
@@ -210,30 +220,32 @@ export class PaperLibrary {
     mutationId: string;
   }): LibraryDocument {
     this.ensureV2();
-    const existing = this.getDocument(input.id);
-    if (!existing) throw Object.assign(new Error(`unknown document: ${input.id}`), { status: 404 });
-    if (!isNoteDocType(existing.docType)) {
-      throw Object.assign(new Error(`document is not a note: ${input.id}`), { status: 422 });
-    }
     validateNoteFields(input.title, input.body);
-    if (existing.lastMutationId === input.mutationId) {
-      if (existing.title === input.title && existing.body === input.body) return existing;
-      throw Object.assign(new Error('mutationId conflict'), { status: 409 });
-    }
-    if (existing.revision !== input.expectedRevision) {
-      throw Object.assign(new Error('revision conflict'), { status: 409, currentRevision: existing.revision });
-    }
-    const now = this.clock.now();
-    const doc: LibraryDocument = {
-      ...existing,
-      title: input.title,
-      body: input.body,
-      updatedAt: now,
-      revision: existing.revision + 1,
-      lastMutationId: input.mutationId,
-    };
-    this.writeDocument(doc);
-    return doc;
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getDocument(input.id);
+      if (!existing) throw Object.assign(new Error(`unknown document: ${input.id}`), { status: 404 });
+      if (!isNoteDocType(existing.docType)) {
+        throw Object.assign(new Error(`document is not a note: ${input.id}`), { status: 422 });
+      }
+      if (existing.lastMutationId === input.mutationId) {
+        if (existing.title === input.title && existing.body === input.body) return existing;
+        throw Object.assign(new Error('mutationId conflict'), { status: 409 });
+      }
+      if (existing.revision !== input.expectedRevision) {
+        throw Object.assign(new Error('revision conflict'), { status: 409, currentRevision: existing.revision });
+      }
+      const now = this.clock.now();
+      const doc: LibraryDocument = {
+        ...existing,
+        title: input.title,
+        body: input.body,
+        updatedAt: now,
+        revision: existing.revision + 1,
+        lastMutationId: input.mutationId,
+      };
+      this.writeDocument(doc);
+      return doc;
+    });
   }
 
   upsertRead(input: ReadInput): PaperRead {
