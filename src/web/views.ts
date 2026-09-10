@@ -479,6 +479,7 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
 
 const JSON_FORM_JS = `
 document.addEventListener('submit', function (e) {
+  if (e.defaultPrevented) return;
   var form = e.target;
   if (!form || !form.getAttribute) return;
   var action = form.getAttribute('data-json-action');
@@ -618,14 +619,20 @@ export function renderNoteEditor(opts: {
   const action = opts.isNew ? '/library/documents' : `/library/documents/${encodeURIComponent(opts.id)}`;
   const body = topbar('', 'library') +
     `<main class="note-editor">` +
-      `<p><a href="/library">← Library</a></p>` +
+      `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
       `<h1>${opts.isNew ? 'Write note' : 'Edit note'}</h1>` +
-      `<form id="note-form" data-action="${escapeHtml(action)}" data-new="${opts.isNew ? '1' : '0'}" data-revision="${opts.revision ?? 1}" data-id="${escapeHtml(opts.id)}">` +
-        `<label>Title<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note"></label>` +
-        `<label>Body<textarea name="body" required rows="16">${escapeHtml(opts.body)}</textarea></label>` +
-        `<button class="primary" type="submit" data-save>Save</button>` +
-        `<a href="/library" data-cancel>Cancel</a>` +
-        `<p class="save-status" aria-live="polite"></p>` +
+      `<form id="note-form" class="note-editor-form" data-action="${escapeHtml(action)}" data-new="${opts.isNew ? '1' : '0'}" data-revision="${opts.revision ?? 1}" data-id="${escapeHtml(opts.id)}">` +
+        `<label class="note-editor-field">Title` +
+          `<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note">` +
+        `</label>` +
+        `<label class="note-editor-field">Body` +
+          `<textarea name="body" required rows="18" autofocus>${escapeHtml(opts.body)}</textarea>` +
+        `</label>` +
+        `<div class="note-editor-actions">` +
+          `<button class="primary" type="submit" data-save>Save</button>` +
+          `<a class="secondary" href="/library" data-cancel>Cancel</a>` +
+          `<p class="save-status" aria-live="polite"></p>` +
+        `</div>` +
       `</form>` +
       `<script>
 const form = document.getElementById('note-form');
@@ -702,11 +709,11 @@ export function renderNoteReader(doc: { id: string; title: string; body: string;
   const heading = doc.title || 'Untitled note';
   const body = topbar('', 'library') +
     `<main class="note-reader">` +
-      `<p><a href="/library">← Library</a></p>` +
+      `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
       `<p class="muted">note · Saved · ${escapeHtml(doc.updatedAt)}</p>` +
       `<h1>${escapeHtml(heading)}</h1>` +
       `<div class="note-body">${markedHtml(doc.body)}</div>` +
-      `<p><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
+      `<p class="note-editor-actions"><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
     `</main>`;
   return page(`${heading} · researcher`, body);
 }

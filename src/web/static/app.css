@@ -1417,6 +1417,83 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
   margin-bottom:12px;
 }
 .paper-notes-head h2 { margin:0; }
+
+/* Standalone note editor / reader — stacked writing surface, not inline labels. */
+.note-editor,
+.note-reader {
+  max-width:760px;
+  margin:0 auto;
+  padding:22px 22px 56px;
+}
+.note-editor-back { margin:0 0 8px; }
+.note-editor h1,
+.note-reader h1 {
+  font-size:28px;
+  line-height:1.2;
+  letter-spacing:-.02em;
+  margin:0 0 18px;
+}
+.note-editor-form {
+  display:grid;
+  gap:16px;
+}
+.note-editor-field {
+  display:grid;
+  gap:6px;
+  margin:0;
+  color:var(--ink-soft);
+  font:650 12px/1.3 var(--sans);
+  letter-spacing:.01em;
+}
+.note-editor-field input,
+.note-editor-field textarea {
+  box-sizing:border-box;
+  width:100%;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  color:var(--ink);
+  padding:10px 12px;
+  font:15px/1.55 var(--sans);
+  transition:border-color .12s, box-shadow .12s;
+}
+.note-editor-field input { min-height:40px; }
+.note-editor-field textarea {
+  min-height:min(62vh, 36rem);
+  resize:vertical;
+  margin:0;
+}
+.note-editor-field input:focus,
+.note-editor-field textarea:focus {
+  outline:none;
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(46, 92, 64, .14);
+}
+.note-editor-actions {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+}
+.note-editor-actions .save-status {
+  margin:0;
+  min-height:1.2em;
+  color:var(--ink-soft);
+  font:500 13px var(--sans);
+}
+.note-reader .note-body {
+  font-size:16px;
+  line-height:1.65;
+}
+.note-reader .note-body > :first-child { margin-top:0; }
+@media (max-width:640px) {
+  .note-editor,
+  .note-reader { padding:16px 14px 40px; }
+  .note-editor h1,
+  .note-reader h1 { font-size:24px; }
+  .note-editor-field textarea { min-height:16rem; }
+}
+
 .paper-note-form {
   display:grid;
   gap:10px;
