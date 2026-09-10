@@ -2,11 +2,23 @@ import type { SourceRef } from './model.js';
 
 export const DOC_TYPES = ['paper', 'design-doc', 'spec', 'blog', 'api-doc', 'other'] as const;
 export type DocType = (typeof DOC_TYPES)[number];
+export const LIBRARY_DOC_TYPES = [...DOC_TYPES, 'note'] as const;
+export type LibraryDocType = (typeof LIBRARY_DOC_TYPES)[number];
 
 export function parseDocType(raw: string): DocType {
   const v = raw.trim().toLowerCase();
   if ((DOC_TYPES as readonly string[]).includes(v)) return v as DocType;
   throw new Error(`invalid docType: ${raw}. expected one of ${DOC_TYPES.join(', ')}`);
+}
+
+export function parseLibraryDocType(raw: string): LibraryDocType {
+  const v = raw.trim().toLowerCase();
+  if ((LIBRARY_DOC_TYPES as readonly string[]).includes(v)) return v as LibraryDocType;
+  throw new Error(`invalid docType: ${raw}. expected one of ${LIBRARY_DOC_TYPES.join(', ')}`);
+}
+
+export function isNoteDocType(docType: string | undefined): boolean {
+  return docType === 'note';
 }
 
 /** Infer a document type from the source identity when the user did not set one. */

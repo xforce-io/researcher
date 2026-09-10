@@ -89,7 +89,7 @@ function matchBareTexAtom(src: string): string | undefined {
   if (!base) return undefined;
   let len = base[0].length;
   let attached = 0;
-  while (true) {
+  while (true) { // eslint-disable-line no-constant-condition
     const rest = src.slice(len);
     const part = /^(_\{[^}]+\}|\^\{[^}]+\}|_[A-Za-z0-9](?![A-Za-z0-9])|\^[A-Za-z0-9]+(?![A-Za-z0-9]))/.exec(rest);
     if (!part) break;
@@ -537,7 +537,7 @@ function renderPaperCard(
     : '';
   return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}" data-in-topic="${p.integratedInTopic ? '1' : '0'}">` +
     `<div class="paper-main">` +
-      `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<a class="paper-title-link" href="/library/documents/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
       integrationBadge +
       integrateCta +
@@ -567,6 +567,67 @@ function renderAddPaperModal(topicPaths: string[]): string {
   `</div>`;
 }
 
+export function renderNoteEditor(opts: {
+  id: string;
+  title: string;
+  body: string;
+  isNew: boolean;
+  revision?: number;
+}): string {
+  const action = opts.isNew ? '/library/documents' : `/library/documents/${encodeURIComponent(opts.id)}`;
+  const body = topbar('', 'library') +
+    `<main class="note-editor">` +
+      `<p><a href="/library">← Library</a></p>` +
+      `<h1>${opts.isNew ? 'Write note' : 'Edit note'}</h1>` +
+      `<form id="note-form" data-action="${escapeHtml(action)}" data-new="${opts.isNew ? '1' : '0'}" data-revision="${opts.revision ?? 1}" data-id="${escapeHtml(opts.id)}">` +
+        `<label>Title<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note"></label>` +
+        `<label>Body<textarea name="body" required rows="16">${escapeHtml(opts.body)}</textarea></label>` +
+        `<button class="primary" type="submit">Save</button>` +
+        `<a href="/library">Cancel</a>` +
+        `<p class="save-status" aria-live="polite"></p>` +
+      `</form>` +
+      `<script>
+const form = document.getElementById('note-form');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = form.querySelector('[name=title]').value;
+  const body = form.querySelector('[name=body]').value;
+  const isNew = form.dataset.new === '1';
+  const payload = isNew
+    ? { docType: 'note', id: form.dataset.id, title, body, mutationId: crypto.randomUUID() }
+    : { title, body, expectedRevision: Number(form.dataset.revision), mutationId: crypto.randomUUID() };
+  const res = await fetch(form.dataset.action, {
+    method: isNew ? 'POST' : 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const status = form.querySelector('.save-status');
+  if (!res.ok) {
+    status.textContent = 'Not saved';
+    return;
+  }
+  const data = await res.json();
+  status.textContent = 'Saved';
+  location.href = data.url;
+});
+</script>` +
+    `</main>`;
+  return page('Note · researcher', body);
+}
+
+export function renderNoteReader(doc: { id: string; title: string; body: string; updatedAt: string }): string {
+  const heading = doc.title || 'Untitled note';
+  const body = topbar('', 'library') +
+    `<main class="note-reader">` +
+      `<p><a href="/library">← Library</a></p>` +
+      `<p class="muted">note · Saved · ${escapeHtml(doc.updatedAt)}</p>` +
+      `<h1>${escapeHtml(heading)}</h1>` +
+      `<div class="note-body">${markedHtml(doc.body)}</div>` +
+      `<p><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
+    `</main>`;
+  return page(`${heading} · researcher`, body);
+}
+
 export function renderLibrary(v: LibraryView): string {
   const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
     defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
@@ -586,8 +647,9 @@ export function renderLibrary(v: LibraryView): string {
         `</div>` +
       `</aside>` +
       `<section class="library-main">` +
-        `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic links.</p></div>` +
-        `<button class="primary" type="button" data-open-add-paper>Add paper</button></div>` +
+        `<div class="library-head"><div><h1>Library</h1><p>Workspace documents, reads, tags, and topic links.</p></div>` +
+        `<div><button class="primary" type="button" data-open-add-paper>＋ Add</button>` +
+        `<a class="secondary" href="/library/documents/new?type=note">Write note</a></div></div>` +
         `<div class="paper-list-grid">` +
           `<div class="paper-card paper-header"><span>Paper</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
           `${papers || '<p class="empty-state">No papers yet.</p>'}` +
@@ -696,7 +758,7 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
 }
 
 function paperDetailHref(paperId: string, editTopic?: string): string {
-  const base = `/library/p/${encodeURIComponent(paperId)}`;
+  const base = `/library/documents/${encodeURIComponent(paperId)}`;
   return editTopic ? `${base}?edit=${encodeURIComponent(editTopic)}` : base;
 }
 
@@ -1375,7 +1437,7 @@ function homeLibrary(m: WorkspaceHomeModel): string {
   const pct = lc.papers > 0 ? Math.round((lc.integrated / lc.papers) * 100) : 0;
   const recent = m.recentPapers.map((p) =>
     `<li>` +
-      `<a href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<a href="/library/documents/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<span>${escapeHtml(p.readStatus)} · ${escapeHtml(fmtRelative(p.updatedAt))}</span>` +
     `</li>`,
   ).join('');
@@ -1682,7 +1744,7 @@ export function renderTopic(
   // left navigation, beside the local files, so linking has immediate feedback.
   const pendingRelated = related.filter((p) => !p.integratedInTopic);
   const pendingRelatedRows = pendingRelated.map((p) =>
-    `<li><a href="/library/p/${encodeURIComponent(p.id)}" title="${escapeHtml(p.displayTitle)}">` +
+    `<li><a href="/library/documents/${encodeURIComponent(p.id)}" title="${escapeHtml(p.displayTitle)}">` +
       `${escapeHtml(p.displayTitle)}</a><span class="library-link-state">linked</span></li>`,
   ).join('');
 

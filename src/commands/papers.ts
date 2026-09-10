@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveDefaultWorkspace } from '../config/default-workspace.js';
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
-import { PaperLibrary } from '../library/store.js';
+import { newReadId, PaperLibrary } from '../library/store.js';
 import {
   fetchTrendingPapers,
   searchPapers,
@@ -75,8 +75,8 @@ export async function runPapersRead(opts: {
     throw new Error('papers read accepts an arXiv id only');
   }
   const lib = new PaperLibrary(workspaceRoot);
-  const paperId = paperIdForSource(source);
-  const existingPaper = lib.getPaper(paperId);
+  const existingPaper = lib.findByCanonicalSource(source.id);
+  const paperId = existingPaper?.id ?? paperIdForSource(source);
   const paper = lib.upsertPaper({
     id: paperId,
     canonicalSource: existingPaper?.canonicalSource ?? source,
@@ -86,7 +86,7 @@ export async function runPapersRead(opts: {
     title: existingPaper?.title,
     authors: existingPaper?.authors,
     abstract: existingPaper?.abstract,
-    docType: existingPaper?.docType ?? 'paper',
+    docType: existingPaper?.docType === 'note' ? 'paper' : (existingPaper?.docType ?? 'paper'),
   });
 
   const completed = lib.listReads(paper.id).find(
@@ -110,7 +110,7 @@ export async function runPapersRead(opts: {
     writeErr(`library-read: reclaimed stale reading ${inFlight.id}\n`);
   }
 
-  const readId = `read_${paper.id}`;
+  const readId = newReadId();
   lib.upsertRead({ id: readId, paperId: paper.id, status: 'reading', lastError: undefined });
   const runner = opts.runner ?? defaultLibraryReadRunner;
   try {

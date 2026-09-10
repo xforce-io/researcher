@@ -369,17 +369,17 @@ describe('runWorkspaceSync', () => {
 
 function seedLibrary(root: string): void {
   const lib = join(root, '.researcher-workspace/library');
-  const paper = join(lib, 'papers/paper_arxiv_2401_00001');
+  const paper = join(lib, 'documents/paper_arxiv_2401_00001');
   mkdirSync(join(paper, 'reads'), { recursive: true });
-  mkdirSync(join(paper, '_extracted'), { recursive: true });
-  writeFileSync(join(lib, 'papers.jsonl'), '{"id":"paper_arxiv_2401_00001"}\n');
-  writeFileSync(join(lib, 'reads.jsonl'), '{"id":"r1","paperId":"paper_arxiv_2401_00001"}\n');
+  mkdirSync(join(paper, 'assets'), { recursive: true });
+  writeFileSync(join(lib, 'schema.json'), '{"version":2}\n');
+  writeFileSync(join(paper, 'document.md'), '---\nschemaVersion: 2\nid: paper_arxiv_2401_00001\ndocType: paper\ntitle: ""\ntags: []\ncreatedAt: "2026-01-01T00:00:00.000Z"\nupdatedAt: "2026-01-01T00:00:00.000Z"\nrevision: 1\n---\n');
   writeFileSync(join(lib, 'links.jsonl'), '');
   writeFileSync(join(lib, 'integrations.jsonl'), '');
-  writeFileSync(join(lib, 'notes.jsonl'), '{"id":"n1","paperId":"paper_arxiv_2401_00001","body":"note"}\n');
+  writeFileSync(join(lib, 'annotations.jsonl'), '{"id":"n1","documentId":"paper_arxiv_2401_00001","body":"note","kind":"note","pinned":false,"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}\n');
   writeFileSync(join(paper, 'reads/read_paper_arxiv_2401_00001.md'), '# Essence\n');
-  writeFileSync(join(paper, 'paper.pdf'), '%PDF-fake\n');
-  writeFileSync(join(paper, '_extracted/x.txt'), 'extracted\n');
+  writeFileSync(join(paper, 'reads/read_paper_arxiv_2401_00001.json'), '{"id":"read_paper_arxiv_2401_00001","documentId":"paper_arxiv_2401_00001","status":"read"}\n');
+  writeFileSync(join(paper, 'assets/paper.pdf'), '%PDF-fake\n');
 }
 
 function libraryTracked(root: string): string[] {
@@ -413,9 +413,10 @@ describe('workspace sync --library', () => {
     const tracked = libraryTracked(root);
     expect(tracked).toEqual(
       expect.arrayContaining([
-        '.researcher-workspace/library/notes.jsonl',
-        '.researcher-workspace/library/papers.jsonl',
-        '.researcher-workspace/library/papers/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md',
+        '.researcher-workspace/library/annotations.jsonl',
+        '.researcher-workspace/library/schema.json',
+        '.researcher-workspace/library/documents/paper_arxiv_2401_00001/document.md',
+        '.researcher-workspace/library/documents/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md',
       ]),
     );
     expect(tracked.join('\n')).not.toMatch(/\.pdf|_extracted/i);
@@ -437,15 +438,15 @@ describe('workspace sync --library', () => {
     expect(first.library?.status).toBe('committed');
 
     const md =
-      '.researcher-workspace/library/papers/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md';
+      '.researcher-workspace/library/documents/paper_arxiv_2401_00001/reads/read_paper_arxiv_2401_00001.md';
     rmSync(join(root, md));
-    writeFileSync(join(root, '.researcher-workspace/library/notes.jsonl'), '');
+    writeFileSync(join(root, '.researcher-workspace/library/annotations.jsonl'), '');
 
     const res = await runWorkspaceSync({ cwd: root, library: true });
     expect(res.library?.status).toBe('committed');
     const tracked = libraryTracked(root);
     expect(tracked).not.toContain(md);
-    expect(tracked).toContain('.researcher-workspace/library/notes.jsonl');
+    expect(tracked).toContain('.researcher-workspace/library/annotations.jsonl');
   });
 
   it('dry-run and missing library dir do not write', async () => {

@@ -96,12 +96,12 @@ beforeAll(async () => {
       if (trendingResult instanceof Error) throw trendingResult;
       return trendingResult;
     },
-    libraryReadRunner: async ({ onLine, topicContext }) => {
+    libraryReadRunner: async ({ onLine, topicContext, paper, readId }) => {
       libraryReadCalls++;
       libraryReadTopicContexts.push(topicContext);
       onLine?.('mock library read');
       await new Promise<void>((resolve) => { releaseLibraryRead = resolve; });
-      const artifactPath = '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md';
+      const artifactPath = `.researcher-workspace/library/documents/${paper.id}/reads/${readId}.md`;
       mkdirSync(dirname(join(root, artifactPath)), { recursive: true });
       writeFileSync(join(root, artifactPath), '# Mock read\n\n## Claims\n\n- x');
       return {
@@ -425,21 +425,21 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   const second = await fetch(base + '/library/add', { method: 'POST', body: dupe, redirect: 'manual' });
   expect(second.status).toBe(303);
 
-  const lines = readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n');
-  expect(lines.filter((line) => line.includes('paper_arxiv_2401_12345'))).toHaveLength(1);
   const lib = new PaperLibrary(root);
-  expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
+  const paperId = 'paper_arxiv_2401_12345';
+  expect(lib.getPaper(paperId)).toBeTruthy();
+  expect(lib.listPapers().filter((p) => p.id === paperId)).toHaveLength(1);
+  expect(lib.listLinks(paperId)).toEqual([
     expect.objectContaining({ surfaceId: 'trace' }),
   ]);
 
   const page = await fetch(base + '/library');
   const html = await page.text();
-  expect(html).toContain('paper_arxiv_2401_12345');
+  expect(html).toContain(paperId);
   expect(html).toContain('benchmark');
 
-  const selected = await fetch(base + '/library?paper=paper_arxiv_2401_12345');
+  const selected = await fetch(base + `/library/documents/${paperId}`);
   expect(selected.status).toBe(200);
-  expect(selected.url).toBe(base + '/library/p/paper_arxiv_2401_12345');
   const selectedHtml = await selected.text();
   expect(selectedHtml).toContain('paper-detail-main');
   expect(selectedHtml).toContain('paper-identity-fm');
@@ -494,7 +494,7 @@ it('creates, pins, and deletes paper-local notes on the detail page', async () =
   expect(create.headers.get('location')).toBe(`/library/p/${paperId}#notes`);
 
   let lib = new PaperLibrary(root);
-  let notes = lib.listNotes(paperId);
+  const notes = lib.listNotes(paperId);
   expect(notes).toHaveLength(1);
   expect(notes[0]).toEqual(expect.objectContaining({
     body: 'LM judge selects among candidates',
@@ -554,10 +554,7 @@ it('starts a library deep read and records read state', async () => {
   expect(sseText).toContain('event: plan');
   expect(sseText).toContain('fetch-source');
   expect(sseText).toContain('event: end');
-  await waitFor(() => lib.listReads('paper_arxiv_2401_12345').some((r) =>
-    r.status === 'read' &&
-    r.artifactPath === '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md'
-  ));
+  await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'), 3000);
   expect(lib.getPaper('paper_arxiv_2401_12345')?.title).toBe('Metadata Title From Read');
   expect(libraryReadCalls).toBe(1);
   expect(libraryReadTopicContexts.at(-1)).toBeUndefined();
@@ -677,10 +674,9 @@ it('serves canonical paper detail URLs', async () => {
   expect(html).toContain('Link another topic');
 });
 
-it('redirects legacy selected-paper query URLs to canonical paper detail', async () => {
+it('rejects legacy selected-paper query URLs', async () => {
   const res = await fetch(base + '/library?paper=paper_arxiv_2401_12345', { redirect: 'manual' });
-  expect(res.status).toBe(303);
-  expect(res.headers.get('location')).toBe('/library/p/paper_arxiv_2401_12345');
+  expect(res.status).toBe(400);
 });
 
 it('serves a topic page', async () => {

@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isPwcAvailable, pwcSearch, resolvePwcBin, PwcError } from '../../src/sources/pwc.js';
+import { isPwcAvailable, pwcSearch, resolvePwcBin } from '../../src/sources/pwc.js';
 
 function writeExecutable(dir: string, name: string, body: string): string {
   const bin = join(dir, name);

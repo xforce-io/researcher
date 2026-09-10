@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { identifiersForSource, paperIdForSource, sourceRefForId } from '../library/identity.js';
-import { defaultDocTypeForSource } from '../library/doc-type.js';
-import { LIBRARY_DIR, PaperLibrary } from '../library/store.js';
+import { defaultDocTypeForSource, isNoteDocType } from '../library/doc-type.js';
+import { LIBRARY_DIR, newReadId, PaperLibrary } from '../library/store.js';
 import { hasWorkspaceManifest } from '../workspace/manifest.js';
 import { parseNote } from '../state/zone.js';
 import type { RunContext } from './context.js';
@@ -31,11 +31,14 @@ export function registerAddInWorkspaceLibrary(ctx: RunContext): void {
   if (!topicPath || topicPath === '.' || topicPath.startsWith('..')) return;
 
   const source = sourceRefForId(ctx.addSourceId);
-  const paperId = paperIdForSource(source);
+  const lib = new PaperLibrary(workspaceRoot);
+  const existingLookup = lib.findByCanonicalSource(source.id);
+  const paperId = existingLookup?.id ?? paperIdForSource(source);
   const { body } = parseNote(ctx.newNoteContent);
   const title = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
-  const lib = new PaperLibrary(workspaceRoot);
-  const existing = lib.getPaper(paperId);
+  const existing = existingLookup && !isNoteDocType(existingLookup.docType)
+    ? lib.getPaper(paperId)
+    : undefined;
   const paper = lib.upsertPaper({
     id: paperId,
     canonicalSource: existing?.canonicalSource ?? source,
@@ -48,8 +51,8 @@ export function registerAddInWorkspaceLibrary(ctx: RunContext): void {
     docType: existing?.docType ?? defaultDocTypeForSource(source),
   });
 
-  const readId = `read_${paperId}`;
-  const artifactPath = `${LIBRARY_DIR}/papers/${paperId}/reads/${readId}.md`;
+  const readId = newReadId();
+  const artifactPath = `${LIBRARY_DIR}/documents/${paperId}/reads/${readId}.md`;
   const absArtifact = join(workspaceRoot, artifactPath);
   mkdirSync(dirname(absArtifact), { recursive: true });
   const sourceUrl = source.url ?? '';

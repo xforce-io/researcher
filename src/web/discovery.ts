@@ -7,8 +7,10 @@ import { readWatermark, type Watermark } from '../state/watermark.js';
 import { resolveProjectResearcherDir } from '../paths.js';
 import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
-import { PaperLibrary } from '../library/store.js';
-import type { Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
+import { displayTitle, PaperLibrary } from '../library/store.js';
+import { isNoteDocType } from '../library/doc-type.js';
+import type { LibraryDocument, Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
+
 import { assessSoulReady } from './soul-ready.js';
 import {
   extractReadSuggestExcerpt,
@@ -161,13 +163,6 @@ function isAvailable(topicDir: string): boolean {
   return existsSync(topicDir) && existsSync(resolveProjectResearcherDir(topicDir));
 }
 
-function computeNeedsSetup(topicDir: string, available: boolean): boolean {
-  if (!available) return false;
-  // Soul readiness is independent of notes/lastRun: open_questions or hollow
-  // thesis must keep Setup visible even after a failed/thin run.
-  return !assessSoulReady(topicDir).ready;
-}
-
 function readSeen(topicDir: string): SeenEntry[] {
   const path = join(resolveProjectResearcherDir(topicDir), 'state/seen.jsonl');
   if (!existsSync(path)) return [];
@@ -284,6 +279,37 @@ function latestReadStatus(reads: PaperRead[]): LibraryPaperSummary['readStatus']
   return [...reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].status;
 }
 
+function summarizeDocument(
+  lib: PaperLibrary,
+  doc: LibraryDocument,
+  topicPath?: string,
+): LibraryPaperSummary {
+  const reads = lib.listReads(doc.id);
+  const links = lib.listLinks(doc.id).filter((l) => l.surfaceType === 'topic');
+  const integrations = lib.listIntegrations(doc.id);
+  const note = isNoteDocType(doc.docType);
+  return {
+    id: doc.id,
+    displayTitle: displayTitle(doc),
+    canonicalId: note ? '—' : (doc.canonicalSource?.id ?? doc.id),
+    sourceLabel: note ? '—' : sourceLabelFromDoc(doc),
+    tags: doc.tags,
+    readStatus: note ? 'read' : latestReadStatus(reads),
+    linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
+    integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
+    integratedInTopic: topicPath
+      ? integrations.some((i) => i.topicId === topicPath)
+      : undefined,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+function sourceLabelFromDoc(doc: LibraryDocument): string {
+  if (doc.canonicalSource?.kind === 'arxiv') return 'arXiv';
+  if (doc.canonicalSource) return 'URL';
+  return '—';
+}
+
 function summarizePaper(
   lib: PaperLibrary,
   paper: Paper,
@@ -308,13 +334,22 @@ function summarizePaper(
   };
 }
 
-export function loadLibrary(root: string, selectedPaperId?: string | null): LibraryView {
+export function loadLibrary(root: string, selectedPaperId?: string | null | {
+  type?: string;
+  status?: string;
+  query?: string;
+}): LibraryView {
   const lib = new PaperLibrary(root);
-  void selectedPaperId;
+  const filter = selectedPaperId && typeof selectedPaperId === 'object' ? selectedPaperId : {};
+  const docs = lib.filterDocuments({
+    type: filter.type,
+    status: filter.status ?? 'all',
+    query: filter.query,
+  });
   return {
     root,
     topics: libraryTopics(root),
-    papers: lib.listPapers().map((p) => summarizePaper(lib, p)),
+    papers: docs.map((d) => summarizeDocument(lib, d)),
   };
 }
 
@@ -341,14 +376,15 @@ function maxIso(...values: Array<string | null | undefined>): string | null {
 export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
   const dashboard = loadDashboard(root);
   const lib = new PaperLibrary(root);
-  const papers = lib.listPapers();
-  const summaries = papers.map((p) => summarizePaper(lib, p));
+  const papers = lib.listDocuments();
+  const summaries = papers.map((p) => summarizeDocument(lib, p));
+  const deepReadSummaries = summaries.filter((_, i) => !isNoteDocType(papers[i].docType));
   const now = Date.now();
   const counts = {
-    unread: summaries.filter((p) => p.readStatus === 'unread').length,
-    reading: summaries.filter((p) => p.readStatus === 'reading').length,
-    read: summaries.filter((p) => p.readStatus === 'read').length,
-    failed: summaries.filter((p) => p.readStatus === 'failed').length,
+    unread: deepReadSummaries.filter((p) => p.readStatus === 'unread').length,
+    reading: deepReadSummaries.filter((p) => p.readStatus === 'reading').length,
+    read: deepReadSummaries.filter((p) => p.readStatus === 'read').length,
+    failed: deepReadSummaries.filter((p) => p.readStatus === 'failed').length,
   };
   const linked = new Set(lib.listLinks().filter((l) => l.surfaceType === 'topic').map((l) => l.paperId)).size;
   const integrated = new Set(lib.listIntegrations().map((i) => i.paperId)).size;
@@ -362,7 +398,7 @@ export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
       kind: 'reading',
       title: p.displayTitle,
       detail: 'Deep-read in progress',
-      href: `/library/p/${encodeURIComponent(p.id)}`,
+      href: `/library/documents/${encodeURIComponent(p.id)}`,
       cta: 'Resume',
     });
   }
@@ -371,7 +407,7 @@ export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
       kind: 'failed',
       title: p.displayTitle,
       detail: 'Last read failed — retry or inspect',
-      href: `/library/p/${encodeURIComponent(p.id)}`,
+      href: `/library/documents/${encodeURIComponent(p.id)}`,
       cta: 'Inspect',
     });
   }

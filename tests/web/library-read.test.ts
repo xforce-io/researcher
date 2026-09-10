@@ -299,7 +299,7 @@ describe('runLibraryRead', () => {
       adapter,
     });
 
-    expect(result.artifactPath).toBe('.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md');
+    expect(result.artifactPath).toBe('.researcher-workspace/library/documents/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md');
     expect(adapter.lastPrompt).toContain('None. Read this source as a standalone Library artifact.');
     expect(adapter.lastPrompt).toContain('Dual-track boundary');
     expect(adapter.lastPrompt).toContain('Mechanism claims first');
@@ -548,7 +548,7 @@ describe('defaultLibraryReadRunner', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(existsSync(join(
       root,
-      '.researcher-workspace/library/papers/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md',
+      '.researcher-workspace/library/documents/paper_arxiv_2401_12345/reads/read_paper_arxiv_2401_12345.md',
     ))).toBe(true);
   });
 });

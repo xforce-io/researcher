@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PaperLibrary } from '../../src/library/store.js';
@@ -19,8 +19,8 @@ describe('PaperLibrary.deletePaper', () => {
       identifiers: { url: 'https://example.com/doc' },
       tags: [],
     });
-    const artifactPath = `.researcher-workspace/library/papers/${id}/reads/read_${id}.md`;
-    mkdirSync(join(root, `.researcher-workspace/library/papers/${id}/reads`), { recursive: true });
+    const artifactPath = `.researcher-workspace/library/documents/${id}/reads/read_${id}.md`;
+    mkdirSync(join(root, `.researcher-workspace/library/documents/${id}/reads`), { recursive: true });
     writeFileSync(join(root, artifactPath), '# note\n');
     lib.upsertRead({ id: `read_${id}`, paperId: id, status: 'read', artifactPath });
 
@@ -29,8 +29,8 @@ describe('PaperLibrary.deletePaper', () => {
     expect(result.deleted).toBe(true);
     expect(lib.getPaper(id)).toBeUndefined();
     expect(lib.listReads(id)).toEqual([]);
-    expect(existsSync(join(root, `.researcher-workspace/library/papers/${id}`))).toBe(false);
-    expect(readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim()).toBe('');
+    expect(existsSync(join(root, `.researcher-workspace/library/documents/${id}`))).toBe(false);
+    expect(lib.listDocuments()).toEqual([]);
   });
 
   it('refuses to delete a paper that is linked to a topic', () => {

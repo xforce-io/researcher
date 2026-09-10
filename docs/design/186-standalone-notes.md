@@ -2,7 +2,7 @@
 
 - Issue：[#186](https://github.com/xforce-io/researcher/issues/186)
 - L1：[概念方向与范围](https://github.com/xforce-io/researcher/issues/186#issuecomment-5611035884)，用户已确认平级模型，并进一步选择一次完整迁移、不保留旧接口兼容。
-- 状态：**Draft · 待人工评审**
+- 状态：**Approved**
 - 日期：2026-09-10
 - 分支：`feat/186-standalone-notes`
 

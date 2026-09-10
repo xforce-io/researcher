@@ -39,11 +39,60 @@ library
     });
   });
 library
+  .command('import <input>')
+  .description('Import an external source into the workspace library')
+  .option('--tags <tags>', 'comma-separated tags')
+  .option('--type <docType>', 'paper | design-doc | spec | blog | api-doc | other')
+  .action(async (input: string, opts: { tags?: string; type?: string }) => {
+    const { parseTags, runLibraryImport } = await import('./commands/library.js');
+    const { parseDocType } = await import('./library/doc-type.js');
+    runLibraryImport({
+      input,
+      cwd: process.cwd(),
+      tags: opts.tags === undefined ? undefined : parseTags(opts.tags),
+      docType: opts.type === undefined ? undefined : parseDocType(opts.type),
+    });
+  });
+library
   .command('list')
-  .description('List workspace library papers')
-  .action(async () => {
+  .description('List workspace library documents')
+  .option('--type <type>', 'all | paper | blog | note | ...')
+  .option('--status <status>', 'all | unlinked | unread | read | linked | integrated')
+  .option('--query <q>', 'metadata search')
+  .option('--json', 'JSON output')
+  .action(async (opts: { type?: string; status?: string; query?: string; json?: boolean }) => {
     const { runLibraryList } = await import('./commands/library.js');
-    runLibraryList({ cwd: process.cwd() });
+    runLibraryList({
+      cwd: process.cwd(),
+      type: opts.type,
+      status: opts.status,
+      query: opts.query,
+      json: opts.json,
+    });
+  });
+library
+  .command('show <document-id>')
+  .description('Show a library document')
+  .option('--json', 'JSON output')
+  .action(async (documentId: string, opts: { json?: boolean }) => {
+    const { runLibraryShow } = await import('./commands/library.js');
+    runLibraryShow({ cwd: process.cwd(), documentId, json: opts.json });
+  });
+library
+  .command('migrate')
+  .description('Migrate a legacy Library to the unified document layout')
+  .option('--dry-run', 'report only')
+  .option('--resume', 'resume an interrupted migration')
+  .option('--rollback', 'restore the pre-migration snapshot')
+  .action(async (opts: { dryRun?: boolean; resume?: boolean; rollback?: boolean }) => {
+    const { runLibraryMigrate } = await import('./commands/library.js');
+    const code = runLibraryMigrate({
+      cwd: process.cwd(),
+      dryRun: opts.dryRun,
+      resume: opts.resume,
+      rollback: opts.rollback,
+    });
+    if (code !== 0) process.exitCode = code;
   });
 library
   .command('link <paper-id>')

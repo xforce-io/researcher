@@ -415,7 +415,7 @@ describe('renderWorkspaceHome', () => {
         kind: 'reading',
         title: 'Paper in flight',
         detail: 'Deep-read in progress',
-        href: '/library/p/paper_1',
+        href: '/library/documents/paper_1',
         cta: 'Resume',
       },
       {
@@ -447,7 +447,7 @@ describe('renderWorkspaceHome', () => {
     const html = renderWorkspaceHome(m);
     expect(html).toContain('research-harness');
     expect(html).toContain('Continue reading');
-    expect(html).toContain('/library/p/paper_1');
+    expect(html).toContain('/library/documents/paper_1');
     expect(html).toContain('/library');
     expect(html).toContain('/topics');
     expect(html).toContain('to link');
@@ -767,7 +767,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('paper-card');
     expect(html).toContain('Reusable Paper Cards');
     expect(html).toContain('tag-chip');
-    expect(html).toContain('/library/p/paper_arxiv_2401_12345');
+    expect(html).toContain('/library/documents/paper_arxiv_2401_12345');
     expect(html).toContain('library-rail');
     expect(html).toContain('data-library-search');
     expect(html).toContain('data-filter="unlinked"');
@@ -1047,8 +1047,8 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(html).toMatch(/linked-topic-row[\s\S]*decision[\s\S]*not in landscape/);
     expect(html).toContain('name="topic" value="decision"');
     expect(html).toContain('name="topic" value="trace"');
-    expect(html).toContain(`href="/library/p/${paper.id}?edit=decision"`);
-    expect(html).toContain(`href="/library/p/${paper.id}?edit=trace"`);
+    expect(html).toContain(`href="/library/documents/${paper.id}?edit=decision"`);
+    expect(html).toContain(`href="/library/documents/${paper.id}?edit=trace"`);
   });
 
   it('S2 add form omits linked topics and does not default-submit them', () => {
@@ -1081,7 +1081,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
     expect(html).toMatch(/<input type="hidden" name="topic" value="decision">/);
     expect(html).toMatch(/name="rationale"[^>]*value="governance depth"/);
-    expect(html).toContain(`href="/library/p/${paper.id}"`);
+    expect(html).toContain(`href="/library/documents/${paper.id}"`);
     expect(html).toContain('Cancel');
   });
 

@@ -17,7 +17,8 @@ describe('PaperLibrary store', () => {
 
     expect(lib.listPapers()).toHaveLength(1);
     expect(lib.getPaper(id)?.tags).toEqual(['benchmark']);
-    expect(readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(existsSync(join(root, '.researcher-workspace/library/documents', id, 'document.md'))).toBe(true);
+    expect(lib.listPapers()).toHaveLength(1);
   });
 
   it('stores reads and paper-surface links separately from paper tags', () => {
@@ -26,7 +27,7 @@ describe('PaperLibrary store', () => {
     const source = normalizePaperInput('https://example.com/x');
     const id = paperIdForSource(source);
     lib.upsertPaper({ id, canonicalSource: source, sources: [source], identifiers: { url: 'https://example.com/x' }, tags: ['agent-memory'] });
-    lib.upsertRead({ id: `read_${id}`, paperId: id, status: 'read', artifactPath: `.researcher-workspace/library/papers/${id}/read.md` });
+    lib.upsertRead({ id: `read_${id}`, paperId: id, status: 'read', artifactPath: `.researcher-workspace/library/documents/${id}/reads/read_${id}.md` });
     lib.upsertLink({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' });
 
     expect(lib.getPaper(id)?.tags).toEqual(['agent-memory']);
@@ -36,7 +37,7 @@ describe('PaperLibrary store', () => {
     expect(lib.listLinks(id)).toEqual([
       expect.objectContaining({ paperId: id, surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' }),
     ]);
-    expect(existsSync(join(root, '.researcher-workspace/library/reads.jsonl'))).toBe(true);
+    expect(existsSync(join(root, '.researcher-workspace/library/documents', id, 'reads', `read_${id}.json`))).toBe(true);
     expect(existsSync(join(root, '.researcher-workspace/library/links.jsonl'))).toBe(true);
   });
 
@@ -51,7 +52,7 @@ describe('PaperLibrary store', () => {
       id: 'read_other_done',
       paperId: id,
       status: 'read',
-      artifactPath: `.researcher-workspace/library/papers/${id}/reads/done.md`,
+      artifactPath: `.researcher-workspace/library/documents/${id}/reads/done.md`,
     });
 
     const reclaimed = lib.reclaimOrphanReads('serve restarted while reading');
@@ -79,7 +80,7 @@ describe('PaperLibrary store', () => {
       lastError: 'library read agent exited 1: Request was aborted.',
     });
 
-    const line = readFileSync(join(root, '.researcher-workspace/library/reads.jsonl'), 'utf8').trim();
+    const line = readFileSync(join(root, `.researcher-workspace/library/documents/${id}/reads/read_${id}.json`), 'utf8').trim();
     expect(JSON.parse(line)).toMatchObject({
       status: 'failed',
       lastError: 'library read agent exited 1: Request was aborted.',
@@ -128,7 +129,7 @@ describe('PaperLibrary store', () => {
 
     expect(lib.listNotes(id).map((n) => n.id)).toEqual(['note_b', 'note_a']);
     expect(lib.listNotes(id)[0].body).toBe('key clarification');
-    expect(existsSync(join(root, '.researcher-workspace/library/notes.jsonl'))).toBe(true);
+    expect(existsSync(join(root, '.researcher-workspace/library/annotations.jsonl'))).toBe(true);
 
     lib.upsertNote({ ...lib.getNote('note_b')!, pinned: false });
     expect(lib.getNote('note_b')?.pinned).toBe(false);
