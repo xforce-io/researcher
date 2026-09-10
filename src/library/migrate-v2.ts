@@ -88,6 +88,12 @@ export function migrateLibrary(opts: MigrateOptions): MigrateResult {
     };
   }
 
+  if (!opts.resume && stage && stage !== 'completed') {
+    const msg = `incomplete stage ${stage}; run: researcher library migrate --resume`;
+    write(`library migrate: refused ${msg}\n`);
+    return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: [msg], message: msg };
+  }
+
   if (!opts.resume && lib.layout() === 'v2' && (!stage || stage === 'completed')) {
     const n = lib.listDocuments().length;
     write(`library migrate: already version 2 documents=${n}\n`);
@@ -389,6 +395,10 @@ function resumeReferences(root: string, write: (s: string) => void): MigrateResu
         blockers.push(`missing ${edit.topicPath}/${file}`);
         continue;
       }
+      const body = readFileSync(abs, 'utf8');
+      if (rewriteManagedRefs(body) !== body || hasLegacyManagedRefs(body)) {
+        blockers.push(`${edit.topicPath}/${file} still has legacy library refs`);
+      }
       if (gitPorcelain(topicDir, file)) blockers.push(`${edit.topicPath}/${file} not committed`);
     }
   }
@@ -429,6 +439,11 @@ function rollback(root: string, opts: MigrateOptions, write: (s: string) => void
   }
   try {
     const libRoot = join(root, LIBRARY_DIR);
+    const topicConflicts = topicRollbackConflicts(root);
+    if (topicConflicts.length) {
+      write(`library migrate: rollback refused ${topicConflicts.join('; ')}\n`);
+      return { status: 'refused', documents: 0, annotations: 0, reads: 0, blockers: topicConflicts, message: topicConflicts.join('; ') };
+    }
     if (existsSync(join(libRoot, 'schema.json'))) {
       const post = join(root, '.researcher-workspace', `library-post-migration-${Date.now()}`);
       mkdirSync(dirname(post), { recursive: true });
@@ -514,6 +529,33 @@ function applyTopicRewrites(
   }
 }
 
+function topicRollbackConflicts(root: string): string[] {
+  const backupRoot = topicRefBackupRoot(root);
+  if (!existsSync(backupRoot) || !statSync(backupRoot).isDirectory()) return [];
+  const conflicts: string[] = [];
+  for (const abs of walkFiles(backupRoot)) {
+    const rel = relative(backupRoot, abs).replace(/\\/g, '/');
+    const dest = join(root, rel);
+    const original = readFileSync(abs, 'utf8');
+    const rewritten = rewriteManagedRefs(original);
+    if (!existsSync(dest)) continue;
+    const current = readFileSync(dest, 'utf8');
+    const slash = rel.indexOf('/');
+    const topicPath = slash === -1 ? rel : rel.slice(0, slash);
+    const file = slash === -1 ? rel : rel.slice(slash + 1);
+    const topicDir = join(root, topicPath);
+    const committed = existsSync(join(topicDir, '.git')) && !gitPorcelain(topicDir, file);
+    if (committed && current === rewritten) {
+      conflicts.push(`${rel} already committed; refusing to overwrite`);
+      continue;
+    }
+    if (current !== rewritten && current !== original) {
+      conflicts.push(`${rel} has post-migration edits; refusing to overwrite`);
+    }
+  }
+  return conflicts;
+}
+
 function restoreTopicRewrites(root: string, write: (s: string) => void): void {
   const backupRoot = topicRefBackupRoot(root);
   if (!existsSync(backupRoot) || !statSync(backupRoot).isDirectory()) return;
@@ -521,8 +563,10 @@ function restoreTopicRewrites(root: string, write: (s: string) => void): void {
   for (const abs of walkFiles(backupRoot)) {
     const rel = relative(backupRoot, abs).replace(/\\/g, '/');
     const dest = join(root, rel);
+    const original = readFileSync(abs, 'utf8');
+    if (existsSync(dest) && readFileSync(dest, 'utf8') === original) continue;
     mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, readFileSync(abs));
+    writeFileSync(dest, original);
     restored += 1;
   }
   if (restored) write(`library migrate: restored ${restored} topic managed ref file(s)\n`);
@@ -547,8 +591,14 @@ function walkFiles(dir: string): string[] {
 
 function rewriteManagedRefs(text: string): string {
   return text
-    .replaceAll('.researcher-workspace/library/papers/', '.researcher-workspace/library/documents/')
+    .replace(/\.researcher-workspace\/library\/papers\/([^/]+)\/reads\//g, '.researcher-workspace/library/documents/$1/reads/')
+    .replace(/\.researcher-workspace\/library\/papers\/([^/]+)\//g, '.researcher-workspace/library/documents/$1/assets/')
     .replaceAll('/library/p/', '/library/documents/');
+}
+
+function hasLegacyManagedRefs(text: string): boolean {
+  return text.includes('.researcher-workspace/library/papers/')
+    || text.includes('/library/p/');
 }
 
 function walkMdFiles(dir: string): string[] {
