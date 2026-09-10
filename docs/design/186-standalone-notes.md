@@ -264,4 +264,4 @@ POST `/library/documents/save`，JSON 请求与 JSON 响应；仅用于 note，�
 - [名词表](../glossary.md)
 - [#89 论文批注](89-paper-local-notes.md)、[#65 Library 信息架构](65-rework-workspace-root-library-ia.md)、[#173 Library sync](173-library-workspace-sync.md)
 - 当前依据：`src/library/model.ts`、`src/library/store.ts`、`src/library/doc-type.ts`、`src/library/identity.ts`、`src/commands/library.ts`、`src/web/server.ts`、`src/web/discovery.ts`、`src/web/views.ts`、`src/workspace/sync.ts`。
-- 设计 PR：待建立；实现 PR：尚未开始。
+- [设计 PR #187](https://github.com/xforce-io/researcher/pull/187)；实现 PR：尚未开始。
