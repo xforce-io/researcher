@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PaperLibrary } from '../../src/library/store.js';
-import { writeMaintenanceStage } from '../../src/library/maintenance.js';
+import { listResearcherWriters, writeMaintenanceStage } from '../../src/library/maintenance.js';
 import { migrateLibrary } from '../../src/library/migrate-v2.js';
 
 function seedLegacy(root: string): void {
@@ -65,17 +66,29 @@ describe('library migrate v2 (S6)', () => {
     expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
   });
 
-  it('refuses while a matching idle writer lease is alive', () => {
+  it('refuses while a matching idle writer lease is alive', async () => {
     const root = mkdtempSync(join(tmpdir(), 'r-mig-idle-'));
     seedLegacy(root);
-    const result = migrateLibrary({
+    writeFileSync(join(root, 'cli.js'), 'setInterval(() => {}, 1e6);\n');
+    const child = spawn(process.execPath, [join(root, 'cli.js'), 'serve'], {
       cwd: root,
-      listWriters: () => [{ pid: 424242, command: 'researcher serve --cwd workspace' }],
-      write: () => {},
+      stdio: 'ignore',
     });
-    expect(result.status).toBe('refused');
-    expect(result.blockers.join(' ')).toMatch(/writer processes/);
-    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    try {
+      const deadline = Date.now() + 4000;
+      let seen = listResearcherWriters({ workspaceRoot: root });
+      while (Date.now() < deadline && !seen.some((w) => w.pid === child.pid)) {
+        await new Promise((r) => setTimeout(r, 50));
+        seen = listResearcherWriters({ workspaceRoot: root });
+      }
+      expect(seen.some((w) => w.pid === child.pid && /cli\.js\s+serve/.test(w.command))).toBe(true);
+      const result = migrateLibrary({ cwd: root, write: () => {} });
+      expect(result.status).toBe('refused');
+      expect(result.blockers.join(' ')).toMatch(/writer processes/);
+      expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    } finally {
+      child.kill('SIGTERM');
+    }
   });
 
   it('completes, preserves relations, and remigrates as no-op', () => {

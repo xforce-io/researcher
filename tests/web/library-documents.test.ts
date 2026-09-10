@@ -12,6 +12,7 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
   let server: { port: number; close: () => Promise<void> };
   let base: string;
   let noteId: string;
+  let linkedId: string;
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'r-docs-http-'));
@@ -25,6 +26,7 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     const lib = new PaperLibrary(root, { now: () => '2026-09-10T00:00:00.000Z' });
     const paperSource = normalizePaperInput('2401.12345');
     const blogSource = normalizePaperInput('https://example.com/blog/x');
+    const linkedSource = normalizePaperInput('2401.99999');
     lib.upsertPaper({
       id: paperIdForSource(paperSource),
       canonicalSource: paperSource,
@@ -41,6 +43,16 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
       tags: [],
       docType: 'blog',
     });
+    linkedId = paperIdForSource(linkedSource);
+    lib.upsertPaper({
+      id: linkedId,
+      canonicalSource: linkedSource,
+      sources: [linkedSource],
+      identifiers: { arxiv: '2401.99999' },
+      tags: [],
+      docType: 'paper',
+    });
+    lib.upsertLink({ paperId: linkedId, surfaceType: 'topic', surfaceId: 't' });
     noteId = newDocumentId();
     lib.createNote({ id: noteId, title: '', body: 'standalone', mutationId: 'm1' });
     server = await startServer({ root, port: 0 });
@@ -56,18 +68,33 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     expect(html).toContain('Untitled note');
     expect(html).toContain('arXiv 2401.12345');
     expect(html).toContain('https://example.com/blog/x');
-    const json = await (await fetch(base + '/library/documents?status=unlinked', {
+    expect(html).toContain(linkedId);
+    expect(html).toMatch(/<article class="paper-card row" hidden[^>]*data-linked="1"/);
+    expect(html).toMatch(/data-status="saved"/);
+    expect(html).toContain('<div class="paper-state">Saved</div>');
+    expect(html).not.toMatch(new RegExp(`data-status="read"[^>]*${noteId}|${noteId}[^>]*data-status="read"`));
+    const unlinked = await (await fetch(base + '/library/documents?status=unlinked', {
       headers: { accept: 'application/json' },
     })).json() as { id: string; docType: string }[];
-    expect(json).toHaveLength(3);
-    expect(json.map((d) => d.docType).sort()).toEqual(['blog', 'note', 'paper']);
-    const out: string[] = [];
-    runLibraryList({ cwd: root, status: 'unlinked', write: (s) => out.push(s) });
-    const text = out.join('');
-    expect(text).toContain('\tpaper\t');
-    expect(text).toContain('\tblog\t');
-    expect(text).toContain('\tnote\t');
-    expect(text.split('\n').filter((l) => l.includes('\t')).length).toBe(3);
+    const all = await (await fetch(base + '/library/documents?status=all', {
+      headers: { accept: 'application/json' },
+    })).json() as { id: string; docType: string }[];
+    expect(unlinked).toHaveLength(3);
+    expect(all).toHaveLength(4);
+    expect(unlinked.map((d) => d.docType).sort()).toEqual(['blog', 'note', 'paper']);
+    expect(all.some((d) => d.id === linkedId)).toBe(true);
+    expect(unlinked.some((d) => d.id === linkedId)).toBe(false);
+    const readOnly = await (await fetch(base + '/library/documents?status=read', {
+      headers: { accept: 'application/json' },
+    })).json() as { id: string; docType: string }[];
+    expect(readOnly.every((d) => d.docType !== 'note')).toBe(true);
+    const unlinkedOut: string[] = [];
+    runLibraryList({ cwd: root, status: 'unlinked', write: (s) => unlinkedOut.push(s) });
+    const allOut: string[] = [];
+    runLibraryList({ cwd: root, status: 'all', write: (s) => allOut.push(s) });
+    expect(unlinkedOut.join('')).toContain('\tnote\t');
+    expect(unlinkedOut.join('').split('\n').filter((l) => l.includes('\t'))).toHaveLength(3);
+    expect(allOut.join('').split('\n').filter((l) => l.includes('\t'))).toHaveLength(4);
   });
 
   it('creates a note over HTTP and reopens it (S1)', async () => {

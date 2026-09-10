@@ -132,7 +132,7 @@ export interface LibraryPaperSummary {
   canonicalId: string;
   sourceLabel: string;
   tags: string[];
-  readStatus: PaperRead['status'] | 'unread';
+  readStatus: PaperRead['status'] | 'unread' | 'saved';
   linkedTopicCount: number;
   integratedTopicCount: number;
   /** True when this paper has a TopicIntegration row for the current topic. */
@@ -294,7 +294,7 @@ function summarizeDocument(
     canonicalId: note ? '—' : (doc.canonicalSource?.id ?? doc.id),
     sourceLabel: note ? '—' : sourceLabelFromDoc(doc),
     tags: doc.tags,
-    readStatus: note ? 'read' : latestReadStatus(reads),
+    readStatus: note ? 'saved' : latestReadStatus(reads),
     linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
     integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
     integratedInTopic: topicPath

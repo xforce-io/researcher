@@ -517,14 +517,17 @@ function renderPaperCard(
       ? `<span class="paper-integration in-landscape">in landscape</span>`
       : `<span class="paper-integration pending-landscape">linked · not in landscape</span>`;
   }
-  const stateBits = opts.topicContext
-    ? escapeHtml(p.readStatus)
-    : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
+  const stateLabel = p.readStatus === 'saved' ? 'Saved' : p.readStatus;
+  const stateBits = p.readStatus === 'saved'
+    ? 'Saved'
+    : opts.topicContext
+      ? escapeHtml(p.readStatus)
+      : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
     p.displayTitle,
     p.canonicalId,
     p.sourceLabel,
-    p.readStatus,
+    stateLabel,
     ...(opts.topicContext
       ? [p.integratedInTopic ? 'in landscape' : 'not in landscape']
       : []),

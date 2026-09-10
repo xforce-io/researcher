@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
 
@@ -29,8 +29,8 @@ interface StageFile {
 }
 
 const RESEARCHER_WRITER_RE =
-  /\bresearcher(?:\.js)?(?:\s+|$).*(?:serve| run\b| read\b| library (?:import|add)| migrate-notes| workspace sync)\b/;
-const MIGRATE_RE = /\bresearcher(?:\.js)?(?:\s+|$).*library migrate\b/;
+  /(?:\bresearcher(?:\.js)?|\bcli\.js)(?:\s+\S+)*\s+(?:serve|run\b|read\b|library (?:import|add)|migrate-notes|workspace sync)\b/;
+const MIGRATE_RE = /(?:\bresearcher(?:\.js)?|\bcli\.js)(?:\s+\S+)*\s+library migrate\b/;
 
 export function maintenanceDir(workspaceRoot: string): string {
   return join(workspaceRoot, MAINTENANCE_DIR);
@@ -123,6 +123,20 @@ export function processAlive(pid: number): boolean {
   }
 }
 
+function resolvePath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+function cwdIsWorkspace(cwd: string, workspaceRoot: string): boolean {
+  const a = resolvePath(cwd);
+  const b = resolvePath(workspaceRoot);
+  return a === b || a.startsWith(`${b}/`);
+}
+
 function processCwd(pid: number): string | undefined {
   try {
     const { stdout } = execaSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { timeout: 2000 });
@@ -173,7 +187,7 @@ export function listResearcherWriters(opts: {
     if (MIGRATE_RE.test(command)) continue;
     if (!RESEARCHER_WRITER_RE.test(command)) continue;
     const cwd = processCwd(pid);
-    if (cwd && cwd !== opts.workspaceRoot && !cwd.startsWith(`${opts.workspaceRoot}/`)) continue;
+    if (cwd && !cwdIsWorkspace(cwd, opts.workspaceRoot)) continue;
     writers.push({ pid, command, cwd });
   }
   return writers;
