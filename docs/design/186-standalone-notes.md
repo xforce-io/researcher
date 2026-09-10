@@ -210,7 +210,7 @@ note 的 reads/annotations/links/integrations 动作本期返回 422，不创建
 - 新建 ID 使用 doc_UUID，已有 ID 作为经安全校验的不透明字符串，路径由服务端构造；拒绝路径穿越、符号链接及越界文件，沿用现有安全路径边界。
 - 新 Markdown 内容不执行 HTML；标题和编辑文本按文本转义，阅读态沿用安全渲染并验证脚本、事件属性与危险链接无执行。普通正文链接不作为服务端抓取或综合指令。
 - 不增加跨域写入能力；新保存端点要求 JSON，对存在 Origin 的请求只接受当前服务同源，拒绝其它来源。仍仅绑定 localhost，不新增鉴权产品。
-- 一个 workspace 的文档、关系与执行记录写入需通过同一跨进程锁协调，不能只依赖浏览器禁用按钮；迁移必须停止所有旧写入方。
+- 一个 workspace 的文档、关系与执行记录写入需通过同一跨进程锁协调，不能只依赖浏览器禁用按钮；迁移必须停止匹配的 researcher 入口（serve / run / read / import / migrate-notes / workspace sync），并排除本次 migrate 进程树。
 - 手动改文件保留为 Git/文本工作流，但必须遵守 frontmatter 契约；不支持绕过版本递增与 Web 同时修改。跨机器 Git 冲突由用户处理，服务不得把冲突标记当有效笔记覆盖。
 
 ## 10. 迁移/兼容/回滚
@@ -243,9 +243,11 @@ note 的 reads/annotations/links/integrations 动作本期返回 422，不创建
 - 迁移先进入 maintenance 阶段，阻止新业务租约，再尝试取得同一锁域的独占租约。已有 serve 或任务持有租约时迁移拒绝，报告 PID、启动时间、命令与 workspace；不强杀、不在超时后抢占。用户停止后可重试。独占租约覆盖备份、转换、引用修改及激活，固定于控制目录。
 - 进程崩溃由操作系统释放租约，但持久化阶段不会自动清除。除迁移 resume/rollback 与只读诊断外，所有入口遇到未完成阶段都拒绝；HTTP 503、CLI exit 1，包含阶段和恢复命令。不得仅因锁已释放放行业务。
 
-**旧版进程不认识新锁，必须单独隔离**：迁移工具在修改数据前执行受支持宿主的维护预检，枚举同用户进程的启动时间、命令、cwd、相关打开文件及子进程，识别旧 serve/run/read/migrate-notes/agent 写入方；包括没有打开文件的 idle serve。发现相关进程即拒绝并列出 PID，不能以无活动任务或无文件句柄判定停写。无法读取必要进程信息、无法确定某个候选进程的 workspace 或宿主不支持检查，同样拒绝。
+**旧版进程不认识新锁，只识别 researcher 入口**：迁移工具在修改数据前枚举同用户进程的启动时间、命令、cwd、相关打开文件及子进程，只把 researcher 的 serve / run / read / import / migrate-notes / workspace sync 当作写入方，包括没有打开文件的 idle serve。排除本次 `library migrate` 进程及其进程树；父进程仅为驱动迁移时不构成写入方。发现匹配入口即拒绝并列出 PID，不能以无活动任务或无文件句柄判定停写。无法读取必要进程信息、无法确定某个候选 researcher 进程的 workspace，或宿主不支持该检查时，同样拒绝。
 
-维护期间还须暂停已登记的自动启动/调度入口，并将受管理的 researcher 启动入口置于同一维护门禁后；无法枚举或暂停这些入口时拒绝迁移。预检、取得独占租约及激活前均复核进程清单与旧数据清单；新出现旧写入方则中止，不激活。这个契约覆盖当前宿主受管理的 researcher 入口；不能声称 advisory lock 能约束用户绕过入口直接执行的旧源码或任意文件写入。若存在这类非受管写入方，必须先在宿主维护环境隔离，无法证明隔离时停止迁移，不能降级为口头确认后继续。实现须提供宿主能力检测与真实 idle 旧进程测试，否则 S6 不通过。
+已登记的自动启动/调度入口：没有登记表或登记为空视为通过，不把「没有调度子系统」当成无法枚举。若存在已登记的 researcher 启动入口，维护期间须暂停并将其置于同一维护门禁后；能枚举但无法暂停已登记入口时拒绝迁移。预检、取得独占租约及激活前均复核 researcher 进程清单与旧数据清单；新出现匹配入口则中止，不激活。
+
+本契约只保证 researcher 入口与租约/阶段。编辑器、IDE、coding-agent 或任意文件写入不在检测范围，也不是迁移通过条件；不引入维护沙箱，不要求证明非 researcher 进程已隔离。实现须提供宿主能力检测与真实 idle researcher 进程拒绝测试，否则 S6 不通过。
 
 阶段为 `maintenance → converting → activating → references-pending（如需）→ completed`。dry-run 只读检查并报告当前阻塞与转换范围，不暂停任务、不创建锁/备份，也不授权随后跳过真实迁移检查。已有 version=2 且 completed 时校验后 no-op；不完整阶段只能 resume/rollback。全新空 workspace 首次写入初始化 version=2；有旧数据不得当作空目录。
 
@@ -259,7 +261,7 @@ note 的 reads/annotations/links/integrations 动作本期返回 422，不创建
 
 受管引用包括 Library 账本、产物 frontmatter、workspace/topic 中由 researcher 生成的结构化 Library ID/路径及本地文档链接。迁移必须给出逐文件清单；用户正文中的论文讨论或普通单词 paper 不做全局替换。无法判定的旧本地路径引用列为阻塞项，需处理后再激活。外部网站或书签中的旧 URL 不迁移、不保证可用。涉及 topic 仓文件时只修改各自工作树并记录清单，不自动提交或推送。
 
-**topic 引用与 Git 门禁**：改写 topic 工作树后进入 references-pending，命令明确输出每个仓库、文件和“需提交后 resume”，exit 1，不宣称迁移完成。此时所有 researcher 业务和 workspace sync（包括默认 --pull）继续拒绝；只允许迁移诊断/resume/rollback，用户使用 Git 审查并提交各 topic 的改动。`library migrate --resume` 校验每个相关 topic 的受管文件已在当前 HEAD 中、工作树/index 干净、所有引用可解析，记录对应 commit；不满足则保持门禁。成功后 completed，用户按正常流程处理 Pointer 和推送，不由迁移自动发布。
+**topic 引用与 Git 门禁**：改写 topic 工作树后进入 references-pending，命令明确输出每个仓库、文件和“需提交后 resume”，exit 1，不宣称迁移完成。此时所有 researcher 业务和 workspace sync（包括默认 --pull）继续拒绝；只允许迁移诊断/resume/rollback，用户使用 Git 审查并提交各 topic 的改动。`library migrate --resume` 校验每个相关 topic 的受管文件已在当前 HEAD 中、工作树/index 干净、所有引用可解析，记录对应 commit；不满足则保持门禁。成功后 completed，命令提示下一步按 resume 记录的 topic commit 更新 Pointer，不要先执行默认 `--pull`；不由迁移自动发布。
 
 完成后的 workspace sync 在任何 fetch/pull 前检查迁移阶段；未完成则零 Git 变更。对已完成迁移、涉及受管引用的 topic，pull 前检查将要采用的候选树中引用有效性，不通过即拒绝更新工作树/HEAD；普通运行也验证所消费的受管引用。普通 ff-only 不等于引用校验，不能依靠 Git“也许会冲突”保护迁移结果。用户手动 Git 修改超出 sync 控制，但后续业务检测无效引用时拒绝消费，不自动复原用户文件。
 
@@ -289,7 +291,7 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 | S2 | 已有 note → Edit → Save → 刷新 → 重启服务再打开 | 同一 ID、仅 1 份、最新正文；版本递增一次 |
 | S3 | 空白提交；注入磁盘失败；模拟服务已保存但响应丢失后原样重试 | 正确错误状态、页面输入保留、旧文件完整；恢复后 1 份记录、无重复版本 |
 | S4 | 既有 paper/批注/产物/topic 关系及 note → 添加来源 → 原 paper force 深读 | 原来源流程成功，重跑新增 0 文档，归属与关系保留，人类内容原文不变，无自动综合 |
-| S5 | paper/blog/note 各 1 份（均未关联）→ Web 默认 Unlinked 与 CLI --status unlinked → 显式 All → 各类型筛选 → 打开详情 | 两端 All=3，各类型=1，动作矩阵正确，产物不列为条目 |
+| S5 | paper/blog/note 各 1 份（均未关联）→ Web 默认 Unlinked 与 CLI --status unlinked → 显式 All → 各类型筛选 → 打开详情 | 两端 Unlinked=3、All=3，各类型=1，动作矩阵正确，产物不列为条目 |
 | S6 | 旧 workspace → migrate dry-run → 完整迁移 → 新版打开 → 再迁移；另验证 idle 旧进程拒绝、迁移中启动拒绝、topic 待提交时默认 sync 拒绝及激活中断恢复 | 内容与关系逐条保留、旧字段/路径不参与运行、重复迁移 no-op、中断不放行半成品且备份可恢复 |
 
 另覆盖：Home 文档计数含 note 而深读待办不含；菜单键盘操作；筛选 URL 刷新恢复；Cancel/离开确认；未保存刷新提示；保存中重复点击；两标签页编辑冲突不覆盖；移动布局无横向遮挡；新版 URL、锚点与表单一致，旧入口按下线契约拒绝。外部材料创建失败保留表单。
@@ -306,7 +308,7 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 
 - 深读连续成功/失败/重试：每次新执行独立 ID 和路径，最新失败仍可读最后成功产物，同一 mutationId 不重复执行；旧覆盖历史不被凭空重建。
 - 完整迁移 dry-run 无副作用、坏数据/未知路径预检失败、备份校验、转换/激活/引用更新各阶段中断恢复、重复 no-op，以及新版拒绝旧格式。
-- S6 真实进程验证：新版 idle serve 持共享租约导致迁移拒绝；旧版 idle serve 被进程预检识别；不可观测进程/自动重启入口拒绝；迁移中新增业务返回拒绝，进程退出后阶段仍阻塞；引用待提交时裸 workspace sync 不执行 fetch/pull，提交并 resume 后才放行，候选树有旧引用时拒绝 pull。
+- S6 真实进程验证：新版 idle serve 持共享租约导致迁移拒绝；旧版 idle serve 被进程预检识别；无法观测 researcher 进程表时拒绝；无调度登记通过；migrate 进程树不构成拒绝；迁移中新增业务返回拒绝，进程退出后阶段仍阻塞；引用待提交时裸 workspace sync 不执行 fetch/pull，提交并 resume 后才放行，候选树有旧引用时拒绝 pull。
 - S5 补充一个已关联 paper，Web 默认隐藏它、显式 All 可见；note 在 Unlinked 可见，不计深读或综合待办。
 - 删除外部文档后对应批注/深读/附件全部清理，其他文档完整；有关联先拒绝且零删除。两个迁移命令次序错误时拒绝，backfill 仅写新版。
 
@@ -318,7 +320,7 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 
 ## 12. 开放问题
 
-无。默认视图、统一资源契约、迁移互斥、受管引用提交门禁与快照恢复均已在正文作出选择。宿主维护能力无法满足时按 §10 拒绝执行，不留给实现自行降低保证。文档是否获批由顶部 Draft/Approved 状态表达，不作为未决方案重复列出。
+无。默认视图、统一资源契约、迁移互斥（仅 researcher 入口 + 租约/阶段）、受管引用提交门禁与快照恢复均已在正文作出选择。宿主无法检查 researcher 进程表时按 §10 拒绝执行，不把非 researcher 进程隔离当作通过条件。文档是否获批由顶部 Draft/Approved 状态表达，不作为未决方案重复列出。
 
 ## 13. 关联
 
