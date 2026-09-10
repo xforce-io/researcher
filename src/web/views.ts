@@ -946,9 +946,9 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
     `</li>`;
   }).join('');
 
-  return `<section class="detail-panel paper-notes-panel" id="notes">` +
+  return `<section class="detail-panel paper-notes-panel" id="annotations">` +
     `<div class="paper-notes-head">` +
-      `<h2>Notes</h2>` +
+      `<h2>Annotations</h2>` +
       `<span class="muted">Your attention on this paper — survives re-read</span>` +
     `</div>` +
     `<form class="paper-note-form" action="/library/note" method="post">` +
@@ -975,8 +975,8 @@ export function renderLibraryPaper(
   const noteCount = v.notes.length;
   // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
-    `<a class="primary paper-jump-notes" href="#notes">` +
-      `Notes${noteCount > 0 ? ` · ${noteCount}` : ''}` +
+    `<a class="primary paper-jump-notes" href="#annotations">` +
+      `Annotations${noteCount > 0 ? ` · ${noteCount}` : ''}` +
     `</a>`;
   const identity = renderPaperIdentityMeta(v);
   const readBody = v.latestReadArtifact

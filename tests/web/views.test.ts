@@ -831,15 +831,15 @@ describe('renderLibrary', () => {
     expect(html).toContain('action="/library/unlink"');
     expect(html).toContain('Mini map');
     expect(html).toContain('trace');
-    expect(html).toContain('id="notes"');
-    expect(html).toContain('href="#notes"');
-    expect(html).toContain('Notes · 1');
+    expect(html).toContain('id="annotations"');
+    expect(html).toContain('href="#annotations"');
+    expect(html).toContain('Annotations · 1');
     // Breadcrumb wayfinding + primary Notes CTA (project button language).
     expect(html).toContain('paper-crumb');
     expect(html).toContain('aria-label="Breadcrumb"');
-    expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#notes"/);
+    expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#annotations"/);
     // Notes jump only in the page head (not duplicated in the reader chrome).
-    expect(html.match(/href="#notes"/g)?.length).toBe(1);
+    expect(html.match(/href="#annotations"/g)?.length).toBe(1);
     expect(html).toContain('action="/library/note"');
     expect(html).toContain('paper-note-body');
     expect(html).toContain('<strong>Selection</strong>');
@@ -903,7 +903,7 @@ describe('renderLibrary', () => {
     expect(html).toContain('https://arxiv.org/abs/2401.12345');
     expect(html).toContain('Frame lede.');
     expect(html).toContain('<h2>Claims</h2>');
-    expect(html).toContain('href="#notes"');
+    expect(html).toContain('href="#annotations"');
   });
 
   it('renders a recoverable interrupted state for restored reading records without active tasks', () => {

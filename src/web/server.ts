@@ -147,7 +147,7 @@ async function handle(
       return sendJsonDocuments(res, root, { type, status, query: q });
     }
     try {
-      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type, status, query: q })));
+      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type: 'all', status: 'all', query: q })));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const code = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
@@ -269,7 +269,7 @@ async function handle(
     if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
     const lib = new PaperLibrary(root);
     if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
-    const back = `/library/p/${encodeURIComponent(paperId)}#notes`;
+    const back = `/library/p/${encodeURIComponent(paperId)}#annotations`;
     try {
       if (action === 'create') {
         const text = form.get('body')?.trim() ?? '';
@@ -599,7 +599,7 @@ function sendJsonDocuments(
     }))));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = /unknown/.test(message) ? 400 : 500;
+    const status = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
     send(res, status, 'text/plain', message);
   }
 }

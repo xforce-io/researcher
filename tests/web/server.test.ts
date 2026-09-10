@@ -491,7 +491,7 @@ it('creates, pins, and deletes paper-local notes on the detail page', async () =
     redirect: 'manual',
   });
   expect(create.status).toBe(303);
-  expect(create.headers.get('location')).toBe(`/library/p/${paperId}#notes`);
+  expect(create.headers.get('location')).toBe(`/library/p/${paperId}#annotations`);
 
   let lib = new PaperLibrary(root);
   const notes = lib.listNotes(paperId);

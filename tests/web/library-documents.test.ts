@@ -70,6 +70,12 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     expect(html).toContain('https://example.com/blog/x');
     expect(html).toContain(linkedId);
     expect(html).toMatch(/<article class="paper-card row" hidden[^>]*data-linked="1"/);
+    const unlinkedUrlHtml = await (await fetch(base + '/library?status=unlinked&type=all')).text();
+    expect(unlinkedUrlHtml).toContain(linkedId);
+    const badType = await fetch(base + '/library/documents?type=nope', {
+      headers: { accept: 'application/json' },
+    });
+    expect(badType.status).toBe(400);
     expect(html).toMatch(/data-status="saved"/);
     expect(html).toContain('<div class="paper-state">Saved</div>');
     expect(html).toContain('data-type-filter="paper"');
