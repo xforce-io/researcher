@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PaperLibrary } from '../../src/library/store.js';
@@ -10,11 +10,6 @@ describe('pickLinkedLibraryCandidate (#111)', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'r-linked-'));
     mkdirSync(join(root, '.researcher-workspace/library'), { recursive: true });
-    writeFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), '');
-    writeFileSync(join(root, '.researcher-workspace/library/links.jsonl'), '');
-    writeFileSync(join(root, '.researcher-workspace/library/integrations.jsonl'), '');
-    writeFileSync(join(root, '.researcher-workspace/library/reads.jsonl'), '');
-    writeFileSync(join(root, '.researcher-workspace/library/notes.jsonl'), '');
   });
 
   it('returns oldest non-integrated arxiv link for the topic', () => {

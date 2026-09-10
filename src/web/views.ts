@@ -89,7 +89,7 @@ function matchBareTexAtom(src: string): string | undefined {
   if (!base) return undefined;
   let len = base[0].length;
   let attached = 0;
-  while (true) {
+  while (true) { // eslint-disable-line no-constant-condition
     const rest = src.slice(len);
     const part = /^(_\{[^}]+\}|\^\{[^}]+\}|_[A-Za-z0-9](?![A-Za-z0-9])|\^[A-Za-z0-9]+(?![A-Za-z0-9]))/.exec(rest);
     if (!part) break;
@@ -517,14 +517,17 @@ function renderPaperCard(
       ? `<span class="paper-integration in-landscape">in landscape</span>`
       : `<span class="paper-integration pending-landscape">linked · not in landscape</span>`;
   }
-  const stateBits = opts.topicContext
-    ? escapeHtml(p.readStatus)
-    : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
+  const stateLabel = p.readStatus === 'saved' ? 'Saved' : p.readStatus;
+  const stateBits = p.readStatus === 'saved'
+    ? 'Saved'
+    : opts.topicContext
+      ? escapeHtml(p.readStatus)
+      : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
     p.displayTitle,
     p.canonicalId,
     p.sourceLabel,
-    p.readStatus,
+    stateLabel,
     ...(opts.topicContext
       ? [p.integratedInTopic ? 'in landscape' : 'not in landscape']
       : []),
@@ -535,13 +538,15 @@ function renderPaperCard(
   const integrateCta = opts.topicContext && !p.integratedInTopic && arxivId
     ? `<div class="paper-cta muted">Run will prefer this link, or <code>researcher add ${escapeHtml(arxivId)}</code></div>`
     : '';
-  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}" data-in-topic="${p.integratedInTopic ? '1' : '0'}">` +
+  const typeLabel = p.docType || 'paper';
+  return `<article class="paper-card ${variant}"${hidden} data-search="${escapeHtml(searchText)}" data-status="${escapeHtml(p.readStatus)}" data-type="${escapeHtml(typeLabel)}" data-linked="${p.linkedTopicCount > 0 ? '1' : '0'}" data-integrated="${p.integratedTopicCount > 0 ? '1' : '0'}" data-in-topic="${p.integratedInTopic ? '1' : '0'}">` +
     `<div class="paper-main">` +
-      `<a class="paper-title-link" href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<a class="paper-title-link" href="/library/documents/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<div class="paper-id mono">${escapeHtml(p.canonicalId)}</div>` +
       integrationBadge +
       integrateCta +
     `</div>` +
+    `<span class="type-badge">${escapeHtml(typeLabel)}</span>` +
     `<span class="source-badge">${escapeHtml(p.sourceLabel)}</span>` +
     `<div class="paper-tag-cell">${renderTagChips(p.tags)}</div>` +
     `<div class="paper-state">${stateBits}</div>` +
@@ -567,6 +572,105 @@ function renderAddPaperModal(topicPaths: string[]): string {
   `</div>`;
 }
 
+export function renderNoteEditor(opts: {
+  id: string;
+  title: string;
+  body: string;
+  isNew: boolean;
+  revision?: number;
+}): string {
+  const action = opts.isNew ? '/library/documents' : `/library/documents/${encodeURIComponent(opts.id)}`;
+  const body = topbar('', 'library') +
+    `<main class="note-editor">` +
+      `<p><a href="/library">← Library</a></p>` +
+      `<h1>${opts.isNew ? 'Write note' : 'Edit note'}</h1>` +
+      `<form id="note-form" data-action="${escapeHtml(action)}" data-new="${opts.isNew ? '1' : '0'}" data-revision="${opts.revision ?? 1}" data-id="${escapeHtml(opts.id)}">` +
+        `<label>Title<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note"></label>` +
+        `<label>Body<textarea name="body" required rows="16">${escapeHtml(opts.body)}</textarea></label>` +
+        `<button class="primary" type="submit" data-save>Save</button>` +
+        `<a href="/library" data-cancel>Cancel</a>` +
+        `<p class="save-status" aria-live="polite"></p>` +
+      `</form>` +
+      `<script>
+const form = document.getElementById('note-form');
+const titleEl = form.querySelector('[name=title]');
+const bodyEl = form.querySelector('[name=body]');
+const saveBtn = form.querySelector('[data-save]');
+const cancel = form.querySelector('[data-cancel]');
+let mutationId = crypto.randomUUID();
+let dirty = false;
+function setEditingEnabled(on) {
+  titleEl.disabled = !on;
+  bodyEl.disabled = !on;
+  if (saveBtn) saveBtn.disabled = !on;
+}
+form.addEventListener('input', () => {
+  if (form.dataset.saving === '1') return;
+  dirty = true;
+  mutationId = crypto.randomUUID();
+});
+cancel?.addEventListener('click', (e) => {
+  if (!dirty) return;
+  if (!confirm('Unsaved changes. Discard?')) e.preventDefault();
+});
+window.addEventListener('beforeunload', (e) => {
+  if (!dirty || form.dataset.saving === '1') return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (form.dataset.saving === '1') return;
+  form.dataset.saving = '1';
+  setEditingEnabled(false);
+  const title = titleEl.value;
+  const body = bodyEl.value;
+  const isNew = form.dataset.new === '1';
+  const status = form.querySelector('.save-status');
+  status.textContent = 'Saving';
+  const payload = isNew
+    ? { docType: 'note', id: form.dataset.id, title, body, mutationId }
+    : { title, body, expectedRevision: Number(form.dataset.revision), mutationId };
+  try {
+    const res = await fetch(form.dataset.action, {
+      method: isNew ? 'POST' : 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      status.textContent = 'Not saved';
+      form.dataset.saving = '0';
+      setEditingEnabled(true);
+      return;
+    }
+    const data = await res.json();
+    dirty = false;
+    status.textContent = 'Saved';
+    location.href = data.url;
+  } catch {
+    status.textContent = 'Not saved';
+    form.dataset.saving = '0';
+    setEditingEnabled(true);
+  }
+});
+</script>` +
+    `</main>`;
+  return page('Note · researcher', body);
+}
+
+export function renderNoteReader(doc: { id: string; title: string; body: string; updatedAt: string }): string {
+  const heading = doc.title || 'Untitled note';
+  const body = topbar('', 'library') +
+    `<main class="note-reader">` +
+      `<p><a href="/library">← Library</a></p>` +
+      `<p class="muted">note · Saved · ${escapeHtml(doc.updatedAt)}</p>` +
+      `<h1>${escapeHtml(heading)}</h1>` +
+      `<div class="note-body">${markedHtml(doc.body)}</div>` +
+      `<p><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
+    `</main>`;
+  return page(`${heading} · researcher`, body);
+}
+
 export function renderLibrary(v: LibraryView): string {
   const papers = v.papers.map((p) => renderPaperCard(p, 'row', {
     defaultHidden: p.linkedTopicCount > 0, // match default Unlinked filter
@@ -584,12 +688,23 @@ export function renderLibrary(v: LibraryView): string {
           `<button type="button" data-filter="linked" aria-pressed="false">Linked</button>` +
           `<button type="button" data-filter="integrated" aria-pressed="false">Integrated</button>` +
         `</div>` +
+        `<div class="library-filters" role="group" aria-label="Document type">` +
+          `<button class="active" type="button" data-type-filter="all" aria-pressed="true">All types</button>` +
+          `<button type="button" data-type-filter="paper" aria-pressed="false">paper</button>` +
+          `<button type="button" data-type-filter="blog" aria-pressed="false">blog</button>` +
+          `<button type="button" data-type-filter="note" aria-pressed="false">note</button>` +
+          `<button type="button" data-type-filter="design-doc" aria-pressed="false">design-doc</button>` +
+          `<button type="button" data-type-filter="spec" aria-pressed="false">spec</button>` +
+          `<button type="button" data-type-filter="api-doc" aria-pressed="false">api-doc</button>` +
+          `<button type="button" data-type-filter="other" aria-pressed="false">other</button>` +
+        `</div>` +
       `</aside>` +
       `<section class="library-main">` +
-        `<div class="library-head"><div><h1>Library</h1><p>Workspace papers, reads, tags, and topic links.</p></div>` +
-        `<button class="primary" type="button" data-open-add-paper>Add paper</button></div>` +
+        `<div class="library-head"><div><h1>Library</h1><p>Workspace documents, reads, tags, and topic links.</p></div>` +
+        `<div><button class="primary" type="button" data-open-add-paper>＋ Add</button>` +
+        `<a class="secondary" href="/library/documents/new?type=note">Write note</a></div></div>` +
         `<div class="paper-list-grid">` +
-          `<div class="paper-card paper-header"><span>Paper</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
+          `<div class="paper-card paper-header"><span>Document</span><span>Type</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
           `${papers || '<p class="empty-state">No papers yet.</p>'}` +
           `<p class="empty-state library-no-results" hidden>No papers match the current filters.</p>` +
         `</div>` +
@@ -696,7 +811,7 @@ function renderTopicSuggestList(v: LibraryPaperDetailView): string {
 }
 
 function paperDetailHref(paperId: string, editTopic?: string): string {
-  const base = `/library/p/${encodeURIComponent(paperId)}`;
+  const base = `/library/documents/${encodeURIComponent(paperId)}`;
   return editTopic ? `${base}?edit=${encodeURIComponent(editTopic)}` : base;
 }
 
@@ -831,9 +946,9 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
     `</li>`;
   }).join('');
 
-  return `<section class="detail-panel paper-notes-panel" id="notes">` +
+  return `<section class="detail-panel paper-notes-panel" id="annotations">` +
     `<div class="paper-notes-head">` +
-      `<h2>Notes</h2>` +
+      `<h2>Annotations</h2>` +
       `<span class="muted">Your attention on this paper — survives re-read</span>` +
     `</div>` +
     `<form class="paper-note-form" action="/library/note" method="post">` +
@@ -860,8 +975,8 @@ export function renderLibraryPaper(
   const noteCount = v.notes.length;
   // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
-    `<a class="primary paper-jump-notes" href="#notes">` +
-      `Notes${noteCount > 0 ? ` · ${noteCount}` : ''}` +
+    `<a class="primary paper-jump-notes" href="#annotations">` +
+      `Annotations${noteCount > 0 ? ` · ${noteCount}` : ''}` +
     `</a>`;
   const identity = renderPaperIdentityMeta(v);
   const readBody = v.latestReadArtifact
@@ -1085,17 +1200,31 @@ document.addEventListener('keydown', (e) => {
 const LIBRARY_JS = `
 const librarySearch = document.querySelector('[data-library-search]');
 const libraryFilterButtons = Array.from(document.querySelectorAll('[data-filter]'));
+const libraryTypeButtons = Array.from(document.querySelectorAll('[data-type-filter]'));
 const libraryCards = Array.from(document.querySelectorAll('.paper-card.row'));
 const libraryNoResults = document.querySelector('.library-no-results');
 // Default inbox: papers not yet linked to any topic.
-let activeLibraryFilter = 'unlinked';
+const params = new URLSearchParams(location.search);
+let activeLibraryFilter = params.get('status') || 'unlinked';
+let activeTypeFilter = params.get('type') || 'all';
+if (params.get('q') && librarySearch) librarySearch.value = params.get('q');
 
 function cardMatchesFilter(card) {
+  if (activeTypeFilter !== 'all' && card.dataset.type !== activeTypeFilter) return false;
   if (activeLibraryFilter === 'all') return true;
   if (activeLibraryFilter === 'unlinked') return card.dataset.linked !== '1';
   if (activeLibraryFilter === 'linked') return card.dataset.linked === '1';
   if (activeLibraryFilter === 'integrated') return card.dataset.integrated === '1';
   return card.dataset.status === activeLibraryFilter;
+}
+
+function syncLibraryUrl() {
+  const u = new URL(location.href);
+  u.searchParams.set('status', activeLibraryFilter);
+  u.searchParams.set('type', activeTypeFilter);
+  const q = (librarySearch?.value || '').trim();
+  if (q) u.searchParams.set('q', q); else u.searchParams.delete('q');
+  history.replaceState(null, '', u);
 }
 
 function applyLibraryFilters() {
@@ -1108,12 +1237,32 @@ function applyLibraryFilters() {
     if (show) visible += 1;
   });
   if (libraryNoResults) libraryNoResults.hidden = visible > 0 || libraryCards.length === 0;
+  syncLibraryUrl();
 }
+
+function setActiveButtons(buttons, attr, value) {
+  buttons.forEach((b) => {
+    const active = (b.getAttribute(attr) || '') === value;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+setActiveButtons(libraryFilterButtons, 'data-filter', activeLibraryFilter);
+setActiveButtons(libraryTypeButtons, 'data-type-filter', activeTypeFilter);
 
 librarySearch?.addEventListener('input', applyLibraryFilters);
 libraryFilterButtons.forEach((button) => button.addEventListener('click', () => {
   activeLibraryFilter = button.dataset.filter || 'unlinked';
   libraryFilterButtons.forEach((b) => {
+    const active = b === button;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  applyLibraryFilters();
+}));
+libraryTypeButtons.forEach((button) => button.addEventListener('click', () => {
+  activeTypeFilter = button.dataset.typeFilter || 'all';
+  libraryTypeButtons.forEach((b) => {
     const active = b === button;
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -1375,7 +1524,7 @@ function homeLibrary(m: WorkspaceHomeModel): string {
   const pct = lc.papers > 0 ? Math.round((lc.integrated / lc.papers) * 100) : 0;
   const recent = m.recentPapers.map((p) =>
     `<li>` +
-      `<a href="/library/p/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
+      `<a href="/library/documents/${encodeURIComponent(p.id)}">${escapeHtml(p.displayTitle)}</a>` +
       `<span>${escapeHtml(p.readStatus)} · ${escapeHtml(fmtRelative(p.updatedAt))}</span>` +
     `</li>`,
   ).join('');
@@ -1682,7 +1831,7 @@ export function renderTopic(
   // left navigation, beside the local files, so linking has immediate feedback.
   const pendingRelated = related.filter((p) => !p.integratedInTopic);
   const pendingRelatedRows = pendingRelated.map((p) =>
-    `<li><a href="/library/p/${encodeURIComponent(p.id)}" title="${escapeHtml(p.displayTitle)}">` +
+    `<li><a href="/library/documents/${encodeURIComponent(p.id)}" title="${escapeHtml(p.displayTitle)}">` +
       `${escapeHtml(p.displayTitle)}</a><span class="library-link-state">linked</span></li>`,
   ).join('');
 

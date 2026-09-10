@@ -72,8 +72,8 @@ export async function runLibraryRead(
       (material.meta.title ? ` ("${material.meta.title.slice(0, 80)}")` : ''),
   );
 
-  const artifactPath = `${LIBRARY_DIR}/papers/${opts.paper.id}/reads/${opts.readId}.md`;
-  mkdirSync(join(opts.workspaceRoot, LIBRARY_DIR, 'papers', opts.paper.id, 'reads'), { recursive: true });
+  const artifactPath = `${LIBRARY_DIR}/documents/${opts.paper.id}/reads/${opts.readId}.md`;
+  mkdirSync(join(opts.workspaceRoot, LIBRARY_DIR, 'documents', opts.paper.id, 'reads'), { recursive: true });
   opts.onLine?.(`deep-read ${opts.paper.id}`);
 
   opts.onEvent?.({ type: 'stage', name: 'draft-read' });

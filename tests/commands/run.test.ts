@@ -129,7 +129,7 @@ describe('researcher run (autonomous)', () => {
   });
 
   const libraryPaperId = 'paper_arxiv_2401_55555';
-  const libraryArtifactPath = `.researcher-workspace/library/papers/${libraryPaperId}/reads/read_${libraryPaperId}.md`;
+  const libraryArtifactPath = `.researcher-workspace/library/documents/${libraryPaperId}/reads/read_${libraryPaperId}.md`;
 
   function upsertLibraryRead(root: string, body = '# Existing Library Read\n\nReusable library artifact body.\n'): void {
     const lib = new PaperLibrary(root, { now: () => '2026-07-04T00:00:00.000Z' });
@@ -141,15 +141,15 @@ describe('researcher run (autonomous)', () => {
       title: 'Auto-picked deep read',
       tags: ['reuse'],
     });
-    mkdirSync(join(root, '.researcher-workspace/library/papers', libraryPaperId, 'reads'), { recursive: true });
+    mkdirSync(join(root, '.researcher-workspace/library/documents', libraryPaperId, 'reads'), { recursive: true });
     writeFileSync(join(root, libraryArtifactPath), body);
     lib.upsertRead({ id: `read_${libraryPaperId}`, paperId: libraryPaperId, status: 'read', artifactPath: libraryArtifactPath });
   }
 
   function fakeLibraryRead(body = '# New Library Read\n\nFresh library artifact body.\n'): LibraryReadRunner {
     return async ({ workspaceRoot, paper, readId }) => {
-      const artifactPath = `.researcher-workspace/library/papers/${paper.id}/reads/${readId}.md`;
-      mkdirSync(join(workspaceRoot, '.researcher-workspace/library/papers', paper.id, 'reads'), { recursive: true });
+      const artifactPath = `.researcher-workspace/library/documents/${paper.id}/reads/${readId}.md`;
+      mkdirSync(join(workspaceRoot, '.researcher-workspace/library/documents', paper.id, 'reads'), { recursive: true });
       writeFileSync(join(workspaceRoot, artifactPath), body);
       return { artifactPath, title: 'Auto-picked deep read' };
     };

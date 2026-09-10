@@ -12,6 +12,7 @@ import {
   stagePaths,
 } from '../git/workspace-ops.js';
 import { LIBRARY_DIR } from '../library/store.js';
+import { readMaintenanceStage } from '../library/maintenance.js';
 import { classifyTopicGit, type TopicGitInfo } from './topic-git.js';
 import {
   activeTopics,
@@ -97,11 +98,10 @@ function resolveActions(opts: WorkspaceSyncOptions): WorkspaceSyncActions {
 }
 
 const LIBRARY_LEDGERS = [
-  'papers.jsonl',
-  'reads.jsonl',
+  'schema.json',
+  'annotations.jsonl',
   'links.jsonl',
   'integrations.jsonl',
-  'notes.jsonl',
 ] as const;
 
 function isAllowlistedLibraryPath(rel: string): boolean {
@@ -109,7 +109,8 @@ function isAllowlistedLibraryPath(rel: string): boolean {
   if (!rel.startsWith(prefix)) return false;
   const rest = rel.slice(prefix.length);
   if ((LIBRARY_LEDGERS as readonly string[]).includes(rest)) return true;
-  return /^papers\/[^/]+\/reads\/[^/]+\.md$/.test(rest);
+  if (/^documents\/[^/]+\/document\.md$/.test(rest)) return true;
+  return /^documents\/[^/]+\/reads\/[^/]+\.(md|json)$/.test(rest);
 }
 
 function listTrackedAllowlistedLibraryPaths(root: string): string[] {
@@ -131,14 +132,17 @@ export function listLibrarySyncPaths(root: string): string[] {
     const abs = join(root, rel);
     if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
   }
-  const papers = join(lib, 'papers');
-  if (!existsSync(papers) || !statSync(papers).isDirectory()) return [...seen];
-  for (const paperId of readdirSync(papers)) {
-    const readsDir = join(papers, paperId, 'reads');
+  const documents = join(lib, 'documents');
+  if (!existsSync(documents) || !statSync(documents).isDirectory()) return [...seen];
+  for (const documentId of readdirSync(documents)) {
+    const docMd = `${LIBRARY_DIR}/documents/${documentId}/document.md`;
+    const absDoc = join(root, docMd);
+    if (existsSync(absDoc) && statSync(absDoc).isFile()) seen.add(docMd);
+    const readsDir = join(documents, documentId, 'reads');
     if (!existsSync(readsDir) || !statSync(readsDir).isDirectory()) continue;
     for (const fname of readdirSync(readsDir)) {
-      if (!fname.endsWith('.md')) continue;
-      const rel = `${LIBRARY_DIR}/papers/${paperId}/reads/${fname}`;
+      if (!fname.endsWith('.md') && !fname.endsWith('.json')) continue;
+      const rel = `${LIBRARY_DIR}/documents/${documentId}/reads/${fname}`;
       const abs = join(root, rel);
       if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
     }
@@ -226,6 +230,13 @@ export async function runWorkspaceSync(opts: WorkspaceSyncOptions): Promise<Work
     throw new WorkspaceSyncError(
       `not a workspace root: missing researcher.workspace.yml in ${opts.cwd}`,
       2,
+    );
+  }
+  const stage = readMaintenanceStage(opts.cwd);
+  if (stage && stage !== 'completed') {
+    throw new WorkspaceSyncError(
+      `library maintenance in progress (${stage}); run: researcher library migrate --resume`,
+      1,
     );
   }
   const manifest = loadWorkspaceManifest(resolveWorkspaceManifestPath(opts.cwd));

@@ -19,18 +19,18 @@ describe('researcher library commands', () => {
 
   it('adds, lists, and links a paper without a topic .researcher directory', () => {
     const write = (_s: string) => {};
-    runLibraryAdd({ cwd: root, input: 'https://arxiv.org/abs/2401.12345v2', tags: ['survey'], write });
+    const added = runLibraryAdd({ cwd: root, input: 'https://arxiv.org/abs/2401.12345v2', tags: ['survey'], write });
     runLibraryAdd({ cwd: root, input: '2401.12345', tags: ['benchmark'], write });
-    runLibraryLink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', rationale: 'matches RQ1', write });
+    runLibraryLink({ cwd: root, paperId: added.id, topic: 'trace', rationale: 'matches RQ1', write });
 
     const lib = new PaperLibrary(root);
     expect(lib.listPapers()).toEqual([
-      expect.objectContaining({ id: 'paper_arxiv_2401_12345', tags: ['benchmark'] }),
+      expect.objectContaining({ id: added.id, tags: ['benchmark'] }),
     ]);
-    expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
-      expect.objectContaining({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' }),
+    expect(lib.listLinks(added.id)).toEqual([
+      expect.objectContaining({ paperId: added.id, surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' }),
     ]);
-    expect(readFileSync(join(root, '.researcher-workspace/library/papers.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(lib.listDocuments()).toHaveLength(1);
     expect(readFileSync(join(root, 'trace/notes/00_research_landscape.md'), 'utf8')).toBe('# Landscape\n');
     expect(readFileSync(join(root, 'trace/report.md'), 'utf8')).toBe('# Report\n');
   });
@@ -41,15 +41,15 @@ describe('researcher library commands', () => {
     runLibraryList({ cwd: root, write: (s) => out.push(s) });
     expect(out.join('')).toContain('url:https://example.com/paper');
     expect(out.join('')).toMatch(/paper_url_[a-f0-9]{16}/);
-    expect(existsSync(join(root, '.researcher-workspace/library/papers.jsonl'))).toBe(true);
+    expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(true);
   });
 
   it('records topic integration without mutating topic artifacts', () => {
     const write = (_s: string) => {};
-    runLibraryAdd({ cwd: root, input: '2401.12345', write });
+    const added = runLibraryAdd({ cwd: root, input: '2401.12345', write });
     runLibraryIntegrate({
       cwd: root,
-      paperId: 'paper_arxiv_2401_12345',
+      paperId: added.id,
       topic: 'trace',
       notePath: 'trace/notes/active/01_stub.md',
       zone: 'active',
@@ -58,16 +58,16 @@ describe('researcher library commands', () => {
     });
 
     const lib = new PaperLibrary(root);
-    expect(lib.listIntegrations('paper_arxiv_2401_12345')).toEqual([
+    expect(lib.listIntegrations(added.id)).toEqual([
       expect.objectContaining({
-        paperId: 'paper_arxiv_2401_12345',
+        paperId: added.id,
         topicId: 'trace',
         notePath: 'trace/notes/active/01_stub.md',
         zone: 'active',
         summary: 'answers RQ1',
       }),
     ]);
-    expect(lib.listLinks('paper_arxiv_2401_12345')).toEqual([
+    expect(lib.listLinks(added.id)).toEqual([
       expect.objectContaining({ surfaceType: 'topic', surfaceId: 'trace' }),
     ]);
     expect(readFileSync(join(root, 'trace/notes/00_research_landscape.md'), 'utf8')).toBe('# Landscape\n');
@@ -76,10 +76,10 @@ describe('researcher library commands', () => {
 
   it('unlinks a paper from one topic without removing its integration history', () => {
     const write = (_s: string) => {};
-    runLibraryAdd({ cwd: root, input: '2401.12345', write });
-    runLibraryLink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', write });
-    runLibraryUnlink({ cwd: root, paperId: 'paper_arxiv_2401_12345', topic: 'trace', write });
-    expect(new PaperLibrary(root).listLinks('paper_arxiv_2401_12345')).toEqual([]);
+    const added = runLibraryAdd({ cwd: root, input: '2401.12345', write });
+    runLibraryLink({ cwd: root, paperId: added.id, topic: 'trace', write });
+    runLibraryUnlink({ cwd: root, paperId: added.id, topic: 'trace', write });
+    expect(new PaperLibrary(root).listLinks(added.id)).toEqual([]);
   });
 
   it('stores explicit docType on library add', () => {

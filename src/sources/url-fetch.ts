@@ -195,7 +195,7 @@ export function extractHtmlMainText(html: string): { title: string; text: string
   const tm = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   if (tm) title = decodeEntities(stripTags(tm[1])).replace(/\s+/g, ' ').trim();
 
-  let body = html
+  const body = html
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')

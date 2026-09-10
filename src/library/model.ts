@@ -1,6 +1,6 @@
-import type { DocType } from './doc-type.js';
+import type { DocType, LibraryDocType } from './doc-type.js';
 
-export type { DocType } from './doc-type.js';
+export type { DocType, LibraryDocType } from './doc-type.js';
 export type SourceKind = 'arxiv' | 'url';
 
 export interface SourceRef {
@@ -35,6 +35,7 @@ export interface PaperRead {
   paperId: string;
   status: PaperReadStatus;
   artifactPath?: string;
+  mutationId?: string;
   /** Terminal failure reason when status is failed (timeout, API error, orphan reclaim, …). */
   lastError?: string;
   createdAt: string;
@@ -65,6 +66,25 @@ export interface PaperSurfaceLink {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface LibraryDocument {
+  id: string;
+  docType: LibraryDocType;
+  title: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+  lastMutationId?: string;
+  body: string;
+  canonicalSource?: SourceRef;
+  sources: SourceRef[];
+  identifiers: Paper['identifiers'];
+  authors?: string[];
+  abstract?: string;
+}
+
+export type LibraryStatusFilter = 'all' | 'unlinked' | 'unread' | 'read' | 'linked' | 'integrated';
 
 export interface TopicIntegration {
   paperId: string;

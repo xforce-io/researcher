@@ -15,8 +15,8 @@ import type { LibraryReadRunner } from '../../src/web/library-read.js';
 
 const defaultLibraryReadRunner = vi.hoisted(() =>
   vi.fn<LibraryReadRunner>(async ({ workspaceRoot, paper, readId }) => {
-    const artifactPath = `.researcher-workspace/library/papers/${paper.id}/reads/${readId}.md`;
-    mkdirSync(join(workspaceRoot, '.researcher-workspace/library/papers', paper.id, 'reads'), {
+    const artifactPath = `.researcher-workspace/library/documents/${paper.id}/reads/${readId}.md`;
+    mkdirSync(join(workspaceRoot, '.researcher-workspace/library/documents', paper.id, 'reads'), {
       recursive: true,
     });
     writeFileSync(join(workspaceRoot, artifactPath), '# Lib\n\nbody\n');
@@ -48,8 +48,8 @@ describe('libraryTopicRead integration timing', () => {
 
   function fakeLibraryRead(body = '# Lib\n\nbody\n'): LibraryReadRunner {
     return async ({ workspaceRoot, paper, readId }) => {
-      const artifactPath = `.researcher-workspace/library/papers/${paper.id}/reads/${readId}.md`;
-      mkdirSync(join(workspaceRoot, '.researcher-workspace/library/papers', paper.id, 'reads'), { recursive: true });
+      const artifactPath = `.researcher-workspace/library/documents/${paper.id}/reads/${readId}.md`;
+      mkdirSync(join(workspaceRoot, '.researcher-workspace/library/documents', paper.id, 'reads'), { recursive: true });
       writeFileSync(join(workspaceRoot, artifactPath), body);
       return { artifactPath, title: 'Timing Paper' };
     };

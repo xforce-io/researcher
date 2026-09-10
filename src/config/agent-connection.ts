@@ -23,7 +23,7 @@ const PROTOCOLS: Record<string, true> = {
 const RUNTIMES: Record<string, true> = { 'claude-code': true, 'grok-cli': true, codex: true };
 const CONTRACT_FIELDS = ['transport', 'protocol', 'runtime', 'model', 'baseUrl', 'apiKey', 'provider'] as const;
 
-type ContractField = (typeof CONTRACT_FIELDS)[number];
+
 
 export interface AgentConnectionFields {
   transport?: string;

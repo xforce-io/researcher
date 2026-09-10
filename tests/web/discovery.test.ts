@@ -59,9 +59,9 @@ beforeAll(() => {
     title: 'Reusable Paper Cards',
     tags: ['agent', 'planning'],
   });
-  lib.upsertRead({ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md' });
-  mkdirSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345'), { recursive: true });
-  writeFileSync(join(root, '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md'), '# Library Read\n\n## Findings\n\n- Useful paper.');
+  lib.upsertRead({ id: 'read-1', paperId: 'paper_arxiv_2401_12345', status: 'read', artifactPath: '.researcher-workspace/library/documents/paper_arxiv_2401_12345/read.md' });
+  mkdirSync(join(root, '.researcher-workspace/library/documents/paper_arxiv_2401_12345'), { recursive: true });
+  writeFileSync(join(root, '.researcher-workspace/library/documents/paper_arxiv_2401_12345/read.md'), '# Library Read\n\n## Findings\n\n- Useful paper.');
   lib.upsertLink({ paperId: 'paper_arxiv_2401_12345', surfaceType: 'topic', surfaceId: 'trace', rationale: 'matches RQ1' });
   lib.upsertIntegration({ paperId: 'paper_arxiv_2401_12345', topicId: 'trace', notePath: 'trace/notes/active/03_active.md', zone: 'active', integratedAt: '2026-07-02T01:00:00Z', summary: 'used in landscape' });
 
@@ -297,7 +297,7 @@ describe('loadLibrary', () => {
     expect(v.reads).toEqual([expect.objectContaining({ status: 'read' })]);
     expect(v.notes).toEqual([]);
     expect(v.latestReadArtifact).toEqual({
-      path: '.researcher-workspace/library/papers/paper_arxiv_2401_12345/read.md',
+      path: '.researcher-workspace/library/documents/paper_arxiv_2401_12345/read.md',
       markdown: '# Library Read\n\n## Findings\n\n- Useful paper.',
     });
     expect(v.links).toEqual([expect.objectContaining({ surfaceId: 'trace', rationale: 'matches RQ1' })]);

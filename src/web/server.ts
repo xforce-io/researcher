@@ -4,7 +4,7 @@ import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
 import { loadHomeTrending, type HomeTrendingLoader } from './home-trending.js';
-import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
+import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderNoteEditor, renderNoteReader, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
@@ -18,8 +18,8 @@ import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryUnlink } from '../commands/library.js';
-import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
-import { PaperLibrary } from '../library/store.js';
+import { PaperLibrary, newDocumentId, newReadId } from '../library/store.js';
+import { acquireSharedLease } from '../library/maintenance.js';
 import type { Stage } from '../state/runs.js';
 
 export interface ServeOptions {
@@ -53,6 +53,7 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   const registry = opts.registry ?? new TaskRegistry();
   const libraryReadRunner = opts.libraryReadRunner ?? defaultLibraryReadRunner;
 
+  const releaseLease = acquireSharedLease(opts.root, 'researcher serve');
   // TaskRegistry is in-memory only: any `reading` left on disk from a previous process is orphaned.
   const reclaimed = new PaperLibrary(opts.root).reclaimOrphanReads();
   if (reclaimed.length > 0) {
@@ -70,7 +71,7 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   await new Promise<void>((resolve) => server.listen(opts.port, '127.0.0.1', resolve));
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : opts.port;
-  return { port, close: () => new Promise((r) => server.close(() => r())) };
+  return { port, close: () => new Promise((r) => server.close(() => { releaseLease(); r(); })) };
 }
 
 function parseSetupForm(form: URLSearchParams): TopicSetupForm {
@@ -137,8 +138,37 @@ async function handle(
   // GET /library
   if (req.method === 'GET' && path === '/library') {
     const selected = url.searchParams.get('paper');
-    if (selected) return redirect(res, `/library/p/${encodeURIComponent(selected)}`);
-    return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root)));
+    if (selected) return send(res, 400, 'text/plain', 'use /library/documents/:documentId');
+    const status = url.searchParams.get('status') ?? (req.headers.accept?.includes('application/json') ? 'all' : 'all');
+    const type = url.searchParams.get('type') ?? 'all';
+    const q = url.searchParams.get('q') ?? '';
+    const accept = req.headers.accept ?? '';
+    if (accept.includes('application/json')) {
+      return sendJsonDocuments(res, root, { type, status, query: q });
+    }
+    try {
+      return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type: 'all', status: 'all', query: q })));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const code = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
+      return send(res, code, 'text/plain', message);
+    }
+  }
+  if (req.method === 'GET' && path === '/library/documents') {
+    const status = url.searchParams.get('status') ?? 'all';
+    const type = url.searchParams.get('type') ?? 'all';
+    const q = url.searchParams.get('q') ?? '';
+    return sendJsonDocuments(res, root, { type, status, query: q });
+  }
+  if (req.method === 'GET' && path === '/library/documents/new') {
+    if ((url.searchParams.get('type') ?? 'note') !== 'note') {
+      return send(res, 422, 'text/plain', 'only type=note is supported');
+    }
+    const id = newDocumentId();
+    return send(res, 200, 'text/html; charset=utf-8', renderNoteEditor({ id, title: '', body: '', isNew: true }));
+  }
+  if (req.method === 'POST' && path === '/library/documents') {
+    return handleCreateNote(req, res, root);
   }
   // POST /library/add
   if (req.method === 'POST' && path === '/library/add') {
@@ -150,13 +180,12 @@ async function handle(
     if (topic && !resolveTopicDir(root, topic)) return send(res, 400, 'text/plain', 'unknown topic');
     let paperId: string;
     try {
-      paperId = paperIdForSource(normalizePaperInput(input));
-      runLibraryAdd({
+      paperId = runLibraryAdd({
         cwd: root,
         input,
         tags: form.has('tags') ? parseTags(form.get('tags') ?? '') : undefined,
         write: () => {},
-      });
+      }).id;
       if (topic) {
         runLibraryLink({ cwd: root, paperId, topic, write: () => {} });
       }
@@ -183,7 +212,7 @@ async function handle(
     }
     const taskKey = libraryReadTaskKey(paperId);
     if (registry.isBusy(taskKey)) return send(res, 409, 'application/json', JSON.stringify({ error: 'busy' }));
-    const readId = libraryReadId(paperId);
+    const readId = newReadId();
     lib.upsertRead({ id: readId, paperId, status: 'reading', lastError: undefined });
     registry.startJob(taskKey, async (onLine, onEvent) => {
       onEvent({ type: 'plan', stages: LIBRARY_READ_STAGES });
@@ -240,7 +269,7 @@ async function handle(
     if (!paperId) return send(res, 400, 'text/plain', 'missing paper id');
     const lib = new PaperLibrary(root);
     if (!lib.getPaper(paperId)) return send(res, 404, 'text/plain', 'unknown paper');
-    const back = `/library/p/${encodeURIComponent(paperId)}#notes`;
+    const back = `/library/p/${encodeURIComponent(paperId)}#annotations`;
     try {
       if (action === 'create') {
         const text = form.get('body')?.trim() ?? '';
@@ -329,15 +358,44 @@ async function handle(
     req.on('close', unsub);
     return;
   }
-  const lm = path.match(/^\/library\/p\/([^/]+)$/);
-  if (req.method === 'GET' && lm) {
-    const paperId = decodeURIComponent(lm[1]);
-    const paper = loadLibraryPaper(root, paperId);
+  const docPath = path.match(/^\/library\/(?:documents|p)\/([^/]+)$/);
+  if (req.method === 'GET' && docPath && docPath[1] !== 'new' && docPath[1] !== 'import') {
+    const documentId = decodeURIComponent(docPath[1]);
+    const accept = req.headers.accept ?? '';
+    const lib = new PaperLibrary(root);
+    const doc = lib.getDocument(documentId);
+    if (!doc) return send(res, 404, 'text/plain', 'unknown document');
+    if (accept.includes('application/json')) {
+      return send(res, 200, 'application/json; charset=utf-8', JSON.stringify(doc));
+    }
+    if (doc.docType === 'note') {
+      return send(res, 200, 'text/html; charset=utf-8', renderNoteReader(doc));
+    }
+    const paper = loadLibraryPaper(root, documentId);
     if (!paper) return send(res, 404, 'text/plain', 'unknown paper');
-    const active = registry.activeTask(libraryReadTaskKey(paperId));
+    const active = registry.activeTask(libraryReadTaskKey(documentId));
     const activeRead = active ? { taskId: active.id, startedAt: active.startedAt } : null;
     const editTopic = url.searchParams.get('edit')?.trim() || undefined;
     return send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopic));
+  }
+  const editPath = path.match(/^\/library\/documents\/([^/]+)\/edit$/);
+  if (req.method === 'GET' && editPath) {
+    const documentId = decodeURIComponent(editPath[1]);
+    const lib = new PaperLibrary(root);
+    const doc = lib.getDocument(documentId);
+    if (!doc) return send(res, 404, 'text/plain', 'unknown document');
+    if (doc.docType !== 'note') return send(res, 422, 'text/plain', 'only notes are editable');
+    return send(res, 200, 'text/html; charset=utf-8', renderNoteEditor({
+      id: doc.id,
+      title: doc.title,
+      body: doc.body,
+      isNew: false,
+      revision: doc.revision,
+    }));
+  }
+  if (req.method === 'PATCH') {
+    const patch = path.match(/^\/library\/documents\/([^/]+)$/);
+    if (patch) return handlePatchNote(req, res, root, decodeURIComponent(patch[1]));
   }
   // GET /static/app.css
   if (req.method === 'GET' && path === '/static/app.css') {
@@ -523,8 +581,107 @@ function libraryReadTaskKey(paperId: string): string {
   return `library-read:${paperId}`;
 }
 
-function libraryReadId(paperId: string): string {
-  return `read_${paperId}`;
+function sendJsonDocuments(
+  res: ServerResponse,
+  root: string,
+  opts: { type: string; status: string; query: string },
+): void {
+  const lib = new PaperLibrary(root);
+  try {
+    const docs = lib.filterDocuments(opts);
+    send(res, 200, 'application/json; charset=utf-8', JSON.stringify(docs.map((d) => ({
+      id: d.id,
+      docType: d.docType,
+      title: d.title,
+      tags: d.tags,
+      source: d.canonicalSource ?? null,
+      updatedAt: d.updatedAt,
+    }))));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = (err as { status?: number }).status ?? (/unknown|invalid/.test(message) ? 400 : 500);
+    send(res, status, 'text/plain', message);
+  }
+}
+
+async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
+  const raw = await readBody(req);
+  let payload: { docType?: string; id?: string; title?: string; body?: string; mutationId?: string };
+  try {
+    payload = JSON.parse(raw) as typeof payload;
+  } catch {
+    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_json', message: 'invalid JSON' }));
+    return;
+  }
+  if (payload.docType !== 'note') {
+    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_type', message: 'docType must be note' }));
+    return;
+  }
+  if (typeof payload.id !== 'string' || typeof payload.title !== 'string' || typeof payload.body !== 'string' || typeof payload.mutationId !== 'string') {
+    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_fields', message: 'id, title, body, mutationId required' }));
+    return;
+  }
+  try {
+    const lib = new PaperLibrary(root);
+    const existed = Boolean(lib.getDocument(payload.id));
+    const doc = lib.createNote({
+      id: payload.id,
+      title: payload.title,
+      body: payload.body,
+      mutationId: payload.mutationId,
+    });
+    send(res, existed ? 200 : 201, 'application/json; charset=utf-8', JSON.stringify({
+      id: doc.id,
+      revision: doc.revision,
+      updatedAt: doc.updatedAt,
+      url: `/library/documents/${encodeURIComponent(doc.id)}`,
+    }));
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    send(res, status, 'application/json', JSON.stringify({
+      code: 'save_failed',
+      message: err instanceof Error ? err.message : String(err),
+      field: (err as { field?: string }).field,
+    }));
+  }
+}
+
+async function handlePatchNote(req: IncomingMessage, res: ServerResponse, root: string, id: string): Promise<void> {
+  const raw = await readBody(req);
+  let payload: { title?: string; body?: string; expectedRevision?: number; mutationId?: string };
+  try {
+    payload = JSON.parse(raw) as typeof payload;
+  } catch {
+    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_json', message: 'invalid JSON' }));
+    return;
+  }
+  if (typeof payload.title !== 'string' || typeof payload.body !== 'string' || typeof payload.mutationId !== 'string' || typeof payload.expectedRevision !== 'number') {
+    send(res, 400, 'application/json', JSON.stringify({ code: 'invalid_fields', message: 'title, body, expectedRevision, mutationId required' }));
+    return;
+  }
+  try {
+    const doc = new PaperLibrary(root).updateNote({
+      id,
+      title: payload.title,
+      body: payload.body,
+      expectedRevision: payload.expectedRevision,
+      mutationId: payload.mutationId,
+    });
+    send(res, 200, 'application/json; charset=utf-8', JSON.stringify({
+      id: doc.id,
+      revision: doc.revision,
+      updatedAt: doc.updatedAt,
+      url: `/library/documents/${encodeURIComponent(doc.id)}`,
+    }));
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    send(res, status, 'application/json', JSON.stringify({
+      code: 'save_failed',
+      message: err instanceof Error ? err.message : String(err),
+      field: (err as { field?: string }).field,
+      currentRevision: (err as { currentRevision?: number }).currentRevision,
+    }));
+  }
 }
 
 function hasCompletedRead(lib: PaperLibrary, root: string, paperId: string): boolean {
