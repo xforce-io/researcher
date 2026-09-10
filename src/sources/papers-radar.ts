@@ -1,10 +1,12 @@
 import { arxivAbsUrl, arxivPdfUrl, canonicalizeArxivId } from './arxiv.js';
 import { calculateHeatIndex, calculateHeatLevel, hasCommunityHeat } from './paper-heat.js';
+import { createProxyAwareFetch } from './proxy-fetch.js';
 
 const HF_DAILY = 'https://huggingface.co/api/daily_papers';
 const HF_PAPER = 'https://huggingface.co/api/papers';
 const ARXIV_API = 'https://export.arxiv.org/api/query';
 const TIMEOUT_MS = 90_000;
+const defaultFetch = createProxyAwareFetch({ timeoutMs: TIMEOUT_MS });
 
 export class PapersRadarError extends Error {
   constructor(message: string) {
@@ -46,7 +48,7 @@ export async function fetchTrendingPapers(opts: {
   const limit = opts.limit ?? 10;
   const source = opts.source ?? 'huggingface';
   const category = opts.category ?? 'cs.AI';
-  const fetchFn = opts.fetch ?? fetch;
+  const fetchFn = opts.fetch ?? defaultFetch;
   const byId = new Map<string, PapersItem>();
 
   if (source === 'huggingface' || source === 'both') {
@@ -98,7 +100,7 @@ export async function searchPapers(opts: {
   const q = opts.query.trim();
   if (!q) throw new PapersRadarError('search query is empty');
   const limit = opts.limit ?? 5;
-  const fetchFn = opts.fetch ?? fetch;
+  const fetchFn = opts.fetch ?? defaultFetch;
   const searchQuery = `ti:"${q}"`;
   const url =
     `${ARXIV_API}?search_query=${encodeURIComponent(searchQuery)}` +
@@ -115,7 +117,7 @@ export async function showPaper(opts: {
 }): Promise<PapersItem[]> {
   const canonical = canonicalizeArxivId(opts.arxivId);
   const bare = canonical.replace(/^arxiv:/, '');
-  const fetchFn = opts.fetch ?? fetch;
+  const fetchFn = opts.fetch ?? defaultFetch;
   try {
     const paper = await fetchHuggingFacePaper(bare, fetchFn);
     if (paper) return [withHeat(paper)];

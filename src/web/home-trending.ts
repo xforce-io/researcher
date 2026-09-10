@@ -1,6 +1,7 @@
 import { normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { PaperLibrary } from '../library/store.js';
 import { fetchTrendingPapers, type PapersItem } from '../sources/papers-radar.js';
+import { createProxyAwareFetch } from '../sources/proxy-fetch.js';
 import { readTrendingDayCache, trendingDay, writeTrendingDayCache } from '../sources/trending-cache.js';
 
 export const HOME_TRENDING_CAP = 5;
@@ -120,11 +121,12 @@ export async function defaultTrendingLoader(opts?: {
 }
 
 function fetchWithTimeout(ms: number): typeof fetch {
+  const inner = createProxyAwareFetch({ timeoutMs: ms });
   return async (input, init) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
-      return await fetch(input, { ...init, signal: ctrl.signal });
+      return await inner(input, { ...init, signal: ctrl.signal });
     } finally {
       clearTimeout(timer);
     }
