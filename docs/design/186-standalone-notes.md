@@ -28,12 +28,12 @@ Library 当前以 `Paper` 作为共同对象，但 `docType` 已支持 paper、b
 
 ### 文档及附属内容契约
 
-文档共同字段：稳定 `id`、`docType`、可选标题、标签集合、创建时间、更新时间。`docType` 为 paper / blog / design-doc / spec / api-doc / other / note；来源、内容维护方式与类型分别表达，不建立父类型。共同领域表示不能要求所有文档具备 `canonicalSource`。
+文档共同字段：稳定 `id`、`docType`、允许为空的标题、标签集合、创建时间、更新时间。`docType` 为 paper / blog / design-doc / spec / api-doc / other / note；来源、内容维护方式与类型分别表达，不建立父类型。共同领域表示不能要求所有文档具备 `canonicalSource`。
 
 | 内容 | 身份与信息 | 生命周期 |
 |---|---|---|
 | 已有外部材料 | 迁移保留对象身份、来源集合、标识、标签及类型；旧数据缺类型时按 paper | 继续通过原来源导入与去重更新 |
-| 自主笔记 | `doc_<UUID>`，类型 note，可选标题及 Markdown 正文；本期标签为空，不提供标签编辑 | 用户显式保存；不要求来源；不可被深读覆盖 |
+| 自主笔记 | `doc_<UUID>`，类型 note、允许为空的标题及 Markdown 正文；本期标签为空，不提供标签编辑 | 用户显式保存；不要求来源；不可被深读覆盖 |
 | 深读记录 | 每次执行独立 read ID、documentId、状态、时间、产物路径及失败原因 | queued / reading / read / failed；重跑新增执行，不覆盖上次产物 |
 | 深读产物 | 归属具体深读记录及原文档 | 附属展示，不进入 Library 文档数量与筛选结果 |
 | 文档批注 | 保留批注 ID、迁移为 `documentId`、种类、正文与钉选状态 | 现有创建、钉选、删除行为不变 |
@@ -61,7 +61,7 @@ Library 当前以 `Paper` 作为共同对象，但 `docType` 已支持 paper、b
 
 **总览布局**：沿用当前列表结构，顶部标题 Library，右侧一个 `＋ Add` 菜单，内含 `Add source` 与 `Write note`。列表列为标题、类型、来源、标签、状态、更新时间；移动端压缩成同一条目的纵向信息，不另建页面。类型使用可辨识文本徽标；note 来源位置显示 `—`，状态显示 `Saved`，不伪造来源或深读状态。无标题 note 显示 `Untitled note`，不将该占位写进标题字段。
 
-默认展示 All，以文档 `updatedAt` 降序、ID 升序稳定排序；不是默认 Unlinked。计数只计算独立文档。类型筛选为 All 及七个具体类型；与现有状态、元数据搜索取交集。元数据搜索覆盖标题、标签、来源标识，不搜索正文或深读产物。类型与搜索、状态写入 URL，刷新保持；返回 Library 保留进入详情时的筛选，直接打开详情则返回默认 All。
+Web 未指定 status 时默认 Unlinked，以文档 `updatedAt` 降序、ID 升序稳定排序。计数只计算独立文档。类型筛选为 All 及七个具体类型；与现有状态、元数据搜索取交集。元数据搜索覆盖标题、标签、来源标识，不搜索正文或深读产物。类型与搜索、状态写入 URL，刷新保持；返回 Library 保留进入详情时的筛选，直接打开详情则返回默认 Unlinked。
 
 既有 Unread / Read 筛选只匹配支持深读的文档；Linked / Integrated 只匹配实际关系；Unlinked 包含没有关联的 note，不代表等待综合。类型为 note 且状态选择 Read 时显示无结果，不隐式更改筛选。未知类型或状态查询返回可解释的 400 页面并提供清除筛选入口。
 
@@ -95,6 +95,10 @@ Library 当前以 `Paper` 作为共同对象，但 `docType` 已支持 paper、b
 选择“平级文档模型 + 统一资源路径 + 一次完整迁移”。Web、CLI、领域对象、关系字段和落盘布局共同切换；新版只接受新版格式，不保留旧接口或双轨读取。
 
 放弃增量适配旧 papers 账本：虽然首次改动较少，但新页面仍要依赖旧接口，CLI 与 Web 的 Library 集合不同，长期概念分裂。完整迁移的代价是升级需要停写、备份、校验和更新调用方；用户已明确接受该取舍。
+
+保留 Web 的 Unlinked 默认入口，note 自然出现在未关联集合中，不表达等待综合；放弃在本次把默认入口改为 All，完整集合由显式 All 提供。CLI 默认 All，按相同 status 可与 Web 对齐。
+
+旧 paper_* ID 原值保留，新创建文档使用 doc_UUID；ID 是不透明身份，不是类型标签。完整迁移统一字段和布局，不重写已有身份，也不根据前缀推断 docType。
 
 所有类型用同一文档文件表示，元数据和自主笔记正文一次原子保存；不增加单独元数据账本或数据库。外部原始 PDF/缓存与深读产物仍为文档附属文件，不能塞进自主笔记正文冒充原文。
 
@@ -164,19 +168,23 @@ flowchart TD
 
 note 的 reads/annotations/links/integrations 动作本期返回 422，不创建空记录；集合字段可呈现空关联。所有子资源必须校验 documentId 归属，错配 404。文档 ID 为安全不透明字符串，不仅接受新 UUID；new/import 等固定段不得当作 ID 匹配。
 
-列表 type 为 all 或七种类型；status 为 all/unlinked/unread/read/linked/integrated，缺省 all，未知值 400；返回集合含 id/docType/title/tags/source（可空）/updatedAt 及支持动作与状态。UI 与 CLI 使用同一筛选语义，不伪造 note 的来源与 unread。
+列表 type 为 all 或七种类型；status 为 all/unlinked/unread/read/linked/integrated；Web 页面缺省 unlinked，JSON 集合与 CLI 缺省 all，未知值 400；返回集合含 id/docType/title/tags/source（可空）/updatedAt 及支持动作与状态。UI 与 CLI 显式指定相同 type/status/q 时集合一致，默认值差异不改变 Library 的全集。note 出现在 Unlinked 中不代表等待综合，不伪造来源与 unread。
 
 旧 `/library/p/...`、`/library/d/...`、`/library/new`、旧动作接口和旧 stream 下线返回 404；`/library?paper=...` 返回 400，提示使用新版 Library。不做重定向、参数别名或双版本 API；应用内表单、链接、脚本、提示、prompts 与 skills 在同次实现中更新。
 
 ### 写入与执行语义
 
-note 标题/正文限制见 §4.1；请求最多 2 MiB，超限 413。创建时 id 必须为 doc_UUID，初始 revision=1；更新时 expectedRevision 必填。时间和路径由服务端生成，不接受客户端覆盖。成功返回 id/revision/updatedAt/url；创建 201、更新或原样重试 200。
+创建和更新请求的 title 字段必须存在且为字符串，允许空字符串；省略字段为 400。空标题保存为 ""，只在展示时使用 Untitled note，不持久化占位文案。旧数据无标题迁移为 ""。note 标题/正文限制见 §4.1；请求最多 2 MiB，超限 413。创建时 id 必须为 doc_UUID，初始 revision=1；更新时 expectedRevision 必填。时间和路径由服务端生成，不接受客户端覆盖。成功返回 id/revision/updatedAt/url；创建 201、更新或原样重试 200。
 
 空白/无效字段 400；未知文档 404；不支持动作 422；版本冲突或同 mutationId 不同内容 409；锁超时 503；持久化失败 500。所有失败均不报告保存成功。输入与同一 mutationId 保留以便重试；已发生后续更新则旧提交重试返回 409。
 
 导入通过规范来源去重，同一来源再次导入返回同一文档；新文档 201、已有文档 200。请求带 topic 时先验证其存在，文档与关联在一次受控写操作完成后才报成功。来源不会成为 note 的父类型。
 
 深读每次新请求分配 read_UUID，原样 mutationId 重试返回同一 readId；已有活跃执行且请求不同返回 409。非 force 且已有成功产物则返回 200 和已有记录；force 创建新记录，不能覆盖旧文件。最新执行与最后成功产物各自选择，序列按 createdAt/id 稳定排序。
+
+文档删除成功必须同时移除该文档文件、全部深读记录/产物/本地附件，以及 annotations.jsonl 中所有匹配 documentId 的批注；不触及其他文档。存在任何关联或综合历史时先拒绝，零删除；级联失败必须恢复或保持操作未完成，不能返回成功并留下孤立批注。
+
+批注 kind=note 仅表示普通批注，不能解释为 docType=note，也不能在 UI/prompt 中称为自主笔记；现有 kind 枚举继续保留其批注含义。
 
 批注创建 201、状态更新 200、删除 204；关联创建/重复关联 201/200、解除 204；重复删除或不存在的资源 404。不支持的 note 动作优先返回 422。错误响应统一含 code/message，可选 field/currentRevision，不泄漏正文。
 
@@ -188,7 +196,8 @@ note 标题/正文限制见 §4.1；请求最多 2 MiB，超限 413。创建时 
 - 原 library link/unlink/delete/integrate 等操作以 documentId 为参数并输出新字段，动作范围沿用领域约束；不保留 paperId 别名或旧输出格式。
 - `papers` 仍是论文发现专用命令组，热榜/search/show 范围不扩大到 note；其 read 入库使用新版文档存储并返回 documentId。topic 的 add/read/run 同步改为新关系字段和产物路径。
 - note 创建/编辑 CLI 本期不增加；统一读取 CLI 必须包含 note。
-- `researcher library migrate --dry-run` 与 `researcher library migrate`：离线检查/完整迁移，见 §10；退出码 0 成功/no-op，1 迁移或校验失败，2 用法错误。
+- `researcher library migrate [--dry-run | --resume | --rollback]`：仅负责旧 Library 到新版 schema、路径及受管引用的迁移；无选项开始迁移，resume 完成中断或待提交引用阶段，rollback 按日志恢复迁移快照。退出码 0 完成/no-op，1 拒绝/失败/仍有待完成项，2 用法错误。
+- `researcher migrate-notes [path]`：负责 topic 扁平笔记整理到分区及 Library backfill，不执行 Library schema 迁移；新版必须通过新文档领域写入且服从相同维护门禁。旧 Library 先执行 library migrate，未完成时 migrate-notes 拒绝，不允许写回旧账本。
 - `researcher workspace sync --library` 同步新版白名单；不隐式 push，原无 flag 默认行为保持。
 
 上述命令为本次新契约；全部调用方与使用文档在同次交付更新，不承诺旧命令参数、字段或文本输出可用。
@@ -226,17 +235,35 @@ note 标题/正文限制见 §4.1；请求最多 2 MiB，超限 413。创建时 
 
 深读 JSON 含 schemaVersion、id、documentId、status、createdAt、updatedAt、mutationId（迁移旧记录可缺）、lastError（可选）；同 ID 的 Markdown 为对应产物。不再以固定 read_documentId 覆盖执行；旧 read ID 可作为迁移后唯一一次可恢复执行的身份保留。全部关系使用 documentId；批注行保留正文、种类、钉选和时间，旧 note 类型字段仅是批注种类，不升级为文档。
 
+### 停写互斥与迁移阶段
+
+锁和阶段日志放在 workspace 的稳定控制目录 `.researcher-workspace/maintenance/`，不随 Library 目录切换、不进同步白名单。所有新版入口先检查阶段，再取得使用锁，取得后再次检查阶段；不能只在进程启动时检查 schema。
+
+- 业务使用锁为共享租约：serve 从启动至关闭一直持有，包括 idle 状态；run/read/import、migrate-notes 和 workspace sync（包括缺省 --pull）覆盖整个命令及其子进程存活期。领域写锁用于租约内短暂写事务，等待上限 5 秒，不能替代使用锁。
+- 迁移先进入 maintenance 阶段，阻止新业务租约，再尝试取得同一锁域的独占租约。已有 serve 或任务持有租约时迁移拒绝，报告 PID、启动时间、命令与 workspace；不强杀、不在超时后抢占。用户停止后可重试。独占租约覆盖备份、转换、引用修改及激活，固定于控制目录。
+- 进程崩溃由操作系统释放租约，但持久化阶段不会自动清除。除迁移 resume/rollback 与只读诊断外，所有入口遇到未完成阶段都拒绝；HTTP 503、CLI exit 1，包含阶段和恢复命令。不得仅因锁已释放放行业务。
+
+**旧版进程不认识新锁，必须单独隔离**：迁移工具在修改数据前执行受支持宿主的维护预检，枚举同用户进程的启动时间、命令、cwd、相关打开文件及子进程，识别旧 serve/run/read/migrate-notes/agent 写入方；包括没有打开文件的 idle serve。发现相关进程即拒绝并列出 PID，不能以无活动任务或无文件句柄判定停写。无法读取必要进程信息、无法确定某个候选进程的 workspace 或宿主不支持检查，同样拒绝。
+
+维护期间还须暂停已登记的自动启动/调度入口，并将受管理的 researcher 启动入口置于同一维护门禁后；无法枚举或暂停这些入口时拒绝迁移。预检、取得独占租约及激活前均复核进程清单与旧数据清单；新出现旧写入方则中止，不激活。这个契约覆盖当前宿主受管理的 researcher 入口；不能声称 advisory lock 能约束用户绕过入口直接执行的旧源码或任意文件写入。若存在这类非受管写入方，必须先在宿主维护环境隔离，无法证明隔离时停止迁移，不能降级为口头确认后继续。实现须提供宿主能力检测与真实 idle 旧进程测试，否则 S6 不通过。
+
+阶段为 `maintenance → converting → activating → references-pending（如需）→ completed`。dry-run 只读检查并报告当前阻塞与转换范围，不暂停任务、不创建锁/备份，也不授权随后跳过真实迁移检查。已有 version=2 且 completed 时校验后 no-op；不完整阶段只能 resume/rollback。全新空 workspace 首次写入初始化 version=2；有旧数据不得当作空目录。
+
 ### 一次完整迁移
 
-迁移在有效 workspace 停写状态下显式执行，普通 serve/CLI 检测到旧格式即拒绝业务操作并给出迁移命令，不自动迁移或回退读取。已有 version=2 时 migrate 校验后 no-op；未知版本/混合格式阻止迁移。全新空 workspace 首次写入直接初始化 version=2，不要求迁移；发现任意旧 Library 数据时不得当作空目录初始化。
-
-1. **预检**：确认所有 serve、run、read 和其他写入方停止；取得迁移锁。枚举旧账本、实际产物、原始附件及 workspace 内指向 Library 的受管引用，计算记录数量与内容校验值；未知文件、坏 JSON、重复身份、孤立关系或越界路径给出清单并停止，不能静默丢弃。
+1. **预检**：按上述宿主维护检查与独占租约确认停写；记录进程清单和所有涉及仓库的 HEAD/index/工作树基线。涉及 topic 引用改写时，要求相关 topic 工作树与 index 干净，不覆盖用户已有改动。枚举旧账本、实际产物、原始附件及 workspace 内指向 Library 的受管引用，计算记录数量与内容校验值；未知文件、坏 JSON、重复身份、孤立关系或越界路径给出清单并停止，不能静默丢弃。
 2. **备份**：在 Library 目录之外生成带清单的完整备份，包含旧 Library 和将修改的受管引用；备份与临时目录不进入 Library sync。dry-run 只报告转换范围、引用、错误和数量，不备份或写盘。
 3. **转换**：在隔离暂存目录生成全部新版文档、批注、关系、深读记录与产物。保留已有文档和批注身份、正文、来源与时间；缺 docType 的旧记录补 paper；旧 reading/queued 记录在停机迁移后标为 failed 并注明执行已中断，不伪装成功。旧文件缺失时停止并报告，不能制造成功产物。
 4. **校验**：旧 paper 数等于迁移文档数，旧批注/关联/综合记录逐条对应；产物与附件内容校验值一致；所有父子归属有效，无运行数据字段 paperId、无旧布局路径引用。产物 frontmatter 等结构化身份字段可转换，正文原文保持；因此分别校验正文与元数据转换，不要求改头部后整文件哈希相同。
-5. **激活**：持久化迁移日志和阶段，在所有转换及引用校验通过后切换新版目录并更新受管引用；整个切换期间业务入口保持拒绝。只有所有步骤成功才标记 completed 并放行业务。中途崩溃依据阶段日志继续或恢复备份，不允许半迁移数据被读取。
+5. **激活**：持久化迁移日志和阶段，在所有转换及引用校验通过后切换新版目录并更新受管引用；整个切换期间业务入口保持拒绝。若修改了 topic 受管文件，进入 references-pending；只有引用持久化门禁也通过才标记 completed 并放行业务。中途崩溃依据阶段日志继续或恢复备份，不允许半迁移数据被读取。
 
-受管引用包括 Library 账本、产物 frontmatter、workspace/topic 中由 researcher 生成的结构化 Library ID/路径及本地文档链接。迁移必须给出逐文件清单；用户正文中的论文讨论或普通单词 paper 不做全局替换。无法判定的旧本地路径引用列为阻塞项，需处理后再激活。外部网站或书签中的旧 URL 不迁移、不保证可用。涉及 topic 仓文件时遵守各自仓库归属，不自动提交或推送。
+受管引用包括 Library 账本、产物 frontmatter、workspace/topic 中由 researcher 生成的结构化 Library ID/路径及本地文档链接。迁移必须给出逐文件清单；用户正文中的论文讨论或普通单词 paper 不做全局替换。无法判定的旧本地路径引用列为阻塞项，需处理后再激活。外部网站或书签中的旧 URL 不迁移、不保证可用。涉及 topic 仓文件时只修改各自工作树并记录清单，不自动提交或推送。
+
+**topic 引用与 Git 门禁**：改写 topic 工作树后进入 references-pending，命令明确输出每个仓库、文件和“需提交后 resume”，exit 1，不宣称迁移完成。此时所有 researcher 业务和 workspace sync（包括默认 --pull）继续拒绝；只允许迁移诊断/resume/rollback，用户使用 Git 审查并提交各 topic 的改动。`library migrate --resume` 校验每个相关 topic 的受管文件已在当前 HEAD 中、工作树/index 干净、所有引用可解析，记录对应 commit；不满足则保持门禁。成功后 completed，用户按正常流程处理 Pointer 和推送，不由迁移自动发布。
+
+完成后的 workspace sync 在任何 fetch/pull 前检查迁移阶段；未完成则零 Git 变更。对已完成迁移、涉及受管引用的 topic，pull 前检查将要采用的候选树中引用有效性，不通过即拒绝更新工作树/HEAD；普通运行也验证所消费的受管引用。普通 ff-only 不等于引用校验，不能依靠 Git“也许会冲突”保护迁移结果。用户手动 Git 修改超出 sync 控制，但后续业务检测无效引用时拒绝消费，不自动复原用户文件。
+
+rollback 只恢复日志列明且仍符合预期版本的文件；若用户在 references-pending 已提交或又改过相关文件，先报告差异并拒绝自动覆盖，不擅自 reset topic 提交。这样失败恢复不以破坏新的人类改动为代价。
 
 本次迁移仅针对当前已发布的旧布局；未实现过的早期设计不增加迁移分支。未知目录必须预检报告，不能静默忽略。旧版曾覆盖的历史无法恢复，报告现存产物范围。
 
@@ -262,8 +289,8 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 | S2 | 已有 note → Edit → Save → 刷新 → 重启服务再打开 | 同一 ID、仅 1 份、最新正文；版本递增一次 |
 | S3 | 空白提交；注入磁盘失败；模拟服务已保存但响应丢失后原样重试 | 正确错误状态、页面输入保留、旧文件完整；恢复后 1 份记录、无重复版本 |
 | S4 | 既有 paper/批注/产物/topic 关系及 note → 添加来源 → 原 paper force 深读 | 原来源流程成功，重跑新增 0 文档，归属与关系保留，人类内容原文不变，无自动综合 |
-| S5 | paper/blog/note 各 1 份 → Web 与 CLI 列举 → 各类型筛选 → 打开详情 | 两端 All=3，各类型=1，动作矩阵正确，产物不列为条目 |
-| S6 | 旧 workspace → migrate dry-run → 完整迁移 → 新版打开 → 再迁移；另注入激活中断并恢复 | 内容与关系逐条保留、旧字段/路径不参与运行、重复迁移 no-op、中断不放行半成品且备份可恢复 |
+| S5 | paper/blog/note 各 1 份（均未关联）→ Web 默认 Unlinked 与 CLI --status unlinked → 显式 All → 各类型筛选 → 打开详情 | 两端 All=3，各类型=1，动作矩阵正确，产物不列为条目 |
+| S6 | 旧 workspace → migrate dry-run → 完整迁移 → 新版打开 → 再迁移；另验证 idle 旧进程拒绝、迁移中启动拒绝、topic 待提交时默认 sync 拒绝及激活中断恢复 | 内容与关系逐条保留、旧字段/路径不参与运行、重复迁移 no-op、中断不放行半成品且备份可恢复 |
 
 另覆盖：Home 文档计数含 note 而深读待办不含；菜单键盘操作；筛选 URL 刷新恢复；Cancel/离开确认；未保存刷新提示；保存中重复点击；两标签页编辑冲突不覆盖；移动布局无横向遮挡；新版 URL、锚点与表单一致，旧入口按下线契约拒绝。外部材料创建失败保留表单。
 
@@ -279,6 +306,9 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 
 - 深读连续成功/失败/重试：每次新执行独立 ID 和路径，最新失败仍可读最后成功产物，同一 mutationId 不重复执行；旧覆盖历史不被凭空重建。
 - 完整迁移 dry-run 无副作用、坏数据/未知路径预检失败、备份校验、转换/激活/引用更新各阶段中断恢复、重复 no-op，以及新版拒绝旧格式。
+- S6 真实进程验证：新版 idle serve 持共享租约导致迁移拒绝；旧版 idle serve 被进程预检识别；不可观测进程/自动重启入口拒绝；迁移中新增业务返回拒绝，进程退出后阶段仍阻塞；引用待提交时裸 workspace sync 不执行 fetch/pull，提交并 resume 后才放行，候选树有旧引用时拒绝 pull。
+- S5 补充一个已关联 paper，Web 默认隐藏它、显式 All 可见；note 在 Unlinked 可见，不计深读或综合待办。
+- 删除外部文档后对应批注/深读/附件全部清理，其他文档完整；有关联先拒绝且零删除。两个迁移命令次序错误时拒绝，backfill 仅写新版。
 
 ### Unit
 
@@ -288,7 +318,7 @@ Library sync 新白名单：schema.json、documents/*/document.md、documents/*/
 
 ## 12. 开放问题
 
-用户已选择完整迁移、不保留旧接口兼容。完整 L2 仍待人工评审；需确认统一资源契约、停写迁移与快照恢复方案。本期仍不开放 note 的 topic 关联与深读；这些是明确范围，不留给实现阶段自行决定。
+无。默认视图、统一资源契约、迁移互斥、受管引用提交门禁与快照恢复均已在正文作出选择。宿主维护能力无法满足时按 §10 拒绝执行，不留给实现自行降低保证。文档是否获批由顶部 Draft/Approved 状态表达，不作为未决方案重复列出。
 
 ## 13. 关联
 
