@@ -1,11 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
 import { loadHomeTrending, type HomeTrendingLoader } from './home-trending.js';
-import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderNoteEditor, renderNoteReader, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
+import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderNoteEditor, renderNoteReader, renderVideoReader, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
@@ -19,8 +19,12 @@ import type { AgentRuntime } from '../adapter/interface.js';
 import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryUnlink } from '../commands/library.js';
-import { isSafeLibraryId, PaperLibrary, newDocumentId, newReadId } from '../library/store.js';
-import { isNoteDocType, parseDocType } from '../library/doc-type.js';
+import { isSafeLibraryId, PaperLibrary, newAnalysisId, newDocumentId, newReadId } from '../library/store.js';
+import { isNoteDocType, isVideoDocType, parseDocType } from '../library/doc-type.js';
+import { classifyAnalysis } from '../library/video.js';
+import { attachChineseCues, defaultTranslateToZh } from '../library/video-translate.js';
+import { analyzeRuntime, defaultVideoAnalyzeRunner, type VideoAnalyzeRunner } from '../library/video-analyze.js';
+import { readMultipartVideo } from './multipart.js';
 import { normalizePaperInput } from '../library/identity.js';
 import { acquireSharedLease } from '../library/maintenance.js';
 import type { Stage } from '../state/runs.js';
@@ -34,6 +38,7 @@ export interface ServeOptions {
   setupRuntime?: AgentRuntime;
   /** Test/override: 热榜 loader. Default is fetchTrendingPapers with a short timeout. */
   trendingLoader?: HomeTrendingLoader;
+  videoAnalyzeRunner?: VideoAnalyzeRunner;
 }
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
@@ -66,7 +71,7 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
   }
 
   const server = createServer((req, res) => {
-    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime, opts.trendingLoader).catch((err) => {
+    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime, opts.trendingLoader, opts.videoAnalyzeRunner).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
     });
   });
@@ -94,6 +99,7 @@ async function handle(
   libraryReadRunner: LibraryReadRunner,
   setupRuntime?: AgentRuntime,
   trendingLoader?: HomeTrendingLoader,
+  videoAnalyzeRunner?: VideoAnalyzeRunner,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const path = url.pathname;
@@ -176,6 +182,9 @@ async function handle(
   if (req.method === 'POST' && path === '/library/documents/import') {
     return handleImportDocument(req, res, root);
   }
+  if (req.method === 'POST' && path === '/library/documents/videos') {
+    return handleCreateVideo(req, res, root);
+  }
   const docSub = path.match(/^\/library\/documents\/([^/]+)(?:\/(.*))?$/);
   if (docSub && docSub[1] !== 'new' && docSub[1] !== 'import') {
     const documentId = decodeURIComponent(docSub[1]);
@@ -188,6 +197,7 @@ async function handle(
       registry,
       libraryReadRunner,
       url,
+      videoAnalyzeRunner,
     });
     if (handled) return;
   }
@@ -196,6 +206,11 @@ async function handle(
     const f = join(STATIC_DIR, 'app.css');
     if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
     return send(res, 200, 'text/css; charset=utf-8', readFileSync(f));
+  }
+  if (req.method === 'GET' && path === '/static/video-workbench.js') {
+    const f = join(STATIC_DIR, 'video-workbench.js');
+    if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
+    return send(res, 200, 'text/javascript; charset=utf-8', readFileSync(f));
   }
 
   // POST /t/:slug/setup/generate|apply — AI Complete setup (before generic /t routes)
@@ -438,9 +453,11 @@ function documentUrl(id: string, hash = ''): string {
 }
 
 function noteActionBlocked(res: ServerResponse, docType: string | undefined): boolean {
-  if (!isNoteDocType(docType)) return false;
-  sendJsonErr(res, 422, 'unsupported_action', 'this action is not supported for notes');
-  return true;
+  if (isNoteDocType(docType) || isVideoDocType(docType)) {
+    sendJsonErr(res, 422, 'unsupported_action', 'this action is not supported for this document type');
+    return true;
+  }
+  return false;
 }
 
 async function readJsonBody<T>(req: IncomingMessage, res: ServerResponse): Promise<T | undefined> {
@@ -471,9 +488,10 @@ async function handleDocumentResource(
     registry: TaskRegistry;
     libraryReadRunner: LibraryReadRunner;
     url: URL;
+    videoAnalyzeRunner?: VideoAnalyzeRunner;
   },
 ): Promise<boolean> {
-  const { root, documentId, rest, registry, libraryReadRunner, url } = ctx;
+  const { root, documentId, rest, registry, libraryReadRunner, url, videoAnalyzeRunner } = ctx;
   const lib = new PaperLibrary(root);
   const doc = lib.getDocument(documentId);
 
@@ -484,11 +502,35 @@ async function handleDocumentResource(
     }
     const accept = req.headers.accept ?? '';
     if (accept.includes('application/json')) {
+      if (isVideoDocType(doc.docType)) {
+        const product = lib.currentCues(documentId);
+        sendJson(res, 200, {
+          ...doc,
+          mediaExists: lib.videoMediaExists(doc),
+          analysis: lib.latestVideoAnalysis(documentId) ?? null,
+          cues: product?.cues ?? null,
+          noSpeech: product?.noSpeech ?? null,
+        });
+        return true;
+      }
       sendJson(res, 200, doc);
       return true;
     }
     if (doc.docType === 'note') {
       send(res, 200, 'text/html; charset=utf-8', renderNoteReader(doc));
+      return true;
+    }
+    if (isVideoDocType(doc.docType)) {
+      send(res, 200, 'text/html; charset=utf-8', renderVideoReader({
+        id: doc.id,
+        title: doc.title,
+        updatedAt: doc.updatedAt,
+        root,
+        mediaExists: lib.videoMediaExists(doc),
+        runtimeMissing: analyzeRuntime().missing,
+        latest: lib.latestVideoAnalysis(documentId),
+        product: lib.currentCues(documentId),
+      }));
       return true;
     }
     const paper = loadLibraryPaper(root, documentId);
@@ -549,6 +591,43 @@ async function handleDocumentResource(
     return true;
   }
 
+  if (req.method === 'GET' && rest === 'media') {
+    if (!doc || !isVideoDocType(doc.docType)) {
+      send(res, 404, 'text/plain', 'not found');
+      return true;
+    }
+    const path = lib.videoMediaPath(doc);
+    if (!existsSync(path)) {
+      send(res, 404, 'text/plain', 'media missing');
+      return true;
+    }
+    sendMediaRange(req, res, path, doc.media?.contentType ?? 'video/mp4');
+    return true;
+  }
+  if (rest === 'cues' && req.method === 'GET') {
+    if (!doc) { sendJsonErr(res, 404, 'not_found', 'unknown document'); return true; }
+    if (!isVideoDocType(doc.docType)) { sendJsonErr(res, 422, 'unsupported_action', 'not a video'); return true; }
+    const product = lib.currentCues(documentId);
+    if (!product) { sendJsonErr(res, 404, 'not_found', 'no analysis product'); return true; }
+    sendJson(res, 200, { cues: product.cues, noSpeech: product.noSpeech });
+    return true;
+  }
+  if (rest === 'analyses' && req.method === 'POST') {
+    await handleStartVideoAnalysis(req, res, root, documentId, videoAnalyzeRunner);
+    return true;
+  }
+  if (rest.startsWith('analyses/') && req.method === 'GET') {
+    if (!doc) { sendJsonErr(res, 404, 'not_found', 'unknown document'); return true; }
+    const analysisId = decodeURIComponent(rest.slice('analyses/'.length));
+    const rec = lib.getVideoAnalysis(documentId, analysisId);
+    if (!rec) { sendJsonErr(res, 404, 'not_found', 'unknown analysis'); return true; }
+    sendJson(res, 200, rec);
+    return true;
+  }
+  if (rest === 'media/restore' && req.method === 'POST') {
+    await handleRestoreVideo(req, res, root, documentId);
+    return true;
+  }
   if (rest === 'reads' || rest.startsWith('reads/')) {
     await handleReads(req, res, { root, lib, doc, documentId, rest, registry, libraryReadRunner });
     return true;
@@ -1014,4 +1093,190 @@ const PAPER_NOTE_KINDS = new Set(['note', 'clarification', 'caveat', 'idea', 'qu
 function parsePaperNoteKind(raw: string): 'note' | 'clarification' | 'caveat' | 'idea' | 'question' {
   if (PAPER_NOTE_KINDS.has(raw)) return raw as 'note' | 'clarification' | 'caveat' | 'idea' | 'question';
   throw new Error(`unknown note kind: ${raw}`);
+}
+
+async function handleCreateVideo(req: IncomingMessage, res: ServerResponse, root: string): Promise<void> {
+  if (!sameOrigin(req)) {
+    sendJsonErr(res, 403, 'forbidden_origin', 'cross-origin writes are not allowed');
+    return;
+  }
+  const tmpDir = join(root, '.researcher-workspace', 'tmp');
+  let upload: Awaited<ReturnType<typeof readMultipartVideo>>;
+  try {
+    upload = await readMultipartVideo(req, tmpDir);
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    sendJsonErr(res, status, 'upload_failed', err instanceof Error ? err.message : String(err));
+    return;
+  }
+  if (!upload.mutationId) {
+    sendJsonErr(res, 400, 'invalid_fields', 'mutationId is required');
+    return;
+  }
+  const lib = new PaperLibrary(root);
+  const id = newDocumentId();
+  try {
+    const doc = lib.createVideo({
+      id,
+      sourcePath: upload.filePath,
+      filename: upload.filename,
+      contentType: upload.contentType,
+      bytes: upload.bytes,
+      mutationId: upload.mutationId,
+    });
+    sendJson(res, 201, { id: doc.id, url: documentUrl(doc.id) });
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    sendJsonErr(res, status, 'ingest_failed', err instanceof Error ? err.message : String(err));
+  } finally {
+    try { unlinkSync(upload.filePath); } catch { /* tmp */ }
+  }
+}
+
+async function handleRestoreVideo(req: IncomingMessage, res: ServerResponse, root: string, documentId: string): Promise<void> {
+  if (!sameOrigin(req)) {
+    sendJsonErr(res, 403, 'forbidden_origin', 'cross-origin writes are not allowed');
+    return;
+  }
+  const tmpDir = join(root, '.researcher-workspace', 'tmp');
+  let upload: Awaited<ReturnType<typeof readMultipartVideo>>;
+  try {
+    upload = await readMultipartVideo(req, tmpDir);
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    sendJsonErr(res, status, 'upload_failed', err instanceof Error ? err.message : String(err));
+    return;
+  }
+  try {
+    new PaperLibrary(root).restoreVideoMedia({ id: documentId, sourcePath: upload.filePath, bytes: upload.bytes });
+    res.writeHead(204);
+    res.end();
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    sendJsonErr(res, status, 'restore_failed', err instanceof Error ? err.message : String(err));
+  } finally {
+    try { unlinkSync(upload.filePath); } catch { /* tmp */ }
+  }
+}
+
+async function handleStartVideoAnalysis(
+  req: IncomingMessage,
+  res: ServerResponse,
+  root: string,
+  documentId: string,
+  runner?: VideoAnalyzeRunner,
+): Promise<void> {
+  const payload = await readJsonBody<{ mutationId?: string }>(req, res);
+  if (!payload) return;
+  const lib = new PaperLibrary(root);
+  const doc = lib.getDocument(documentId);
+  if (!doc) { sendJsonErr(res, 404, 'not_found', 'unknown document'); return; }
+  if (!isVideoDocType(doc.docType)) { sendJsonErr(res, 422, 'unsupported_action', 'not a video'); return; }
+  if (!lib.videoMediaExists(doc)) { sendJsonErr(res, 422, 'media_missing', 'media file is missing'); return; }
+  const runtime = analyzeRuntime();
+  if (!runner && runtime.missing.length) {
+    sendJsonErr(res, 503, 'analyzer_unavailable', `${runtime.missing.join(' and ')} not found on PATH`);
+    return;
+  }
+  const latest = lib.latestVideoAnalysis(documentId);
+  if (latest && (latest.status === 'queued' || latest.status === 'running')) {
+    if (payload.mutationId && latest.mutationId === payload.mutationId) {
+      sendJson(res, 202, { id: latest.id, status: latest.status });
+      return;
+    }
+    sendJsonErr(res, 409, 'analysis_in_progress', 'an analysis is already running');
+    return;
+  }
+  const analysisId = newAnalysisId();
+  const now = new Date().toISOString();
+  lib.writeVideoAnalysis({
+    id: analysisId,
+    documentId,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    mutationId: payload.mutationId,
+  });
+  sendJson(res, 202, { id: analysisId, status: 'queued' });
+  void runVideoAnalysisJob({
+    root, documentId, analysisId,
+    runner: runner ?? defaultVideoAnalyzeRunner,
+    translate: !runner,
+  });
+}
+
+async function runVideoAnalysisJob(opts: {
+  root: string;
+  documentId: string;
+  analysisId: string;
+  runner: VideoAnalyzeRunner;
+  translate?: boolean;
+}): Promise<void> {
+  const lib = new PaperLibrary(opts.root);
+  const doc = lib.getDocument(opts.documentId);
+  const existing = lib.getVideoAnalysis(opts.documentId, opts.analysisId);
+  if (!doc || !existing) return;
+  const started = { ...existing, status: 'running' as const, updatedAt: new Date().toISOString() };
+  lib.writeVideoAnalysis(started);
+  try {
+    const workDir = join(opts.root, '.researcher-workspace', 'tmp', opts.analysisId);
+    const result = await opts.runner({ mediaPath: lib.videoMediaPath(doc), workDir });
+    let cues = result.cues;
+    if (opts.translate !== false) {
+      try {
+        cues = await attachChineseCues(cues, defaultTranslateToZh);
+      } catch {
+        /* English cues still publish */
+      }
+    }
+    const noSpeech = classifyAnalysis(cues).noSpeech;
+    lib.writeVideoAnalysis({
+      ...started,
+      status: 'done',
+      updatedAt: new Date().toISOString(),
+      noSpeech,
+      cues,
+    });
+  } catch (err) {
+    const command = (err as { command?: string }).command;
+    const message = err instanceof Error ? err.message : String(err);
+    lib.writeVideoAnalysis({
+      ...started,
+      status: 'failed',
+      updatedAt: new Date().toISOString(),
+      lastError: command ? `${command}: ${message}` : message,
+    });
+  }
+}
+
+function sendMediaRange(req: IncomingMessage, res: ServerResponse, path: string, contentType: string): void {
+  const stat = statSync(path);
+  const size = stat.size;
+  const range = req.headers.range;
+  if (!range || !range.startsWith('bytes=')) {
+    res.writeHead(200, {
+      'content-type': contentType,
+      'content-length': size,
+      'accept-ranges': 'bytes',
+    });
+    createReadStream(path).pipe(res);
+    return;
+  }
+  const spec = range.slice(6).split(',')[0];
+  const [l, r] = spec.split('-');
+  const start = l ? Number(l) : 0;
+  let end = r ? Number(r) : size - 1;
+  if (start < 0 || start >= size || end < start) {
+    res.writeHead(416, { 'content-range': `bytes */${size}` });
+    res.end();
+    return;
+  }
+  end = Math.min(end, size - 1);
+  res.writeHead(206, {
+    'content-type': contentType,
+    'content-length': end - start + 1,
+    'accept-ranges': 'bytes',
+    'content-range': `bytes ${start}-${end}/${size}`,
+  });
+  createReadStream(path, { start, end }).pipe(res);
 }

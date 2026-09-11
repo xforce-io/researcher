@@ -1,5 +1,5 @@
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
-import { defaultDocTypeForSource, isNoteDocType, parseLibraryDocType, type DocType } from '../library/doc-type.js';
+import { defaultDocTypeForSource, isNoteDocType, isVideoDocType, parseLibraryDocType, type DocType } from '../library/doc-type.js';
 import { displayTitle, PaperLibrary } from '../library/store.js';
 import { migrateLibrary } from '../library/migrate-v2.js';
 import type { LibraryStatusFilter, TopicIntegration } from '../library/model.js';
@@ -76,7 +76,9 @@ export function runLibraryAdd(opts: LibraryAddOptions): { id: string } {
   const id = existing?.id ?? paperIdForSource(source);
   const tags = opts.tags ?? existing?.tags ?? [];
   const docType = opts.docType ?? existing?.docType ?? defaultDocTypeForSource(source);
-  if (isNoteDocType(docType)) throw new Error('import cannot create note documents');
+  if (isNoteDocType(docType) || isVideoDocType(docType)) {
+    throw new Error('import cannot create note or video documents');
+  }
   const paper = lib.upsertPaper({
     id,
     canonicalSource: existing?.canonicalSource ?? source,
@@ -138,6 +140,13 @@ export function runLibraryShow(opts: LibraryShowOptions): void {
   }
   write(`${doc.id}\t${doc.docType}\t${displayTitle(doc)}\n`);
   if (isNoteDocType(doc.docType)) write(`${doc.body}\n`);
+  if (isVideoDocType(doc.docType)) {
+    const product = lib.currentCues(doc.id);
+    if (product) {
+      write(product.noSpeech ? 'No speech detected\n' : `${product.cues.length} cues\n`);
+      for (const c of product.cues) write(`${c.start}\t${c.end}\t${c.text}\n`);
+    }
+  }
 }
 
 export function runLibraryMigrate(opts: LibraryMigrateCliOptions): number {

@@ -8,7 +8,7 @@ import { resolveProjectResearcherDir } from '../paths.js';
 import { listIntegratedNotes } from '../state/note_index.js';
 import type { Zone } from '../state/zone.js';
 import { displayTitle, PaperLibrary } from '../library/store.js';
-import { isNoteDocType } from '../library/doc-type.js';
+import { isNoteDocType, isVideoDocType, supportsDeepRead } from '../library/doc-type.js';
 import type { LibraryDocument, Paper, PaperNote, PaperRead, PaperSurfaceLink, TopicIntegration } from '../library/model.js';
 
 import { assessSoulReady } from './soul-ready.js';
@@ -133,7 +133,7 @@ export interface LibraryPaperSummary {
   sourceLabel: string;
   docType: string;
   tags: string[];
-  readStatus: PaperRead['status'] | 'unread' | 'saved';
+  readStatus: PaperRead['status'] | 'unread' | 'saved' | 'analyzing' | 'missing';
   linkedTopicCount: number;
   integratedTopicCount: number;
   /** True when this paper has a TopicIntegration row for the current topic. */
@@ -289,14 +289,15 @@ function summarizeDocument(
   const links = lib.listLinks(doc.id).filter((l) => l.surfaceType === 'topic');
   const integrations = lib.listIntegrations(doc.id);
   const note = isNoteDocType(doc.docType);
+  const video = isVideoDocType(doc.docType);
   return {
     id: doc.id,
     displayTitle: displayTitle(doc),
-    canonicalId: note ? '—' : (doc.canonicalSource?.id ?? doc.id),
-    sourceLabel: note ? '—' : sourceLabelFromDoc(doc),
+    canonicalId: note || video ? '—' : (doc.canonicalSource?.id ?? doc.id),
+    sourceLabel: note || video ? '—' : sourceLabelFromDoc(doc),
     docType: doc.docType,
     tags: doc.tags,
-    readStatus: note ? 'saved' : latestReadStatus(reads),
+    readStatus: note ? 'saved' : video ? lib.videoListState(doc) : latestReadStatus(reads),
     linkedTopicCount: new Set(links.map((l) => l.surfaceId)).size,
     integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
     integratedInTopic: topicPath
@@ -381,7 +382,7 @@ export function loadWorkspaceHome(root: string): WorkspaceHomeModel {
   const lib = new PaperLibrary(root);
   const papers = lib.listDocuments();
   const summaries = papers.map((p) => summarizeDocument(lib, p));
-  const deepReadSummaries = summaries.filter((_, i) => !isNoteDocType(papers[i].docType));
+  const deepReadSummaries = summaries.filter((_, i) => supportsDeepRead(papers[i].docType));
   const now = Date.now();
   const counts = {
     unread: deepReadSummaries.filter((p) => p.readStatus === 'unread').length,

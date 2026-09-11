@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   escapeHtml,
+  formatCueClock,
+  jsonForScript,
   renderDoc,
   renderLibrary,
   renderLibraryPaper,
   renderTopic,
   renderTopics,
+  renderVideoReader,
   renderWorkspaceHome,
   tocTitle,
 } from '../../src/web/views.js';
@@ -456,11 +462,12 @@ describe('renderWorkspaceHome', () => {
     expect(html).toContain('1</b> / 3 integrated');
     expect(html).toContain('trace');
     expect(html).toContain('Paper in flight');
-    // contextual primary + secondary Add paper (same modal as Library)
+    expect(html).toContain('data-open-add-menu');
     expect(html).toContain('data-open-add-paper');
+    expect(html).toContain('id="add-video-btn">Add video');
     expect(html).toContain('id="add-paper-modal"');
     expect(html).toContain('action="/library/documents/import"');
-    expect(html).toMatch(/<button class="secondary home-cta-secondary"[^>]*>Add paper<\/button>/);
+    expect(html).toContain('Add source');
     expect(html).not.toContain('Workspace Home');
     expect(html).not.toContain('href="/">Workspace</a>');
     expect(html).not.toContain('workspace-actions');
@@ -478,8 +485,9 @@ describe('renderWorkspaceHome', () => {
       recentPapers: [],
     };
     const html = renderWorkspaceHome(empty);
-    expect(html).toMatch(/<button class="primary home-cta"[^>]*data-open-add-paper[^>]*>Add paper<\/button>/);
-    // no duplicate secondary when primary is already Add paper
+    expect(html).toMatch(/<button class="primary home-cta"[^>]*data-open-add-menu[^>]*>＋ Add<\/button>/);
+    expect(html).toContain('id="add-video-btn">Add video');
+    expect(html).toContain('data-open-add-paper');
     expect(html).not.toContain('home-cta-secondary');
   });
 
@@ -758,7 +766,12 @@ describe('renderLibrary', () => {
   it('renders a prominent add paper modal trigger and shared paper cards', () => {
     const html = renderLibrary(library);
     expect(html).toContain('Library');
+    expect(html).toContain('Documents');
+    expect(html).not.toContain('<h2>Papers</h2>');
     expect(html).toContain('Add paper');
+    expect(html).toContain('data-open-add-menu');
+    expect(html).toContain('id="add-video-btn">Add video');
+    expect(html).toContain('Add source');
     expect(html).toContain('id="add-paper-modal"');
     expect(html).toContain('data-open-add-paper');
     expect(html).toContain('data-close-add-paper');
@@ -1315,3 +1328,109 @@ describe('renderTopic landscape / related UX (#111)', () => {
     expect(html).toContain('JSON.stringify({ discover })');
   });
 });
+
+describe('jsonForScript and formatCueClock', () => {
+  it('escapes script-breaking HTML in JSON', () => {
+    const raw = jsonForScript({ text: '</script><img src=x>' });
+    expect(raw).not.toContain('</script>');
+    expect(raw).toContain('\\u003c/script\\u003e');
+  });
+
+  it('formats cue clocks as m:ss or h:mm:ss', () => {
+    expect(formatCueClock(0)).toBe('0:00');
+    expect(formatCueClock(5.9)).toBe('0:05');
+    expect(formatCueClock(1517.2)).toBe('25:17');
+    expect(formatCueClock(3605)).toBe('1:00:05');
+  });
+});
+
+describe('renderVideoReader', () => {
+  const base = {
+    id: 'doc_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    title: 'Talk',
+    updatedAt: '2026-09-11T15:04:05.000Z',
+    root: '/ws/research',
+    mediaExists: true,
+    runtimeMissing: [] as string[],
+  };
+
+  it('keeps script tags closed when a cue contains </script>', () => {
+    const html = renderVideoReader({
+      ...base,
+      product: {
+        cues: [{ id: 0, start: 0, end: 2, text: '</script><img src=x onerror=alert(1)>' }],
+        noSpeech: false,
+      },
+    });
+    expect(html).not.toContain('</script><img');
+    expect(html).toContain('\\u003c/script\\u003e');
+    const opens = html.match(/<script\b/g)?.length ?? 0;
+    const closes = html.match(/<\/script>/g)?.length ?? 0;
+    expect(closes).toBe(opens);
+  });
+
+  it('stops Analyze polling on HTTP/JSON failure and restores the button', () => {
+    const html = renderVideoReader(base);
+    expect(html).toContain('src="/static/video-workbench.js"');
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
+    expect(script).toContain('if (!stRes.ok)');
+    expect(script).toContain('setIdle');
+    expect(script).toContain('analysis failed');
+    expect(script).toContain("btn.textContent = 'Analyze'");
+  });
+
+  it('shows workspace root, non-ISO date, mm:ss cues, analyzing, restore hint, and searchable missing media', () => {
+    const html = renderVideoReader({
+      ...base,
+      mediaExists: false,
+      latest: { status: 'running' },
+      product: {
+        cues: [{ id: 0, start: 1517.2, end: 1520, text: 'Hello Benny', zh: '你好 Benny' }],
+        noSpeech: false,
+      },
+    });
+    expect(html).toContain('/ws/research');
+    expect(html).toMatch(/class="root">\/ws\/research</);
+    expect(html).toContain('video · 2026-09-11');
+    expect(html).not.toMatch(/video · 2026-09-11T15:04:05/);
+    expect(html).toContain('>25:17<');
+    expect(html).not.toMatch(/class="t">1517/);
+    expect(html).toMatch(/data-analyzing>Analyzing/);
+    expect(html).toContain('data-restore-empty');
+    expect(html).toContain('Choose a file to restore.');
+    expect(html).toContain('class="txt-zh">你好 Benny');
+    expect(html).toContain('id="cue-q" type="search"');
+    expect(html).not.toMatch(/id="cue-q"[^>]*disabled/);
+    expect(html).toContain('data-player-slot');
+    expect(html).toContain('data-transcript-slot');
+    expect(html.indexOf('data-player-slot')).toBeLessThan(html.indexOf('id="cue-q"'));
+    expect(html.indexOf('data-transcript-slot')).toBeLessThan(html.indexOf('id="cue-q"'));
+    expect(html.indexOf('data-transcript-slot')).toBeLessThan(html.indexOf('id="prevHit"'));
+    expect(html).toContain('id="nextHit"');
+    expect(html).toContain('id="hitCount"');
+    expect(html).toContain('Choose a file to restore.');
+  });
+
+  it('is a remaining-viewport workbench with independent cue scroll, not a 980px article', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      id: i, start: i * 2, end: i * 2 + 1.5, text: `line ${i} verification`,
+    }));
+    const html = renderVideoReader({ ...base, product: { cues: many, noSpeech: false } });
+    expect(html).toContain('class="video-workbench"');
+    expect(html).toContain('class="video-shell"');
+    expect(html).toContain('src="/static/video-workbench.js"');
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    expect(css).not.toMatch(/\.video-reader\s*\{[^}]*max-width:\s*980px/s);
+    expect(css).toMatch(/\.video-workbench\s*\{[^}]*grid-template-columns:/s);
+    expect(css).toMatch(/\.cues\s*\{[^}]*overflow:\s*auto/s);
+    expect(css).toMatch(/@media \(max-width:\s*900px\)[\s\S]*\.video-workbench\s*\{\s*grid-template-columns:\s*1fr/);
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
+    expect(script).toContain('centeredScrollTop');
+    expect(script).toContain('cycleHitIndex');
+    expect(script).toContain('pauseFollowFromUser');
+    expect(script).toContain("addEventListener('wheel'");
+    expect(script).toContain('if (!programmaticScroll)');
+    expect(html.match(/class="cue"/g)?.length).toBe(40);
+  });
+});
+
