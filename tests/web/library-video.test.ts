@@ -98,7 +98,8 @@ describe('library video HTTP (S1–S5)', () => {
     expect(page).toContain(root);
     expect(page).toMatch(/video · \d{4}-\d{2}-\d{2}</);
     expect(page).not.toMatch(/video · \d{4}-\d{2}-\d{2}T/);
-    expect(page).toContain('if (!stRes.ok)');
+    expect(page).toContain('src="/static/video-workbench.js"');
+    expect(page).toContain('class="video-workbench"');
     const media = await fetch(base + created.url + '/media');
     expect(media.status).toBe(200);
     expect(Buffer.from(await media.arrayBuffer()).equals(speech)).toBe(true);

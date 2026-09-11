@@ -534,11 +534,12 @@ document.addEventListener('submit', function (e) {
 });
 `;
 
-function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+function page(title: string, body: string, opts?: { htmlClass?: string }): string {
+  const hc = opts?.htmlClass ? ` class="${escapeHtml(opts.htmlClass)}"` : '';
+  return `<!doctype html><html lang="en"${hc}><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css"></head>` +
-    `<body>${body}<script>${JSON_FORM_JS}</script></body></html>`;
+    `<body${hc}>${body}<script>${JSON_FORM_JS}</script></body></html>`;
 }
 
 function topbar(root: string, active: 'workspace' | 'library' | 'topics' | 'topic' = 'workspace'): string {
@@ -794,119 +795,34 @@ export function renderVideoReader(opts: {
   const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
   const body = topbar(opts.root ?? '', 'library') +
     `<main class="video-reader" data-video-id="${escapeHtml(opts.id)}">` +
-      `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
-      `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
-      `<h1>${escapeHtml(heading)}</h1>` +
-      `<div class="video-stage">${player}</div>` +
-      `<p class="video-actions">` +
-        `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
-      `</p>` +
-      `<p id="analyze-status" class="status" hidden></p>` +
-      analyzingBanner + runtimeNote + failBanner +
-      `<label class="video-search">Search transcript <input id="cue-q" type="search"></label>` +
-      `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
+      `<header class="video-head">` +
+        `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
+        `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
+        `<h1>${escapeHtml(heading)}</h1>` +
+        `<p class="video-actions">` +
+          `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
+        `</p>` +
+        `<p id="analyze-status" class="status" hidden></p>` +
+        analyzingBanner + runtimeNote + failBanner +
+      `</header>` +
+      `<div class="video-workbench">` +
+        `<section class="video-stage" data-player-slot>${player}</section>` +
+        `<section class="video-transcript" data-transcript-slot>` +
+          `<div class="transcript-toolbar">` +
+            `<label class="video-search">Search transcript <input id="cue-q" type="search"></label>` +
+            `<div class="hit-nav">` +
+              `<span id="hitCount">${opts.product?.cues.length ?? 0} cues</span>` +
+              `<button type="button" id="prevHit" title="Previous hit">↑</button>` +
+              `<button type="button" id="nextHit" title="Next hit">↓</button>` +
+            `</div>` +
+          `</div>` +
+          `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
+        `</section>` +
+      `</div>` +
     `</main><script>window.__CUES=${cuesJson};window.__MEDIA=${opts.mediaExists ? 'true' : 'false'};</script>` +
-    `<script>${VIDEO_DETAIL_JS}</script>`;
-  return page(`${heading} · researcher`, body);
+    `<script type="module" src="/static/video-workbench.js"></script>`;
+  return page(`${heading} · researcher`, body, { htmlClass: 'video-shell' });
 }
-
-const VIDEO_DETAIL_JS = `
-const cues = Array.isArray(window.__CUES) ? window.__CUES : [];
-const player = document.getElementById('player');
-const list = document.getElementById('cues');
-const q = document.getElementById('cue-q');
-const id = document.querySelector('[data-video-id]')?.dataset.videoId;
-function visibleCues() {
-  const needle = (q?.value || '').trim().toLowerCase();
-  if (!needle) return cues.slice();
-  return cues.filter((c) => c.text.toLowerCase().includes(needle));
-}
-function currentCue(vis, t) {
-  const hits = vis.filter((c) => c.start <= t && t < c.end);
-  hits.sort((a, b) => (b.start - a.start) || (a.id - b.id));
-  return hits[0] || null;
-}
-function formatCueClock(seconds) {
-  const t = Math.max(0, Math.floor(Number(seconds) || 0));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = t % 60;
-  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-  return m + ':' + String(s).padStart(2, '0');
-}
-function render() {
-  if (!list) return;
-  const vis = visibleCues();
-  if (cues.length && vis.length === 0) {
-    list.innerHTML = '<p class="status">No matching cues.</p>';
-    return;
-  }
-  if (!cues.length) return;
-  list.innerHTML = vis.map((c) =>
-    '<article class="cue" data-id="' + c.id + '" data-start="' + c.start + '" data-end="' + c.end + '">' +
-    '<div class="t">' + formatCueClock(c.start) + '</div><div class="txt"></div></article>'
-  ).join('');
-  vis.forEach((c, i) => { list.querySelectorAll('.txt')[i].textContent = c.text; });
-}
-list?.addEventListener('click', (e) => {
-  const cue = e.target.closest('.cue');
-  if (!cue || !player) return;
-  if (!window.__MEDIA) { alert('Media file is missing. Restore it to seek.'); return; }
-  player.currentTime = Number(cue.dataset.start);
-  player.play().catch(() => {});
-});
-q?.addEventListener('input', render);
-player?.addEventListener('timeupdate', () => {
-  const vis = visibleCues();
-  const cur = currentCue(vis, player.currentTime);
-  list?.querySelectorAll('.cue').forEach((el) => {
-    el.classList.toggle('active', cur && el.dataset.id === String(cur.id));
-  });
-});
-document.getElementById('analyze-btn')?.addEventListener('click', async () => {
-  const btn = document.getElementById('analyze-btn');
-  const statusEl = document.getElementById('analyze-status');
-  const setIdle = (msg) => {
-    btn.disabled = false;
-    btn.textContent = 'Analyze';
-    if (statusEl) {
-      statusEl.hidden = !msg;
-      statusEl.textContent = msg || '';
-    }
-  };
-  btn.disabled = true;
-  btn.textContent = 'Analyzing…';
-  try {
-    const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mutationId: crypto.randomUUID() }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setIdle(data.message || (res.status === 503 ? 'analyzer unavailable' : 'analyze failed')); return; }
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 800));
-      const stRes = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses/' + encodeURIComponent(data.id));
-      if (!stRes.ok) { setIdle('analysis failed'); return; }
-      let st;
-      try { st = await stRes.json(); } catch (err) { setIdle('analysis failed'); return; }
-      if (st.status === 'done' || st.status === 'failed') { location.reload(); return; }
-    }
-  } catch (err) {
-    setIdle(err && err.message ? err.message : 'analyze failed');
-  }
-});
-document.getElementById('restore-btn')?.addEventListener('click', async () => {
-  const file = document.getElementById('restore-file')?.files?.[0];
-  const hint = document.getElementById('restore-hint');
-  if (!file) {
-    if (hint) { hint.hidden = false; hint.textContent = 'Choose a file to restore.'; }
-    return;
-  }
-  const body = new FormData();
-  body.append('file', file, file.name);
-  const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/media/restore', { method: 'POST', body });
-  if (res.status === 409) { alert('Not the same media file.'); return; }
-  if (!res.ok) { alert('Restore failed'); return; }
-  location.reload();
-});
-`;
 
 export function renderNoteReader(doc: { id: string; title: string; body: string; updatedAt: string }): string {
   const heading = doc.title || 'Untitled note';

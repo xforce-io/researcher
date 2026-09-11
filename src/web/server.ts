@@ -206,6 +206,11 @@ async function handle(
     if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
     return send(res, 200, 'text/css; charset=utf-8', readFileSync(f));
   }
+  if (req.method === 'GET' && path === '/static/video-workbench.js') {
+    const f = join(STATIC_DIR, 'video-workbench.js');
+    if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
+    return send(res, 200, 'text/javascript; charset=utf-8', readFileSync(f));
+  }
 
   // POST /t/:slug/setup/generate|apply — AI Complete setup (before generic /t routes)
   const setupM = path.match(/^\/t\/([^/]+)\/setup\/(generate|apply)$/);

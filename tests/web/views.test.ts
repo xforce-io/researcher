@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   escapeHtml,
   formatCueClock,
@@ -1361,17 +1364,19 @@ describe('renderVideoReader', () => {
     });
     expect(html).not.toContain('</script><img');
     expect(html).toContain('\\u003c/script\\u003e');
-    const opens = html.match(/<script>/g)?.length ?? 0;
+    const opens = html.match(/<script\b/g)?.length ?? 0;
     const closes = html.match(/<\/script>/g)?.length ?? 0;
     expect(closes).toBe(opens);
   });
 
   it('stops Analyze polling on HTTP/JSON failure and restores the button', () => {
     const html = renderVideoReader(base);
-    expect(html).toContain('if (!stRes.ok)');
-    expect(html).toContain('setIdle');
-    expect(html).toContain('analysis failed');
-    expect(html).toContain("btn.textContent = 'Analyze'");
+    expect(html).toContain('src="/static/video-workbench.js"');
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
+    expect(script).toContain('if (!stRes.ok)');
+    expect(script).toContain('setIdle');
+    expect(script).toContain('analysis failed');
+    expect(script).toContain("btn.textContent = 'Analyze'");
   });
 
   it('shows workspace root, non-ISO date, mm:ss cues, analyzing, restore hint, and searchable missing media', () => {
@@ -1395,6 +1400,33 @@ describe('renderVideoReader', () => {
     expect(html).toContain('Choose a file to restore.');
     expect(html).toContain('id="cue-q" type="search"');
     expect(html).not.toMatch(/id="cue-q"[^>]*disabled/);
+    expect(html).toContain('data-player-slot');
+    expect(html).toContain('data-transcript-slot');
+    expect(html.indexOf('data-player-slot')).toBeLessThan(html.indexOf('id="cue-q"'));
+    expect(html.indexOf('data-transcript-slot')).toBeLessThan(html.indexOf('id="cue-q"'));
+    expect(html.indexOf('data-transcript-slot')).toBeLessThan(html.indexOf('id="prevHit"'));
+    expect(html).toContain('id="nextHit"');
+    expect(html).toContain('id="hitCount"');
+    expect(html).toContain('Choose a file to restore.');
+  });
+
+  it('is a remaining-viewport workbench with independent cue scroll, not a 980px article', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      id: i, start: i * 2, end: i * 2 + 1.5, text: `line ${i} verification`,
+    }));
+    const html = renderVideoReader({ ...base, product: { cues: many, noSpeech: false } });
+    expect(html).toContain('class="video-workbench"');
+    expect(html).toContain('class="video-shell"');
+    expect(html).toContain('src="/static/video-workbench.js"');
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    expect(css).not.toMatch(/\.video-reader\s*\{[^}]*max-width:\s*980px/s);
+    expect(css).toMatch(/\.video-workbench\s*\{[^}]*grid-template-columns:/s);
+    expect(css).toMatch(/\.cues\s*\{[^}]*overflow:\s*auto/s);
+    expect(css).toMatch(/@media \(max-width:\s*900px\)[\s\S]*\.video-workbench\s*\{\s*grid-template-columns:\s*1fr/);
+    const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
+    expect(script).toContain('scrollIntoView');
+    expect(script).toContain('cycleHitIndex');
+    expect(html.match(/class="cue"/g)?.length).toBe(40);
   });
 });
 
