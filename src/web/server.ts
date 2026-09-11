@@ -519,6 +519,7 @@ async function handleDocumentResource(
         id: doc.id,
         title: doc.title,
         updatedAt: doc.updatedAt,
+        root,
         mediaExists: lib.videoMediaExists(doc),
         runtimeMissing: analyzeRuntime().missing,
         latest: lib.latestVideoAnalysis(documentId),

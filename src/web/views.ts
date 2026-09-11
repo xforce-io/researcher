@@ -165,6 +165,26 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** JSON embedded in a <script> tag must not contain raw `</script>` or HTML metachars. */
+export function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+/** Cue clock: m:ss, or h:mm:ss when an hour or more. */
+export function formatCueClock(seconds: number): string {
+  const t = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 const unquote = unquoteFm;
 
 // TOC display title: per-paper note headings share a fixed "…笔记：《title》" shell.
@@ -601,6 +621,20 @@ function renderPaperCard(
   `</article>`;
 }
 
+function renderAddMenu(opts: { variant: 'primary' | 'secondary' } = { variant: 'primary' }): string {
+  const btnClass = opts.variant === 'primary' ? 'primary' : 'secondary';
+  const homeCta = opts.variant === 'primary' ? ' home-cta' : '';
+  return `<div class="add-menu">` +
+    `<button class="${btnClass}${homeCta}" type="button" data-open-add-menu aria-haspopup="true" aria-expanded="false">＋ Add</button>` +
+    `<div id="add-menu-panel" class="add-menu-panel" hidden>` +
+      `<button type="button" data-open-add-paper>Add source</button>` +
+      `<a href="/library/documents/new?type=note">Write note</a>` +
+      `<button type="button" id="add-video-btn">Add video</button>` +
+    `</div>` +
+    `<input id="add-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden>` +
+  `</div>`;
+}
+
 function renderAddPaperModal(topicPaths: string[]): string {
   const topicOptions = topicPaths
     .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
@@ -719,13 +753,14 @@ export function renderVideoReader(opts: {
   id: string;
   title: string;
   updatedAt: string;
+  root?: string;
   mediaExists: boolean;
   runtimeMissing: string[];
   latest?: { status: string; lastError?: string };
   product?: { cues: Array<{ id: number; start: number; end: number; text: string }>; noSpeech: boolean };
 }): string {
   const heading = opts.title || 'Untitled video';
-  const cuesJson = JSON.stringify(opts.product?.cues ?? []);
+  const cuesJson = jsonForScript(opts.product?.cues ?? []);
   const analyzing = opts.latest?.status === 'queued' || opts.latest?.status === 'running';
   const failed = opts.latest?.status === 'failed';
   let cuePanel: string;
@@ -738,9 +773,12 @@ export function renderVideoReader(opts: {
   } else {
     cuePanel = opts.product.cues.map((c) =>
       `<article class="cue" data-id="${c.id}" data-start="${c.start}" data-end="${c.end}">` +
-      `<div class="t">${escapeHtml(String(c.start.toFixed(1)))}</div><div class="txt">${escapeHtml(c.text)}</div></article>`,
+      `<div class="t">${escapeHtml(formatCueClock(c.start))}</div><div class="txt">${escapeHtml(c.text)}</div></article>`,
     ).join('');
   }
+  const analyzingBanner = analyzing
+    ? `<p class="status" data-analyzing>Analyzing…</p>`
+    : '';
   const failBanner = failed
     ? `<p class="video-error">${escapeHtml(opts.latest?.lastError || 'Analysis failed')}</p>`
     : '';
@@ -751,19 +789,21 @@ export function renderVideoReader(opts: {
     ? `<video id="player" controls preload="metadata" src="/library/documents/${encodeURIComponent(opts.id)}/media"></video>`
     : `<div class="video-missing"><p>Media file is missing. Transcript remains searchable. Restore the same file to play.</p>` +
       `<input id="restore-file" type="file" accept=".mp4,.webm,video/mp4,video/webm">` +
-      `<button type="button" id="restore-btn">Restore media</button></div>`;
+      `<button type="button" id="restore-btn">Restore media</button>` +
+      `<p id="restore-hint" class="muted" data-restore-empty>Choose a file to restore.</p></div>`;
   const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
-  const body = topbar('', 'library') +
+  const body = topbar(opts.root ?? '', 'library') +
     `<main class="video-reader" data-video-id="${escapeHtml(opts.id)}">` +
       `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
-      `<p class="muted">video · ${escapeHtml(opts.updatedAt)}</p>` +
+      `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
       `<h1>${escapeHtml(heading)}</h1>` +
       `<div class="video-stage">${player}</div>` +
       `<p class="video-actions">` +
         `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
       `</p>` +
-      runtimeNote + failBanner +
-      `<label class="video-search">Search transcript <input id="cue-q" type="search" ${opts.mediaExists ? '' : ''}></label>` +
+      `<p id="analyze-status" class="status" hidden></p>` +
+      analyzingBanner + runtimeNote + failBanner +
+      `<label class="video-search">Search transcript <input id="cue-q" type="search"></label>` +
       `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
     `</main><script>window.__CUES=${cuesJson};window.__MEDIA=${opts.mediaExists ? 'true' : 'false'};</script>` +
     `<script>${VIDEO_DETAIL_JS}</script>`;
@@ -786,6 +826,14 @@ function currentCue(vis, t) {
   hits.sort((a, b) => (b.start - a.start) || (a.id - b.id));
   return hits[0] || null;
 }
+function formatCueClock(seconds) {
+  const t = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  return m + ':' + String(s).padStart(2, '0');
+}
 function render() {
   if (!list) return;
   const vis = visibleCues();
@@ -796,7 +844,7 @@ function render() {
   if (!cues.length) return;
   list.innerHTML = vis.map((c) =>
     '<article class="cue" data-id="' + c.id + '" data-start="' + c.start + '" data-end="' + c.end + '">' +
-    '<div class="t">' + Number(c.start).toFixed(1) + '</div><div class="txt"></div></article>'
+    '<div class="t">' + formatCueClock(c.start) + '</div><div class="txt"></div></article>'
   ).join('');
   vis.forEach((c, i) => { list.querySelectorAll('.txt')[i].textContent = c.text; });
 }
@@ -817,21 +865,40 @@ player?.addEventListener('timeupdate', () => {
 });
 document.getElementById('analyze-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('analyze-btn');
+  const statusEl = document.getElementById('analyze-status');
+  const setIdle = (msg) => {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+    if (statusEl) {
+      statusEl.hidden = !msg;
+      statusEl.textContent = msg || '';
+    }
+  };
   btn.disabled = true;
   btn.textContent = 'Analyzing…';
-  const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mutationId: crypto.randomUUID() }) });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 503) { alert(data.message || 'analyzer unavailable'); btn.disabled = false; btn.textContent = 'Analyze'; return; }
-  if (!res.ok) { alert(data.message || 'analyze failed'); btn.disabled = false; btn.textContent = 'Analyze'; return; }
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 800));
-    const st = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses/' + encodeURIComponent(data.id)).then((r) => r.json());
-    if (st.status === 'done' || st.status === 'failed') { location.reload(); return; }
+  try {
+    const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mutationId: crypto.randomUUID() }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setIdle(data.message || (res.status === 503 ? 'analyzer unavailable' : 'analyze failed')); return; }
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 800));
+      const stRes = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses/' + encodeURIComponent(data.id));
+      if (!stRes.ok) { setIdle('analysis failed'); return; }
+      let st;
+      try { st = await stRes.json(); } catch (err) { setIdle('analysis failed'); return; }
+      if (st.status === 'done' || st.status === 'failed') { location.reload(); return; }
+    }
+  } catch (err) {
+    setIdle(err && err.message ? err.message : 'analyze failed');
   }
 });
 document.getElementById('restore-btn')?.addEventListener('click', async () => {
   const file = document.getElementById('restore-file')?.files?.[0];
-  if (!file) return;
+  const hint = document.getElementById('restore-hint');
+  if (!file) {
+    if (hint) { hint.hidden = false; hint.textContent = 'Choose a file to restore.'; }
+    return;
+  }
   const body = new FormData();
   body.append('file', file, file.name);
   const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/media/restore', { method: 'POST', body });
@@ -861,7 +928,7 @@ export function renderLibrary(v: LibraryView): string {
   const body = topbar(v.root, 'library') +
     `<main class="library-shell no-selection">` +
       `<aside class="library-rail">` +
-        `<div class="library-rail-head"><h2>Papers</h2><span>${v.papers.length}</span></div>` +
+        `<div class="library-rail-head"><h2>Documents</h2><span>${v.papers.length}</span></div>` +
         `<label class="library-search">Search<input type="search" placeholder="Title, tag, source" data-library-search></label>` +
         `<div class="library-filters" role="group" aria-label="Library filters">` +
           `<button class="active" type="button" data-filter="unlinked" aria-pressed="true">Unlinked</button>` +
@@ -885,14 +952,11 @@ export function renderLibrary(v: LibraryView): string {
       `</aside>` +
       `<section class="library-main">` +
         `<div class="library-head"><div><h1>Library</h1><p>Workspace documents, reads, tags, and topic links.</p></div>` +
-        `<div><button class="primary" type="button" data-open-add-paper>＋ Add</button>` +
-        `<a class="secondary" href="/library/documents/new?type=note">Write note</a>` +
-        `<button class="secondary" type="button" id="add-video-btn">Add video</button>` +
-        `<input id="add-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden></div></div>` +
+        `<div>${renderAddMenu({ variant: 'primary' })}</div></div>` +
         `<div class="paper-list-grid">` +
           `<div class="paper-card paper-header"><span>Document</span><span>Type</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
-          `${papers || '<p class="empty-state">No papers yet.</p>'}` +
-          `<p class="empty-state library-no-results" hidden>No papers match the current filters.</p>` +
+          `${papers || '<p class="empty-state">No documents yet.</p>'}` +
+          `<p class="empty-state library-no-results" hidden>No documents match the current filters.</p>` +
         `</div>` +
       `</section>` +
     `</main>${renderAddPaperModal(v.topics.map((t) => t.path))}<script>${LIBRARY_JS}</script>`;
@@ -1373,7 +1437,7 @@ function hideAddPaper() {
   addPaperModal.hidden = true;
   openAddPaperButtons[0]?.focus();
 }
-openAddPaperButtons.forEach((btn) => btn.addEventListener('click', showAddPaper));
+openAddPaperButtons.forEach((btn) => btn.addEventListener('click', () => { hideAddMenu(); showAddPaper(); }));
 closeAddPaper?.addEventListener('click', hideAddPaper);
 addPaperModal?.addEventListener('click', (e) => {
   if (e.target === addPaperModal) hideAddPaper();
@@ -1381,6 +1445,26 @@ addPaperModal?.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && addPaperModal && !addPaperModal.hidden) hideAddPaper();
 });
+`;
+
+const ADD_MENU_JS = `
+function hideAddMenu() {
+  const panel = document.getElementById('add-menu-panel');
+  const btn = document.querySelector('[data-open-add-menu]');
+  if (panel) panel.hidden = true;
+  btn?.setAttribute('aria-expanded', 'false');
+}
+document.querySelector('[data-open-add-menu]')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById('add-menu-panel');
+  const btn = e.currentTarget;
+  if (!panel) return;
+  const open = panel.hidden;
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+document.getElementById('add-menu-panel')?.addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', hideAddMenu);
 `;
 
 const ADD_VIDEO_JS = `
@@ -1483,7 +1567,7 @@ libraryTypeButtons.forEach((button) => button.addEventListener('click', () => {
   applyLibraryFilters();
 }));
 applyLibraryFilters();
-` + ADD_PAPER_JS + ADD_VIDEO_JS;
+` + ADD_PAPER_JS + ADD_MENU_JS + ADD_VIDEO_JS;
 
 // ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
 function fmtDate(iso: string | null): string {
@@ -1544,16 +1628,11 @@ function homePrimaryCta(m: WorkspaceHomeModel): HomePrimaryCta {
 
 function homeHeroActions(m: WorkspaceHomeModel): string {
   const cta = homePrimaryCta(m);
-  const primary = cta.kind === 'add-paper'
-    ? `<button class="primary home-cta" type="button" data-open-add-paper>${escapeHtml(cta.label)}</button>`
-    : `<a class="primary home-cta" href="${escapeHtml(cta.href)}">${escapeHtml(cta.label)}</a>`;
-  // Secondary Add paper only when primary is something else — avoid two identical CTAs.
-  const secondary = cta.kind === 'add-paper'
-    ? ''
-    : `<button class="secondary home-cta-secondary" type="button" data-open-add-paper>Add paper</button>`;
-  const video = `<button class="secondary" type="button" id="add-video-btn">Add video</button>` +
-    `<input id="add-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden>`;
-  return `<div class="home-actions">${primary}${secondary}${video}</div>`;
+  if (cta.kind === 'add-paper') {
+    return `<div class="home-actions">${renderAddMenu({ variant: 'primary' })}</div>`;
+  }
+  const primary = `<a class="primary home-cta" href="${escapeHtml(cta.href)}">${escapeHtml(cta.label)}</a>`;
+  return `<div class="home-actions">${primary}${renderAddMenu({ variant: 'secondary' })}</div>`;
 }
 
 function homeMetric(
@@ -1762,7 +1841,7 @@ function homeLibrary(m: WorkspaceHomeModel): string {
     `</dl>` +
     (recent
       ? `<h3 class="home-subhead">Recent papers</h3><ul class="home-list recent-papers">${recent}</ul>`
-      : `<p class="home-empty">No papers yet — use Add paper above.</p>`) +
+      : `<p class="home-empty">No documents yet — use Add above.</p>`) +
   `</section>`;
 }
 
@@ -1809,7 +1888,7 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
       homeLibrary(m) +
     `</main>` +
     renderAddPaperModal(m.topicPaths) +
-    `<script>${ADD_PAPER_JS}${ADD_VIDEO_JS}</script>`;
+    `<script>${ADD_PAPER_JS}${ADD_MENU_JS}${ADD_VIDEO_JS}</script>`;
   return page(`${m.name} · researcher`, body);
 }
 

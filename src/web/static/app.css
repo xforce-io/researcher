@@ -2003,3 +2003,30 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
 .cue.active { border-left-color: var(--accent); background: var(--accent-soft); }
 .cue .t { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
 .video-error { color: #8a2f2f; }
+.add-menu { position: relative; display: inline-block; }
+.add-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  z-index: 8;
+  padding: 4px;
+}
+.add-menu-panel[hidden] { display: none; }
+.add-menu-panel button, .add-menu-panel a {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.add-menu-panel button:hover, .add-menu-panel a:hover { background: var(--accent-soft); }

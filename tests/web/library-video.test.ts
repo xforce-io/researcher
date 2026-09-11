@@ -42,6 +42,7 @@ describe('library video HTTP (S1–S5)', () => {
       root,
       port: 0,
       videoAnalyzeRunner: async ({ mediaPath }) => {
+        await new Promise((r) => setTimeout(r, 80));
         const bytes = readFileSync(mediaPath);
         if (bytes.equals(silent)) return { cues: [] };
         if (String(process.env.VIDEO_ANALYZE_FAIL) === '1') {
@@ -81,6 +82,9 @@ describe('library video HTTP (S1–S5)', () => {
   it('ingests a copy that still plays after the original is moved (S1)', async () => {
     const html = await (await fetch(base + '/library')).text();
     expect(html).toContain('Add video');
+    expect(html).toContain('data-open-add-menu');
+    expect(html).toContain('Documents');
+    expect(html).not.toContain('<h2>Papers</h2>');
     expect(html).toContain('data-type-filter="video"');
     const original = join(root, 'talk.mp4');
     writeFileSync(original, speech);
@@ -91,6 +95,10 @@ describe('library video HTTP (S1–S5)', () => {
     const page = await (await fetch(base + created.url)).text();
     expect(page).toContain('talk');
     expect(page).toContain('/media');
+    expect(page).toContain(root);
+    expect(page).toMatch(/video · \d{4}-\d{2}-\d{2}</);
+    expect(page).not.toMatch(/video · \d{4}-\d{2}-\d{2}T/);
+    expect(page).toContain('if (!stRes.ok)');
     const media = await fetch(base + created.url + '/media');
     expect(media.status).toBe(200);
     expect(Buffer.from(await media.arrayBuffer()).equals(speech)).toBe(true);
@@ -116,6 +124,8 @@ describe('library video HTTP (S1–S5)', () => {
     });
     expect(started.status).toBe(202);
     const { id: analysisId } = await started.json() as { id: string };
+    const mid = await (await fetch(`${base}/library/documents/${speechDoc.id}`)).text();
+    expect(mid).toMatch(/data-analyzing>Analyzing/);
     const done = await waitDone(speechDoc.id, analysisId);
     expect(done.status).toBe('done');
     const cues = await (await fetch(`${base}/library/documents/${speechDoc.id}/cues`)).json() as {
@@ -194,6 +204,9 @@ describe('library video HTTP (S1–S5)', () => {
     const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
     expect(page).toContain('Media file is missing');
     expect(page).toContain('Hello Benny');
+    expect(page).toContain('id="cue-q"');
+    expect(page).not.toMatch(/id="cue-q"[^>]*disabled/);
+    expect(page).toContain('Choose a file to restore.');
     const other = new FormData();
     other.append('file', new Blob([silent], { type: 'video/mp4' }), 'other.mp4');
     const denied = await fetch(`${base}/library/documents/${created.id}/media/restore`, { method: 'POST', body: other });
