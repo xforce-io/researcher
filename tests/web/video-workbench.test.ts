@@ -16,6 +16,10 @@ describe('shipped video-workbench visible set and current cue', () => {
   it('filters case-insensitively and keeps [start, end) current-cue among visible only', () => {
     expect(visibleCues(cues, '').map((c) => c.id)).toEqual([0, 1, 2, 3]);
     expect(visibleCues(cues, 'TRUST').map((c) => c.id)).toEqual([1]);
+    expect(visibleCues(
+      [{ id: 0, start: 0, end: 1, text: 'Hello', zh: '你好' }],
+      '你好',
+    ).map((c) => c.id)).toEqual([0]);
     const vis = visibleCues(cues, '');
     expect(currentCueInVisible(vis, 0)?.id).toBe(0);
     expect(currentCueInVisible(vis, 1.9)?.id).toBe(2);

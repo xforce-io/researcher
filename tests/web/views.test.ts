@@ -1385,7 +1385,7 @@ describe('renderVideoReader', () => {
       mediaExists: false,
       latest: { status: 'running' },
       product: {
-        cues: [{ id: 0, start: 1517.2, end: 1520, text: 'Hello Benny' }],
+        cues: [{ id: 0, start: 1517.2, end: 1520, text: 'Hello Benny', zh: '你好 Benny' }],
         noSpeech: false,
       },
     });
@@ -1398,6 +1398,7 @@ describe('renderVideoReader', () => {
     expect(html).toMatch(/data-analyzing>Analyzing/);
     expect(html).toContain('data-restore-empty');
     expect(html).toContain('Choose a file to restore.');
+    expect(html).toContain('class="txt-zh">你好 Benny');
     expect(html).toContain('id="cue-q" type="search"');
     expect(html).not.toMatch(/id="cue-q"[^>]*disabled/);
     expect(html).toContain('data-player-slot');

@@ -758,7 +758,7 @@ export function renderVideoReader(opts: {
   mediaExists: boolean;
   runtimeMissing: string[];
   latest?: { status: string; lastError?: string };
-  product?: { cues: Array<{ id: number; start: number; end: number; text: string }>; noSpeech: boolean };
+  product?: { cues: Array<{ id: number; start: number; end: number; text: string; zh?: string }>; noSpeech: boolean };
 }): string {
   const heading = opts.title || 'Untitled video';
   const cuesJson = jsonForScript(opts.product?.cues ?? []);
@@ -774,7 +774,10 @@ export function renderVideoReader(opts: {
   } else {
     cuePanel = opts.product.cues.map((c) =>
       `<article class="cue" data-id="${c.id}" data-start="${c.start}" data-end="${c.end}">` +
-      `<div class="t">${escapeHtml(formatCueClock(c.start))}</div><div class="txt">${escapeHtml(c.text)}</div></article>`,
+      `<div class="t">${escapeHtml(formatCueClock(c.start))}</div>` +
+      `<div class="txt-wrap"><div class="txt">${escapeHtml(c.text)}</div>` +
+      (c.zh ? `<div class="txt-zh">${escapeHtml(c.zh)}</div>` : '') +
+      `</div></article>`,
     ).join('');
   }
   const analyzingBanner = analyzing

@@ -79,6 +79,8 @@ export interface VideoCue {
   start: number;
   end: number;
   text: string;
+  /** Simplified Chinese counterpart; omitted when translation is unavailable. */
+  zh?: string;
 }
 
 export type VideoAnalysisStatus = 'queued' | 'running' | 'done' | 'failed';

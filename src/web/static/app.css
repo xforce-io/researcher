@@ -2066,6 +2066,7 @@ html.video-shell .topbar { flex-shrink: 0; }
   gap: 2px;
 }
 .cue { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 8px; cursor: pointer; border-left: 3px solid transparent; }
+.txt-zh { font-size: 13px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
 .cue:hover { background: var(--accent-soft); }
 .cue.active { border-left-color: var(--accent); background: var(--accent-soft); }
 .cue.hit-current { outline: 1px solid var(--accent); outline-offset: -1px; }

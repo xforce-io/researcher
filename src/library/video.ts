@@ -85,7 +85,8 @@ export function normalizeCues(raw: Array<{ start?: number; end?: number; text?: 
     const start = Number(seg.start);
     const end = Number(seg.end);
     if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
-    out.push({ id: out.length, start, end, text });
+    const zh = String((seg as { zh?: string }).zh ?? '').trim();
+    out.push(zh ? { id: out.length, start, end, text, zh } : { id: out.length, start, end, text });
   }
   return out;
 }
@@ -93,7 +94,9 @@ export function normalizeCues(raw: Array<{ start?: number; end?: number; text?: 
 export function searchCueIds(cues: VideoCue[], query: string): number[] {
   const q = String(query ?? '').trim().toLowerCase();
   if (!q) return cues.map((c) => c.id);
-  return cues.filter((c) => c.text.toLowerCase().includes(q)).map((c) => c.id);
+  return cues.filter((c) =>
+    c.text.toLowerCase().includes(q) || String(c.zh ?? '').toLowerCase().includes(q),
+  ).map((c) => c.id);
 }
 
 /**

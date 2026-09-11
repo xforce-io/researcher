@@ -4,7 +4,10 @@ export function visibleCues(cues, query) {
   const list = Array.isArray(cues) ? cues : [];
   const q = String(query ?? '').trim().toLowerCase();
   if (!q) return list.slice();
-  return list.filter((c) => String(c.text ?? '').toLowerCase().includes(q));
+  return list.filter((c) =>
+    String(c.text ?? '').toLowerCase().includes(q)
+    || String(c.zh ?? '').toLowerCase().includes(q),
+  );
 }
 
 /** Current cue among a visible subset: t ∈ [start, end). Overlap → max start, then min id. */
@@ -68,9 +71,16 @@ export function bindVideoWorkbench() {
     if (!cues.length) return;
     list.innerHTML = vis.map((c) =>
       '<article class="cue" data-id="' + c.id + '" data-start="' + c.start + '" data-end="' + c.end + '">' +
-      '<div class="t">' + formatCueClock(c.start) + '</div><div class="txt"></div></article>'
+      '<div class="t">' + formatCueClock(c.start) + '</div>' +
+      '<div class="txt-wrap"><div class="txt"></div>' +
+      (c.zh ? '<div class="txt-zh"></div>' : '') +
+      '</div></article>'
     ).join('');
-    vis.forEach((c, i) => { list.querySelectorAll('.txt')[i].textContent = c.text; });
+    vis.forEach((c, i) => {
+      list.querySelectorAll('.txt')[i].textContent = c.text;
+      const zhEl = list.querySelectorAll('.cue')[i].querySelector('.txt-zh');
+      if (zhEl && c.zh) zhEl.textContent = c.zh;
+    });
   }
 
   function scrollCueIntoPane(el) {

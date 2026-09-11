@@ -22,6 +22,7 @@ import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryU
 import { isSafeLibraryId, PaperLibrary, newAnalysisId, newDocumentId, newReadId } from '../library/store.js';
 import { isNoteDocType, isVideoDocType, parseDocType } from '../library/doc-type.js';
 import { classifyAnalysis } from '../library/video.js';
+import { attachChineseCues, defaultTranslateToZh } from '../library/video-translate.js';
 import { analyzeRuntime, defaultVideoAnalyzeRunner, type VideoAnalyzeRunner } from '../library/video-analyze.js';
 import { readMultipartVideo } from './multipart.js';
 import { normalizePaperInput } from '../library/identity.js';
@@ -1198,7 +1199,9 @@ async function handleStartVideoAnalysis(
   });
   sendJson(res, 202, { id: analysisId, status: 'queued' });
   void runVideoAnalysisJob({
-    root, documentId, analysisId, runner: runner ?? defaultVideoAnalyzeRunner,
+    root, documentId, analysisId,
+    runner: runner ?? defaultVideoAnalyzeRunner,
+    translate: !runner,
   });
 }
 
@@ -1207,6 +1210,7 @@ async function runVideoAnalysisJob(opts: {
   documentId: string;
   analysisId: string;
   runner: VideoAnalyzeRunner;
+  translate?: boolean;
 }): Promise<void> {
   const lib = new PaperLibrary(opts.root);
   const doc = lib.getDocument(opts.documentId);
@@ -1217,13 +1221,21 @@ async function runVideoAnalysisJob(opts: {
   try {
     const workDir = join(opts.root, '.researcher-workspace', 'tmp', opts.analysisId);
     const result = await opts.runner({ mediaPath: lib.videoMediaPath(doc), workDir });
-    const noSpeech = classifyAnalysis(result.cues).noSpeech;
+    let cues = result.cues;
+    if (opts.translate !== false) {
+      try {
+        cues = await attachChineseCues(cues, defaultTranslateToZh);
+      } catch {
+        /* English cues still publish */
+      }
+    }
+    const noSpeech = classifyAnalysis(cues).noSpeech;
     lib.writeVideoAnalysis({
       ...started,
       status: 'done',
       updatedAt: new Date().toISOString(),
       noSpeech,
-      cues: result.cues,
+      cues,
     });
   } catch (err) {
     const command = (err as { command?: string }).command;
