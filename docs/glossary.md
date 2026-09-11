@@ -15,9 +15,13 @@
 | Topic delivery | `.researcher/project.yaml` 的 `delivery.mode`，只决定 package 是否 push 并开 PR。 | — |
 | Library sync | `workspace sync --library`：把允许的 Library 文件提交进超级仓，不开 PR、不 push。 | library publish、library delivery |
 | Pointer | 超级仓中记录的 submodule commit SHA（gitlink）。 | — |
-| 文档 | Library 中具有独立身份、可保存和浏览的内容单元，paper、blog、note 等为平级类型。 | — |
+| 文档 | Library 中具有独立身份、可保存和浏览的内容单元，paper、blog、note、video 等为平级类型。 | — |
 | paper | 文档中内容形式为学术论文的一类。 | — |
 | 自主笔记 | 类型为 note、由用户维护的独立文档，不要求外部来源或 topic，不能被机器重跑覆盖。 | 独立笔记 |
+| 视频 | Library 文档中内容形式为时基音视频的一类，主对象是已入库媒体，不要求外部来源或 topic。 | 片子、片源 |
+| 台词 | 依附某条视频文档、带起止时间的一句转写文本；是视频分析产物，不是独立文档，也不是用户维护正文。 | 字幕条、caption、segment |
+| 视频分析 | 对本机已入库视频抽音并转写、生成或替换当前台词产物的动作；不是深读。 | ASR、Whisper、解析 |
+| 媒体指纹 | 已入库视频文件字节的 SHA-256，用于判定恢复文件是否为同一份媒体。 | 校验和、文件 hash |
 | 深读记录 | 针对某份文档的一次深读执行记录，承载执行状态和对应产物信息。 | — |
 | 深读产物 | 基于文档由深读执行生成的附属内容，不作为 Library 中的独立文档。 | — |
 | 文档批注 | 依附具体文档的人类记录，独立于深读产物且不具有文档身份，kind=note 仅指普通批注而非自主笔记，本期用于已有外部材料。 | 论文批注 |
