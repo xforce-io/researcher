@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  centeredScrollTop,
   currentCueInVisible,
   cycleHitIndex,
   visibleCues,
@@ -29,6 +30,12 @@ describe('shipped video-workbench visible set and current cue', () => {
     const onlyTheme = visibleCues(cues, 'theme');
     expect(currentCueInVisible(onlyTheme, 1.9)).toBeNull();
     expect(currentCueInVisible(onlyTheme, 2.5)?.id).toBe(1);
+  });
+
+  it('centers the active cue in the transcript pane', () => {
+    expect(centeredScrollTop(400, 2000, 1000, 40)).toBe(820);
+    expect(centeredScrollTop(400, 2000, 0, 40)).toBe(0);
+    expect(centeredScrollTop(400, 2000, 1900, 40)).toBe(1600);
   });
 
   it('cycles prev/next through hit ids', () => {

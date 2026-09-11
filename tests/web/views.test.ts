@@ -1425,7 +1425,7 @@ describe('renderVideoReader', () => {
     expect(css).toMatch(/\.cues\s*\{[^}]*overflow:\s*auto/s);
     expect(css).toMatch(/@media \(max-width:\s*900px\)[\s\S]*\.video-workbench\s*\{\s*grid-template-columns:\s*1fr/);
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
-    expect(script).toContain('scrollIntoView');
+    expect(script).toContain('centeredScrollTop');
     expect(script).toContain('cycleHitIndex');
     expect(html.match(/class="cue"/g)?.length).toBe(40);
   });

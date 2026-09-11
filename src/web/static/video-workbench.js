@@ -29,6 +29,13 @@ export function cycleHitIndex(hitIds, index, dir) {
   return (index + d + hits.length) % hits.length;
 }
 
+/** ScrollTop that places el's vertical center on the pane's vertical center. */
+export function centeredScrollTop(paneHeight, paneScrollHeight, elOffsetTop, elHeight) {
+  const mid = elOffsetTop + elHeight / 2 - paneHeight / 2;
+  const max = Math.max(0, paneScrollHeight - paneHeight);
+  return Math.min(max, Math.max(0, mid));
+}
+
 export function formatCueClock(seconds) {
   const t = Math.max(0, Math.floor(Number(seconds) || 0));
   const h = Math.floor(t / 3600);
@@ -85,7 +92,7 @@ export function bindVideoWorkbench() {
 
   function scrollCueIntoPane(el) {
     if (!el || !list) return;
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    list.scrollTop = centeredScrollTop(list.clientHeight, list.scrollHeight, el.offsetTop, el.offsetHeight);
   }
 
   function seekCueId(cueId, play) {

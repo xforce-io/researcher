@@ -2058,6 +2058,7 @@ html.video-shell .topbar { flex-shrink: 0; }
   cursor: pointer;
 }
 .cues {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
