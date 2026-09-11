@@ -86,7 +86,9 @@ export async function runPapersRead(opts: {
     title: existingPaper?.title,
     authors: existingPaper?.authors,
     abstract: existingPaper?.abstract,
-    docType: existingPaper?.docType === 'note' ? 'paper' : (existingPaper?.docType ?? 'paper'),
+    docType: existingPaper?.docType && existingPaper.docType !== 'note' && existingPaper.docType !== 'video'
+      ? existingPaper.docType
+      : 'paper',
   });
 
   const completed = lib.listReads(paper.id).find(

@@ -2,7 +2,7 @@
 
 - Issue：[#191](https://github.com/xforce-io/researcher/issues/191)
 - L1：[概念方向与范围](https://github.com/xforce-io/researcher/issues/191#issuecomment-5627683299)，用户已 Approved。
-- 状态：**Draft**
+- 状态：**Approved**
 - 日期：2026-09-11
 - 分支：`feat/191-library-video`
 

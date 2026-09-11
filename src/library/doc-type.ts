@@ -2,7 +2,7 @@ import type { SourceRef } from './model.js';
 
 export const DOC_TYPES = ['paper', 'design-doc', 'spec', 'blog', 'api-doc', 'other'] as const;
 export type DocType = (typeof DOC_TYPES)[number];
-export const LIBRARY_DOC_TYPES = [...DOC_TYPES, 'note'] as const;
+export const LIBRARY_DOC_TYPES = [...DOC_TYPES, 'note', 'video'] as const;
 export type LibraryDocType = (typeof LIBRARY_DOC_TYPES)[number];
 
 export function parseDocType(raw: string): DocType {
@@ -19,6 +19,15 @@ export function parseLibraryDocType(raw: string): LibraryDocType {
 
 export function isNoteDocType(docType: string | undefined): boolean {
   return docType === 'note';
+}
+
+export function isVideoDocType(docType: string | undefined): boolean {
+  return docType === 'video';
+}
+
+/** Deep-read / unread / Essence apply to external source documents only. */
+export function supportsDeepRead(docType: string | undefined): boolean {
+  return !isNoteDocType(docType) && !isVideoDocType(docType);
 }
 
 /** Infer a document type from the source identity when the user did not set one. */

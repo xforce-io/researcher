@@ -554,12 +554,22 @@ function renderPaperCard(
       ? `<span class="paper-integration in-landscape">in landscape</span>`
       : `<span class="paper-integration pending-landscape">linked · not in landscape</span>`;
   }
-  const stateLabel = p.readStatus === 'saved' ? 'Saved' : p.readStatus;
-  const stateBits = p.readStatus === 'saved'
-    ? 'Saved'
-    : opts.topicContext
-      ? escapeHtml(p.readStatus)
-      : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
+  const videoState: Record<string, string> = {
+    saved: 'Saved',
+    analyzing: 'Analyzing',
+    failed: 'Failed',
+    missing: 'Missing',
+  };
+  const stateLabel = p.docType === 'video'
+    ? (videoState[p.readStatus] ?? p.readStatus)
+    : p.readStatus === 'saved' ? 'Saved' : p.readStatus;
+  const stateBits = p.docType === 'video'
+    ? (videoState[p.readStatus] ?? p.readStatus)
+    : p.readStatus === 'saved'
+      ? 'Saved'
+      : opts.topicContext
+        ? escapeHtml(p.readStatus)
+        : `${escapeHtml(p.readStatus)} · ${p.linkedTopicCount} link${p.linkedTopicCount === 1 ? '' : 's'} · ${p.integratedTopicCount} integrated`;
   const searchText = [
     p.displayTitle,
     p.canonicalId,
@@ -705,6 +715,132 @@ form.addEventListener('submit', async (e) => {
   return page('Note · researcher', body);
 }
 
+export function renderVideoReader(opts: {
+  id: string;
+  title: string;
+  updatedAt: string;
+  mediaExists: boolean;
+  runtimeMissing: string[];
+  latest?: { status: string; lastError?: string };
+  product?: { cues: Array<{ id: number; start: number; end: number; text: string }>; noSpeech: boolean };
+}): string {
+  const heading = opts.title || 'Untitled video';
+  const cuesJson = JSON.stringify(opts.product?.cues ?? []);
+  const analyzing = opts.latest?.status === 'queued' || opts.latest?.status === 'running';
+  const failed = opts.latest?.status === 'failed';
+  let cuePanel: string;
+  if (!opts.product) {
+    cuePanel = analyzing
+      ? `<p class="status">Analyzing…</p>`
+      : `<p class="status">Not analyzed yet.</p>`;
+  } else if (opts.product.noSpeech || opts.product.cues.length === 0) {
+    cuePanel = `<p class="status" data-no-speech>No speech detected</p>`;
+  } else {
+    cuePanel = opts.product.cues.map((c) =>
+      `<article class="cue" data-id="${c.id}" data-start="${c.start}" data-end="${c.end}">` +
+      `<div class="t">${escapeHtml(String(c.start.toFixed(1)))}</div><div class="txt">${escapeHtml(c.text)}</div></article>`,
+    ).join('');
+  }
+  const failBanner = failed
+    ? `<p class="video-error">${escapeHtml(opts.latest?.lastError || 'Analysis failed')}</p>`
+    : '';
+  const runtimeNote = opts.runtimeMissing.length
+    ? `<p class="muted">Analyze needs ${escapeHtml(opts.runtimeMissing.join(' and '))} on PATH.</p>`
+    : '';
+  const player = opts.mediaExists
+    ? `<video id="player" controls preload="metadata" src="/library/documents/${encodeURIComponent(opts.id)}/media"></video>`
+    : `<div class="video-missing"><p>Media file is missing. Transcript remains searchable. Restore the same file to play.</p>` +
+      `<input id="restore-file" type="file" accept=".mp4,.webm,video/mp4,video/webm">` +
+      `<button type="button" id="restore-btn">Restore media</button></div>`;
+  const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
+  const body = topbar('', 'library') +
+    `<main class="video-reader" data-video-id="${escapeHtml(opts.id)}">` +
+      `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
+      `<p class="muted">video · ${escapeHtml(opts.updatedAt)}</p>` +
+      `<h1>${escapeHtml(heading)}</h1>` +
+      `<div class="video-stage">${player}</div>` +
+      `<p class="video-actions">` +
+        `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
+      `</p>` +
+      runtimeNote + failBanner +
+      `<label class="video-search">Search transcript <input id="cue-q" type="search" ${opts.mediaExists ? '' : ''}></label>` +
+      `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
+    `</main><script>window.__CUES=${cuesJson};window.__MEDIA=${opts.mediaExists ? 'true' : 'false'};</script>` +
+    `<script>${VIDEO_DETAIL_JS}</script>`;
+  return page(`${heading} · researcher`, body);
+}
+
+const VIDEO_DETAIL_JS = `
+const cues = Array.isArray(window.__CUES) ? window.__CUES : [];
+const player = document.getElementById('player');
+const list = document.getElementById('cues');
+const q = document.getElementById('cue-q');
+const id = document.querySelector('[data-video-id]')?.dataset.videoId;
+function visibleCues() {
+  const needle = (q?.value || '').trim().toLowerCase();
+  if (!needle) return cues.slice();
+  return cues.filter((c) => c.text.toLowerCase().includes(needle));
+}
+function currentCue(vis, t) {
+  const hits = vis.filter((c) => c.start <= t && t < c.end);
+  hits.sort((a, b) => (b.start - a.start) || (a.id - b.id));
+  return hits[0] || null;
+}
+function render() {
+  if (!list) return;
+  const vis = visibleCues();
+  if (cues.length && vis.length === 0) {
+    list.innerHTML = '<p class="status">No matching cues.</p>';
+    return;
+  }
+  if (!cues.length) return;
+  list.innerHTML = vis.map((c) =>
+    '<article class="cue" data-id="' + c.id + '" data-start="' + c.start + '" data-end="' + c.end + '">' +
+    '<div class="t">' + Number(c.start).toFixed(1) + '</div><div class="txt"></div></article>'
+  ).join('');
+  vis.forEach((c, i) => { list.querySelectorAll('.txt')[i].textContent = c.text; });
+}
+list?.addEventListener('click', (e) => {
+  const cue = e.target.closest('.cue');
+  if (!cue || !player) return;
+  if (!window.__MEDIA) { alert('Media file is missing. Restore it to seek.'); return; }
+  player.currentTime = Number(cue.dataset.start);
+  player.play().catch(() => {});
+});
+q?.addEventListener('input', render);
+player?.addEventListener('timeupdate', () => {
+  const vis = visibleCues();
+  const cur = currentCue(vis, player.currentTime);
+  list?.querySelectorAll('.cue').forEach((el) => {
+    el.classList.toggle('active', cur && el.dataset.id === String(cur.id));
+  });
+});
+document.getElementById('analyze-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing…';
+  const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mutationId: crypto.randomUUID() }) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 503) { alert(data.message || 'analyzer unavailable'); btn.disabled = false; btn.textContent = 'Analyze'; return; }
+  if (!res.ok) { alert(data.message || 'analyze failed'); btn.disabled = false; btn.textContent = 'Analyze'; return; }
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 800));
+    const st = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses/' + encodeURIComponent(data.id)).then((r) => r.json());
+    if (st.status === 'done' || st.status === 'failed') { location.reload(); return; }
+  }
+});
+document.getElementById('restore-btn')?.addEventListener('click', async () => {
+  const file = document.getElementById('restore-file')?.files?.[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append('file', file, file.name);
+  const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/media/restore', { method: 'POST', body });
+  if (res.status === 409) { alert('Not the same media file.'); return; }
+  if (!res.ok) { alert('Restore failed'); return; }
+  location.reload();
+});
+`;
+
 export function renderNoteReader(doc: { id: string; title: string; body: string; updatedAt: string }): string {
   const heading = doc.title || 'Untitled note';
   const body = topbar('', 'library') +
@@ -744,12 +880,15 @@ export function renderLibrary(v: LibraryView): string {
           `<button type="button" data-type-filter="spec" aria-pressed="false">spec</button>` +
           `<button type="button" data-type-filter="api-doc" aria-pressed="false">api-doc</button>` +
           `<button type="button" data-type-filter="other" aria-pressed="false">other</button>` +
+          `<button type="button" data-type-filter="video" aria-pressed="false">video</button>` +
         `</div>` +
       `</aside>` +
       `<section class="library-main">` +
         `<div class="library-head"><div><h1>Library</h1><p>Workspace documents, reads, tags, and topic links.</p></div>` +
         `<div><button class="primary" type="button" data-open-add-paper>＋ Add</button>` +
-        `<a class="secondary" href="/library/documents/new?type=note">Write note</a></div></div>` +
+        `<a class="secondary" href="/library/documents/new?type=note">Write note</a>` +
+        `<button class="secondary" type="button" id="add-video-btn">Add video</button>` +
+        `<input id="add-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden></div></div>` +
         `<div class="paper-list-grid">` +
           `<div class="paper-card paper-header"><span>Document</span><span>Type</span><span>Source</span><span>Tags</span><span>State</span><span>Updated</span></div>` +
           `${papers || '<p class="empty-state">No papers yet.</p>'}` +
@@ -1244,6 +1383,33 @@ document.addEventListener('keydown', (e) => {
 });
 `;
 
+const ADD_VIDEO_JS = `
+const addVideoBtn = document.getElementById('add-video-btn');
+const addVideoFile = document.getElementById('add-video-file');
+addVideoBtn?.addEventListener('click', () => addVideoFile?.click());
+addVideoFile?.addEventListener('change', async () => {
+  const file = addVideoFile.files && addVideoFile.files[0];
+  if (!file) return;
+  addVideoBtn.disabled = true;
+  addVideoBtn.textContent = 'Adding…';
+  try {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    body.append('mutationId', crypto.randomUUID());
+    const res = await fetch('/library/documents/videos', { method: 'POST', body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || res.statusText);
+    location.href = data.url || '/library';
+  } catch (err) {
+    addVideoBtn.disabled = false;
+    addVideoBtn.textContent = 'Add video';
+    alert(err && err.message ? err.message : 'Add video failed');
+  } finally {
+    addVideoFile.value = '';
+  }
+});
+`;
+
 const LIBRARY_JS = `
 const librarySearch = document.querySelector('[data-library-search]');
 const libraryFilterButtons = Array.from(document.querySelectorAll('[data-filter]'));
@@ -1317,7 +1483,7 @@ libraryTypeButtons.forEach((button) => button.addEventListener('click', () => {
   applyLibraryFilters();
 }));
 applyLibraryFilters();
-` + ADD_PAPER_JS;
+` + ADD_PAPER_JS + ADD_VIDEO_JS;
 
 // ISO 8601 → YYYY-MM-DD; never expose the raw timestamp in the UI.
 function fmtDate(iso: string | null): string {
@@ -1385,7 +1551,9 @@ function homeHeroActions(m: WorkspaceHomeModel): string {
   const secondary = cta.kind === 'add-paper'
     ? ''
     : `<button class="secondary home-cta-secondary" type="button" data-open-add-paper>Add paper</button>`;
-  return `<div class="home-actions">${primary}${secondary}</div>`;
+  const video = `<button class="secondary" type="button" id="add-video-btn">Add video</button>` +
+    `<input id="add-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden>`;
+  return `<div class="home-actions">${primary}${secondary}${video}</div>`;
 }
 
 function homeMetric(
@@ -1641,7 +1809,7 @@ export function renderWorkspaceHome(m: WorkspaceHomeModel): string {
       homeLibrary(m) +
     `</main>` +
     renderAddPaperModal(m.topicPaths) +
-    `<script>${ADD_PAPER_JS}</script>`;
+    `<script>${ADD_PAPER_JS}${ADD_VIDEO_JS}</script>`;
   return page(`${m.name} · researcher`, body);
 }
 

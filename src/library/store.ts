@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -21,7 +22,9 @@ import type {
   TopicIntegration,
 } from './model.js';
 import type { LibraryDocType } from './doc-type.js';
-import { isNoteDocType, parseLibraryDocType } from './doc-type.js';
+import { isNoteDocType, isVideoDocType, parseLibraryDocType, supportsDeepRead } from './doc-type.js';
+import { acceptVideoUpload, sha256FileSync, titleFromFilename } from './video.js';
+import type { VideoAnalysis, VideoCue } from './model.js';
 import { maintenanceStage, readMaintenanceStage, withDomainWriteLock } from './maintenance.js';
 
 export const WORKSPACE_STATE_DIR = '.researcher-workspace';
@@ -62,6 +65,10 @@ export function newDocumentId(): string {
 
 export function newReadId(): string {
   return `read_${randomUUID()}`;
+}
+
+export function newAnalysisId(): string {
+  return `analysis_${randomUUID()}`;
 }
 
 export function isSafeLibraryId(id: string): boolean {
@@ -210,6 +217,146 @@ export class PaperLibrary {
       this.writeDocument(doc);
       return doc;
     });
+  }
+
+  createVideo(input: {
+    id: string;
+    sourcePath: string;
+    filename: string;
+    contentType: string;
+    bytes: number;
+    mutationId: string;
+  }): LibraryDocument {
+    this.ensureV2();
+    if (!/^doc_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id)) {
+      throw Object.assign(new Error('id must be doc_UUID'), { status: 400 });
+    }
+    const accepted = acceptVideoUpload({
+      filename: input.filename,
+      contentType: input.contentType,
+      bytes: input.bytes,
+    });
+    if (!accepted.ok) {
+      throw Object.assign(new Error(accepted.message), { status: accepted.status });
+    }
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getDocument(input.id);
+      if (existing) {
+        if (!isVideoDocType(existing.docType)) throw new Error(`document already exists: ${input.id}`);
+        if (existing.lastMutationId === input.mutationId) return existing;
+        throw new Error(`document already exists: ${input.id}`);
+      }
+      const dir = join(this.rootDir, 'documents', input.id);
+      const assets = join(dir, 'assets');
+      mkdirSync(assets, { recursive: true });
+      const storedName = `media${accepted.ext}`;
+      const dest = join(assets, storedName);
+      copyFileSync(input.sourcePath, dest);
+      const sha256 = sha256FileSync(dest);
+      const bytes = statSync(dest).size;
+      const now = this.clock.now();
+      const doc: LibraryDocument = {
+        id: input.id,
+        docType: 'video',
+        title: titleFromFilename(input.filename),
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+        lastMutationId: input.mutationId,
+        body: '',
+        sources: [],
+        identifiers: {},
+        media: {
+          filename: posixBasename(input.filename),
+          sha256,
+          bytes,
+          contentType: accepted.contentType,
+        },
+      };
+      this.writeDocument(doc);
+      return doc;
+    });
+  }
+
+  restoreVideoMedia(input: { id: string; sourcePath: string; bytes: number }): LibraryDocument {
+    this.ensureV2();
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getDocument(input.id);
+      if (!existing) throw Object.assign(new Error(`unknown document: ${input.id}`), { status: 404 });
+      if (!isVideoDocType(existing.docType) || !existing.media) {
+        throw Object.assign(new Error('document is not a video'), { status: 422 });
+      }
+      const sha256 = sha256FileSync(input.sourcePath);
+      if (sha256 !== existing.media.sha256 || input.bytes !== existing.media.bytes) {
+        throw Object.assign(new Error('media fingerprint mismatch'), { status: 409 });
+      }
+      const dest = this.videoMediaPath(existing);
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(input.sourcePath, dest);
+      return existing;
+    });
+  }
+
+  videoMediaPath(doc: LibraryDocument): string {
+    const ext = doc.media?.contentType === 'video/webm' ? '.webm' : '.mp4';
+    return join(this.rootDir, 'documents', doc.id, 'assets', `media${ext}`);
+  }
+
+  videoMediaExists(doc: LibraryDocument): boolean {
+    return isVideoDocType(doc.docType) && existsSync(this.videoMediaPath(doc));
+  }
+
+  listVideoAnalyses(documentId: string): VideoAnalysis[] {
+    const dir = join(this.rootDir, 'documents', documentId, 'analyses');
+    if (!existsSync(dir)) return [];
+    const out: VideoAnalysis[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue;
+      try {
+        out.push(JSON.parse(readFileSync(join(dir, name), 'utf8')) as VideoAnalysis);
+      } catch {
+        /* skip corrupt */
+      }
+    }
+    return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }
+
+  getVideoAnalysis(documentId: string, analysisId: string): VideoAnalysis | undefined {
+    return this.listVideoAnalyses(documentId).find((a) => a.id === analysisId);
+  }
+
+  writeVideoAnalysis(record: VideoAnalysis): void {
+    if (!isSafeLibraryId(record.documentId) || !isSafeLibraryId(record.id)) {
+      throw new Error('unsafe analysis id');
+    }
+    withDomainWriteLock(this.workspaceRoot, () => {
+      const path = join(this.rootDir, 'documents', record.documentId, 'analyses', `${record.id}.json`);
+      atomicWrite(path, `${JSON.stringify(record)}\n`);
+    });
+  }
+
+  currentVideoProduct(documentId: string): VideoAnalysis | undefined {
+    const done = this.listVideoAnalyses(documentId).filter((a) => a.status === 'done');
+    return done.at(-1);
+  }
+
+  latestVideoAnalysis(documentId: string): VideoAnalysis | undefined {
+    return this.listVideoAnalyses(documentId).at(-1);
+  }
+
+  videoListState(doc: LibraryDocument): 'saved' | 'analyzing' | 'failed' | 'missing' {
+    if (!this.videoMediaExists(doc)) return 'missing';
+    const latest = this.latestVideoAnalysis(doc.id);
+    if (latest?.status === 'queued' || latest?.status === 'running') return 'analyzing';
+    if (latest?.status === 'failed') return 'failed';
+    return 'saved';
+  }
+
+  currentCues(documentId: string): { cues: VideoCue[]; noSpeech: boolean } | undefined {
+    const product = this.currentVideoProduct(documentId);
+    if (!product) return undefined;
+    return { cues: product.cues ?? [], noSpeech: Boolean(product.noSpeech) };
   }
 
   updateNote(input: {
@@ -639,7 +786,7 @@ export function documentMatchesStatus(lib: PaperLibrary, doc: LibraryDocument, s
   if (status === 'linked') return linked;
   if (status === 'integrated') return integrated;
   if (status === 'unread' || status === 'read') {
-    if (isNoteDocType(doc.docType)) return false;
+    if (!supportsDeepRead(doc.docType)) return false;
     const reads = lib.listReads(doc.id);
     if (status === 'unread') return reads.length === 0;
     const latest = [...reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
@@ -651,6 +798,7 @@ export function documentMatchesStatus(lib: PaperLibrary, doc: LibraryDocument, s
 export function displayTitle(doc: LibraryDocument): string {
   if (doc.title) return doc.title;
   if (isNoteDocType(doc.docType)) return 'Untitled note';
+  if (isVideoDocType(doc.docType)) return 'Untitled video';
   if (doc.canonicalSource?.kind === 'arxiv') {
     return `arXiv ${doc.identifiers.arxiv ?? doc.canonicalSource.id.replace(/^arxiv:/, '')}`;
   }
@@ -705,6 +853,7 @@ function serializeDocumentMarkdown(doc: LibraryDocument): string {
   if (Object.keys(doc.identifiers).length) fm.identifiers = doc.identifiers;
   if (doc.authors) fm.authors = doc.authors;
   if (doc.abstract) fm.abstract = doc.abstract;
+  if (doc.media) fm.media = doc.media;
   return `---\n${dump(fm, { noRefs: true, lineWidth: 120 }).trimEnd()}\n---\n${doc.body}`;
 }
 
@@ -718,7 +867,7 @@ function parseDocumentMarkdown(raw: string, expectedId: string): LibraryDocument
   if (id !== expectedId) throw new Error('document id mismatch');
   return {
     id,
-    docType: String(fm.docType ?? 'paper') as LibraryDocType,
+    docType: parseLibraryDocType(String(fm.docType ?? 'paper')),
     title: typeof fm.title === 'string' ? fm.title : '',
     tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
     createdAt: String(fm.createdAt ?? ''),
@@ -731,7 +880,25 @@ function parseDocumentMarkdown(raw: string, expectedId: string): LibraryDocument
     identifiers: (fm.identifiers as LibraryDocument['identifiers']) ?? {},
     authors: Array.isArray(fm.authors) ? fm.authors.map(String) : undefined,
     abstract: typeof fm.abstract === 'string' ? fm.abstract : undefined,
+    media: parseVideoMedia(fm.media),
   };
+}
+
+function parseVideoMedia(raw: unknown): LibraryDocument['media'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const m = raw as Record<string, unknown>;
+  const contentType = m.contentType === 'video/webm' ? 'video/webm' : m.contentType === 'video/mp4' ? 'video/mp4' : null;
+  if (!contentType || typeof m.filename !== 'string' || typeof m.sha256 !== 'string') return undefined;
+  return {
+    filename: m.filename,
+    sha256: m.sha256,
+    bytes: Number(m.bytes) || 0,
+    contentType,
+  };
+}
+
+function posixBasename(name: string): string {
+  return name.replace(/\\/g, '/').split('/').pop() || name;
 }
 
 function atomicWrite(path: string, content: string): void {

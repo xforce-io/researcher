@@ -110,7 +110,8 @@ function isAllowlistedLibraryPath(rel: string): boolean {
   const rest = rel.slice(prefix.length);
   if ((LIBRARY_LEDGERS as readonly string[]).includes(rest)) return true;
   if (/^documents\/[^/]+\/document\.md$/.test(rest)) return true;
-  return /^documents\/[^/]+\/reads\/[^/]+\.(md|json)$/.test(rest);
+  if (/^documents\/[^/]+\/reads\/[^/]+\.(md|json)$/.test(rest)) return true;
+  return /^documents\/[^/]+\/analyses\/[^/]+\.json$/.test(rest);
 }
 
 function isLegacyManagedLibraryPath(rel: string): boolean {
@@ -157,12 +158,22 @@ export function listLibrarySyncPaths(root: string): string[] {
     const absDoc = join(root, docMd);
     if (existsSync(absDoc) && statSync(absDoc).isFile()) seen.add(docMd);
     const readsDir = join(documents, documentId, 'reads');
-    if (!existsSync(readsDir) || !statSync(readsDir).isDirectory()) continue;
-    for (const fname of readdirSync(readsDir)) {
-      if (!fname.endsWith('.md') && !fname.endsWith('.json')) continue;
-      const rel = `${LIBRARY_DIR}/documents/${documentId}/reads/${fname}`;
-      const abs = join(root, rel);
-      if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
+    if (existsSync(readsDir) && statSync(readsDir).isDirectory()) {
+      for (const fname of readdirSync(readsDir)) {
+        if (!fname.endsWith('.md') && !fname.endsWith('.json')) continue;
+        const rel = `${LIBRARY_DIR}/documents/${documentId}/reads/${fname}`;
+        const abs = join(root, rel);
+        if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
+      }
+    }
+    const analysesDir = join(documents, documentId, 'analyses');
+    if (existsSync(analysesDir) && statSync(analysesDir).isDirectory()) {
+      for (const fname of readdirSync(analysesDir)) {
+        if (!fname.endsWith('.json')) continue;
+        const rel = `${LIBRARY_DIR}/documents/${documentId}/analyses/${fname}`;
+        const abs = join(root, rel);
+        if (existsSync(abs) && statSync(abs).isFile()) seen.add(rel);
+      }
     }
   }
   return [...seen];

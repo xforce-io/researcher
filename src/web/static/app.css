@@ -1991,3 +1991,15 @@ a.paper-jump-notes.primary:hover { text-decoration:none; }
 @media (prefers-reduced-motion: reduce) {
   * { transition:none !important; }
 }
+.video-reader { max-width: 980px; margin: 0 auto; padding: 24px 20px 64px; }
+.video-stage video { width: 100%; background: #111; aspect-ratio: 16 / 9; }
+.video-missing { padding: 24px; background: var(--surface); border: 1px dashed var(--line); }
+.video-actions { display: flex; gap: 8px; margin: 12px 0; }
+.video-search { display: block; margin: 12px 0; }
+.video-search input { width: 100%; padding: 8px; }
+.cues { display: flex; flex-direction: column; gap: 2px; }
+.cue { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 8px; cursor: pointer; border-left: 3px solid transparent; }
+.cue:hover { background: var(--accent-soft); }
+.cue.active { border-left-color: var(--accent); background: var(--accent-soft); }
+.cue .t { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+.video-error { color: #8a2f2f; }

@@ -67,6 +67,34 @@ export interface PaperSurfaceLink {
   updatedAt: string;
 }
 
+export interface VideoMedia {
+  filename: string;
+  sha256: string;
+  bytes: number;
+  contentType: 'video/mp4' | 'video/webm';
+}
+
+export interface VideoCue {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+}
+
+export type VideoAnalysisStatus = 'queued' | 'running' | 'done' | 'failed';
+
+export interface VideoAnalysis {
+  id: string;
+  documentId: string;
+  status: VideoAnalysisStatus;
+  createdAt: string;
+  updatedAt: string;
+  mutationId?: string;
+  lastError?: string;
+  noSpeech?: boolean;
+  cues?: VideoCue[];
+}
+
 export interface LibraryDocument {
   id: string;
   docType: LibraryDocType;
@@ -82,6 +110,7 @@ export interface LibraryDocument {
   identifiers: Paper['identifiers'];
   authors?: string[];
   abstract?: string;
+  media?: VideoMedia;
 }
 
 export type LibraryStatusFilter = 'all' | 'unlinked' | 'unread' | 'read' | 'linked' | 'integrated';
