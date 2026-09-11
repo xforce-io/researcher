@@ -53,6 +53,8 @@ export function bindVideoWorkbench() {
   const hitCount = document.getElementById('hitCount');
   const id = document.querySelector('[data-video-id]')?.dataset.videoId;
   let hitIndex = -1;
+  let follow = true;
+  let programmaticScroll = false;
 
   function hitsForQuery() {
     const needle = (q?.value || '').trim();
@@ -90,21 +92,31 @@ export function bindVideoWorkbench() {
     });
   }
 
-  function scrollCueIntoPane(el) {
+  function scrollCueIntoPane(el, opts) {
     if (!el || !list) return;
+    if (!follow && !(opts && opts.force)) return;
+    programmaticScroll = true;
     list.scrollTop = centeredScrollTop(list.clientHeight, list.scrollHeight, el.offsetTop, el.offsetHeight);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { programmaticScroll = false; });
+    });
+  }
+
+  function pauseFollowFromUser() {
+    follow = false;
   }
 
   function seekCueId(cueId, play) {
     const cue = cues.find((c) => c.id === cueId);
     if (!cue) return;
     if (!window.__MEDIA) { alert('Media file is missing. Restore it to seek.'); return; }
+    follow = true;
     if (player) {
       player.currentTime = cue.start;
       if (play) player.play().catch(() => {});
     }
     const node = list?.querySelector(`[data-id="${cueId}"]`);
-    if (node) scrollCueIntoPane(node);
+    if (node) scrollCueIntoPane(node, { force: true });
   }
 
   function jumpHit(dir) {
@@ -131,10 +143,15 @@ export function bindVideoWorkbench() {
       const node = list?.querySelector(`[data-id="${hits[0]}"]`);
       if (node) {
         node.classList.add('hit-current');
-        scrollCueIntoPane(node);
+        scrollCueIntoPane(node, { force: true });
       }
     }
   });
+  list?.addEventListener('wheel', pauseFollowFromUser, { passive: true });
+  list?.addEventListener('touchstart', pauseFollowFromUser, { passive: true });
+  list?.addEventListener('scroll', () => {
+    if (!programmaticScroll) pauseFollowFromUser();
+  }, { passive: true });
   document.getElementById('prevHit')?.addEventListener('click', () => jumpHit(-1));
   document.getElementById('nextHit')?.addEventListener('click', () => jumpHit(1));
 

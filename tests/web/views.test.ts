@@ -1427,6 +1427,9 @@ describe('renderVideoReader', () => {
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
     expect(script).toContain('centeredScrollTop');
     expect(script).toContain('cycleHitIndex');
+    expect(script).toContain('pauseFollowFromUser');
+    expect(script).toContain("addEventListener('wheel'");
+    expect(script).toContain('if (!programmaticScroll)');
     expect(html.match(/class="cue"/g)?.length).toBe(40);
   });
 });
