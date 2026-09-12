@@ -1377,6 +1377,9 @@ describe('renderVideoReader', () => {
     expect(script).toContain('setIdle');
     expect(script).toContain('analysis failed');
     expect(script).toContain("btn.textContent = 'Analyze'");
+    expect(script).toContain("querySelector('.video-title-form')");
+    expect(script).toContain('e.preventDefault()');
+    expect(script).toContain('saveTitle');
   });
 
   it('shows workspace root, non-ISO date, mm:ss cues, analyzing, restore hint, and searchable missing media', () => {

@@ -224,6 +224,73 @@ describe('library video HTTP (S1–S5)', () => {
     const reads = await fetch(`${base}/library/documents/${created.id}/reads`);
     expect(reads.status).toBe(422);
   });
+
+  it('saves a new video title on list and detail (title S1)', async () => {
+    const created = await (await addVideo(speech, 'rename-me.mp4', 'm-title-s1')).json() as { id: string };
+    const before = await (await fetch(`${base}/library/documents/${created.id}`, {
+      headers: { accept: 'application/json' },
+    })).json() as { id: string; title: string; revision: number; media?: unknown };
+    const cuesBefore = await fetch(`${base}/library/documents/${created.id}/cues`);
+    const saved = await fetch(`${base}/library/documents/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Readable talk', expectedRevision: before.revision, mutationId: 't1' }),
+    });
+    expect(saved.status).toBe(200);
+    const body = await saved.json() as { id: string; title: string };
+    expect(body.id).toBe(created.id);
+    expect(body.title).toBe('Readable talk');
+    const detail = await (await fetch(`${base}/library/documents/${created.id}`, {
+      headers: { accept: 'application/json' },
+    })).json() as { title: string; id: string; media?: unknown };
+    expect(detail.title).toBe('Readable talk');
+    expect(detail.id).toBe(created.id);
+    expect(detail.media).toEqual(before.media);
+    const html = await (await fetch(`${base}/library/documents/${created.id}`)).text();
+    expect(html).toContain('Readable talk');
+    expect(html).toContain('id="video-title"');
+    expect(html).toContain('id="save-title"');
+    const listed = await (await fetch(`${base}/library/documents?type=video`, {
+      headers: { accept: 'application/json' },
+    })).json() as { id: string; title: string }[];
+    expect(listed.filter((d) => d.id === created.id)).toHaveLength(1);
+    expect(listed.find((d) => d.id === created.id)?.title).toBe('Readable talk');
+    const listHtml = await (await fetch(`${base}/library?status=all&type=video`)).text();
+    expect(listHtml).toContain('Readable talk');
+    const cuesAfter = await fetch(`${base}/library/documents/${created.id}/cues`);
+    expect(cuesAfter.status).toBe(cuesBefore.status);
+    expect(new PaperLibrary(root).listDocuments().filter((d) => d.id === created.id)).toHaveLength(1);
+  });
+
+  it('rejects a 201-code-point title and then saves a legal one (title S2)', async () => {
+    const created = await (await addVideo(speech, 'keep-name.mp4', 'm-title-s2')).json() as { id: string };
+    const before = await (await fetch(`${base}/library/documents/${created.id}`, {
+      headers: { accept: 'application/json' },
+    })).json() as { title: string; revision: number };
+    const bad = await fetch(`${base}/library/documents/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'x'.repeat(201), expectedRevision: before.revision, mutationId: 't-bad' }),
+    });
+    expect(bad.status).toBe(400);
+    const err = await bad.json() as { field?: string };
+    expect(err.field).toBe('title');
+    const still = await (await fetch(`${base}/library/documents/${created.id}`, {
+      headers: { accept: 'application/json' },
+    })).json() as { title: string };
+    expect(still.title).toBe(before.title);
+    const ok = await fetch(`${base}/library/documents/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Short name', expectedRevision: before.revision, mutationId: 't-ok' }),
+    });
+    expect(ok.status).toBe(200);
+    const after = await (await fetch(`${base}/library/documents/${created.id}`, {
+      headers: { accept: 'application/json' },
+    })).json() as { title: string };
+    expect(after.title).toBe('Short name');
+    expect(new PaperLibrary(root).listDocuments().filter((d) => d.id === created.id)).toHaveLength(1);
+  });
 });
 
 describe('video analysis terminal state (#193)', () => {

@@ -390,6 +390,45 @@ export class PaperLibrary {
     return { cues: product.cues ?? [], noSpeech: Boolean(product.noSpeech) };
   }
 
+  updateVideoTitle(input: {
+    id: string;
+    title: string;
+    expectedRevision: number;
+    mutationId: string;
+  }): LibraryDocument {
+    this.ensureV2();
+    if (typeof input.title !== 'string') {
+      throw Object.assign(new Error('title is required'), { status: 400, field: 'title' });
+    }
+    if ([...input.title].length > NOTE_TITLE_MAX) {
+      throw Object.assign(new Error('title exceeds 200 code points'), { status: 400, field: 'title' });
+    }
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getDocument(input.id);
+      if (!existing) throw Object.assign(new Error(`unknown document: ${input.id}`), { status: 404 });
+      if (!isVideoDocType(existing.docType)) {
+        throw Object.assign(new Error(`document is not a video: ${input.id}`), { status: 422 });
+      }
+      if (existing.lastMutationId === input.mutationId) {
+        if (existing.title === input.title) return existing;
+        throw Object.assign(new Error('mutationId conflict'), { status: 409 });
+      }
+      if (existing.revision !== input.expectedRevision) {
+        throw Object.assign(new Error('revision conflict'), { status: 409, currentRevision: existing.revision });
+      }
+      const now = this.clock.now();
+      const doc: LibraryDocument = {
+        ...existing,
+        title: input.title,
+        updatedAt: now,
+        revision: existing.revision + 1,
+        lastMutationId: input.mutationId,
+      };
+      this.writeDocument(doc);
+      return doc;
+    });
+  }
+
   updateNote(input: {
     id: string;
     title: string;

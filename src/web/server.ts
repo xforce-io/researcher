@@ -543,6 +543,7 @@ async function handleDocumentResource(
         id: doc.id,
         title: doc.title,
         updatedAt: doc.updatedAt,
+        revision: doc.revision,
         root,
         mediaExists: lib.videoMediaExists(doc),
         runtimeMissing: analyzeRuntime().missing,
@@ -586,6 +587,10 @@ async function handleDocumentResource(
   }
 
   if (req.method === 'PATCH' && rest === '') {
+    if (doc && isVideoDocType(doc.docType)) {
+      await handlePatchVideoTitle(req, res, root, documentId);
+      return true;
+    }
     await handlePatchNote(req, res, root, documentId);
     return true;
   }
@@ -1067,6 +1072,46 @@ async function handleCreateNote(req: IncomingMessage, res: ServerResponse, root:
       code: 'save_failed',
       message: err instanceof Error ? err.message : String(err),
       field: (err as { field?: string }).field,
+    }));
+  }
+}
+
+async function handlePatchVideoTitle(
+  req: IncomingMessage,
+  res: ServerResponse,
+  root: string,
+  id: string,
+): Promise<void> {
+  const payload = await readJsonBody<{ title?: string; expectedRevision?: number; mutationId?: string }>(req, res);
+  if (!payload) return;
+  if (typeof payload.title !== 'string' || typeof payload.mutationId !== 'string' || typeof payload.expectedRevision !== 'number') {
+    send(res, 400, 'application/json', JSON.stringify({
+      code: 'invalid_fields',
+      message: 'title, expectedRevision, mutationId required',
+    }));
+    return;
+  }
+  try {
+    const doc = new PaperLibrary(root).updateVideoTitle({
+      id,
+      title: payload.title,
+      expectedRevision: payload.expectedRevision,
+      mutationId: payload.mutationId,
+    });
+    send(res, 200, 'application/json; charset=utf-8', JSON.stringify({
+      id: doc.id,
+      title: doc.title,
+      revision: doc.revision,
+      updatedAt: doc.updatedAt,
+      url: `/library/documents/${encodeURIComponent(doc.id)}`,
+    }));
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    send(res, status, 'application/json', JSON.stringify({
+      code: 'save_failed',
+      message: err instanceof Error ? err.message : String(err),
+      field: (err as { field?: string }).field,
+      currentRevision: (err as { currentRevision?: number }).currentRevision,
     }));
   }
 }
