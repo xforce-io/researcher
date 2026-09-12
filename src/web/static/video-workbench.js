@@ -168,7 +168,7 @@ export function bindVideoWorkbench() {
     }
   });
 
-  document.getElementById('save-title')?.addEventListener('click', async () => {
+  const saveTitle = async () => {
     const btn = document.getElementById('save-title');
     const input = document.getElementById('video-title');
     const err = document.getElementById('title-error');
@@ -201,6 +201,11 @@ export function bindVideoWorkbench() {
     } finally {
       btn.disabled = false;
     }
+  };
+  document.getElementById('save-title')?.addEventListener('click', saveTitle);
+  document.querySelector('.video-title-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveTitle();
   });
 
   document.getElementById('analyze-btn')?.addEventListener('click', async () => {
