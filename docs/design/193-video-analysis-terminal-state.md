@@ -2,7 +2,7 @@
 
 - Issue：[#193](https://github.com/xforce-io/researcher/issues/193)
 - L1：[进行中只表示活任务](https://github.com/xforce-io/researcher/issues/193#issuecomment-5646511336)，用户已 Approved。
-- 状态：**Draft**
+- 状态：**Approved**
 - 日期：2026-09-12
 - 分支：`feat/193-video-analysis-terminal-state`
 

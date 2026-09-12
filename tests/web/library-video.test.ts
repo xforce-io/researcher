@@ -225,3 +225,175 @@ describe('library video HTTP (S1–S5)', () => {
     expect(reads.status).toBe(422);
   });
 });
+
+describe('video analysis terminal state (#193)', () => {
+  let root: string;
+  let server: { port: number; close: () => Promise<void> };
+  let base: string;
+  const speech = Buffer.from('speech-mp4');
+  let blocking: Promise<void> | undefined;
+
+  function armBlock(): () => void {
+    let release = () => {};
+    blocking = new Promise<void>((r) => { release = r; });
+    return () => {
+      release();
+      blocking = undefined;
+    };
+  }
+
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'r-vid-term-'));
+    writeFileSync(join(root, 'researcher.workspace.yml'), 'version: 1\ntopics:\n  - { path: t, active: true }\n');
+    mkdirSync(join(root, 't/.researcher'), { recursive: true });
+    writeFileSync(join(root, 't/.researcher/project.yaml'),
+      'meta:\n  topic_oneline: t\n  language: en\nresearch_questions:\n  - { id: RQ1, text: q }\n' +
+      'inclusion_criteria: []\nexclusion_criteria: []\nsources:\n  - { kind: arxiv, queries: [a] }\n' +
+      'cadence:\n  default_interval_days: 7\n  backoff_after_empty_runs: 3\n');
+    writeFileSync(join(root, 't/.researcher/thesis.md'), '# Thesis\n\n## Working thesis\n\nT.\n');
+    gitInit(root);
+    gitInit(join(root, 't'));
+    writeFileSync(join(root, 't/a'), '1');
+    execaSync('git', ['add', '-A'], { cwd: join(root, 't') });
+    execaSync('git', ['commit', '-m', 't'], { cwd: join(root, 't') });
+    execaSync('git', ['add', '-A'], { cwd: root });
+    execaSync('git', ['commit', '-m', 'super', '--allow-empty'], { cwd: root });
+    server = await startServer({
+      root,
+      port: 0,
+      videoAnalyzeRunner: async () => {
+        const wait = blocking;
+        if (wait) await wait;
+        return { cues: [{ id: 0, start: 0, end: 2, text: 'Hello Benny' }] };
+      },
+      videoTranslate: async () => {
+        throw new Error('injected translate failure');
+      },
+    });
+    base = `http://127.0.0.1:${server.port}`;
+  });
+
+  afterAll(async () => {
+    await server.close();
+  });
+
+  async function addVideo(name: string, mutationId: string) {
+    const form = new FormData();
+    form.append('file', new Blob([speech], { type: 'video/mp4' }), name);
+    form.append('mutationId', mutationId);
+    return fetch(base + '/library/documents/videos', { method: 'POST', body: form });
+  }
+
+  async function waitDone(docId: string, analysisId: string) {
+    for (let i = 0; i < 40; i += 1) {
+      const st = await (await fetch(`${base}/library/documents/${docId}/analyses/${analysisId}`)).json() as { status: string };
+      if (st.status === 'done' || st.status === 'failed') return st;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error('analysis timeout');
+  }
+
+  it('finishes Analyze without Chinese cues and allows another run (S1)', async () => {
+    const created = await (await addVideo('s1.mp4', 'm-s1')).json() as { id: string };
+    const started = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'an-s1' }),
+    });
+    expect(started.status).toBe(202);
+    const { id: analysisId } = await started.json() as { id: string };
+    const mid = await (await fetch(`${base}/library/documents/${created.id}`)).text();
+    expect(mid).toMatch(/data-analyzing>Analyzing|Hello Benny/);
+    const done = await waitDone(created.id, analysisId) as { status: string; cues?: Array<{ text: string; zh?: string }> };
+    expect(done.status).toBe('done');
+    const cues = await (await fetch(`${base}/library/documents/${created.id}/cues`)).json() as {
+      cues: Array<{ text: string; zh?: string }>;
+    };
+    expect(cues.cues[0].text).toBe('Hello Benny');
+    expect(cues.cues[0].zh).toBeUndefined();
+    const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
+    expect(page).toContain('Hello Benny');
+    expect(page).not.toMatch(/data-analyzing>Analyzing/);
+    expect(page).toContain('id="analyze-btn"');
+    expect(page).not.toMatch(/id="analyze-btn"[^>]*disabled/);
+    const again = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'an-s1b' }),
+    });
+    expect(again.status).toBe(202);
+    const againId = (await again.json() as { id: string }).id;
+    expect(againId).not.toBe(analysisId);
+    await waitDone(created.id, againId);
+    expect(new PaperLibrary(root).listDocuments().filter((d) => d.id === created.id)).toHaveLength(1);
+  });
+
+  it('unlocks a stale running record and lets Analyze start (S2)', async () => {
+    const created = await (await addVideo('s2.mp4', 'm-s2')).json() as { id: string };
+    const ok = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'an-s2-ok' }),
+    });
+    await waitDone(created.id, (await ok.json() as { id: string }).id);
+    const lib = new PaperLibrary(root);
+    const staleId = `analysis_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`;
+    lib.writeVideoAnalysis({
+      id: staleId,
+      documentId: created.id,
+      status: 'running',
+      createdAt: '2099-01-01T00:00:00.000Z',
+      updatedAt: '2099-01-01T00:00:00.000Z',
+      mutationId: 'stale-run',
+    });
+    const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
+    expect(page).toContain('Hello Benny');
+    expect(page).not.toMatch(/data-analyzing>Analyzing/);
+    expect(page).toContain('Analysis interrupted');
+    expect(page).not.toMatch(/id="analyze-btn"[^>]*disabled/);
+    const st = await (await fetch(`${base}/library/documents/${created.id}/analyses/${staleId}`)).json() as {
+      status: string; lastError?: string;
+    };
+    expect(st.status).toBe('failed');
+    expect(st.lastError).toBe('Analysis interrupted');
+    const cues = await (await fetch(`${base}/library/documents/${created.id}/cues`)).json() as { cues: Array<{ text: string }> };
+    expect(cues.cues[0].text).toBe('Hello Benny');
+    const retry = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'an-s2-retry' }),
+    });
+    expect(retry.status).toBe(202);
+    const retryId = (await retry.json() as { id: string }).id;
+    expect(retryId).not.toBe(staleId);
+    await waitDone(created.id, retryId);
+    expect(lib.listDocuments().filter((d) => d.id === created.id)).toHaveLength(1);
+  });
+
+  it('returns 409 only while a live job exists', async () => {
+    const created = await (await addVideo('s409.mp4', 'm-409')).json() as { id: string };
+    const release = armBlock();
+    const first = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'hold-1' }),
+    });
+    expect(first.status).toBe(202);
+    const { id: firstId } = await first.json() as { id: string };
+    const second = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'hold-2' }),
+    });
+    expect(second.status).toBe(409);
+    release();
+    await waitDone(created.id, firstId);
+    const after = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'after-hold' }),
+    });
+    expect(after.status).toBe(202);
+    await waitDone(created.id, (await after.json() as { id: string }).id);
+  });
+});

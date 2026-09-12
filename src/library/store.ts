@@ -345,6 +345,37 @@ export class PaperLibrary {
     return this.listVideoAnalyses(documentId).at(-1);
   }
 
+  interruptStaleVideoAnalysis(
+    documentId: string,
+    isLive: (analysisId: string) => boolean,
+    analysisId?: string,
+  ): VideoAnalysis | undefined {
+    this.ensureV2();
+    const rec = analysisId
+      ? this.getVideoAnalysis(documentId, analysisId)
+      : this.latestVideoAnalysis(documentId);
+    if (!rec) return undefined;
+    if (rec.status !== 'queued' && rec.status !== 'running') return rec;
+    if (isLive(rec.id)) return rec;
+    const next: VideoAnalysis = {
+      id: rec.id,
+      documentId: rec.documentId,
+      status: 'failed',
+      createdAt: rec.createdAt,
+      updatedAt: this.clock.now(),
+      mutationId: rec.mutationId,
+      lastError: 'Analysis interrupted',
+    };
+    this.writeVideoAnalysis(next);
+    return next;
+  }
+
+  interruptStaleVideoAnalyses(isLive: (analysisId: string) => boolean): void {
+    for (const doc of this.listDocuments()) {
+      if (isVideoDocType(doc.docType)) this.interruptStaleVideoAnalysis(doc.id, isLive);
+    }
+  }
+
   videoListState(doc: LibraryDocument): 'saved' | 'analyzing' | 'failed' | 'missing' {
     if (!this.videoMediaExists(doc)) return 'missing';
     const latest = this.latestVideoAnalysis(doc.id);

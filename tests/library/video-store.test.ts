@@ -87,6 +87,43 @@ describe('video store', () => {
     expect(lib.currentCues(id)).toEqual({ cues: [], noSpeech: true });
   });
 
+  it('reaps stale queued/running as failed without replacing the last done product', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-vid-reap-'));
+    const src = join(root, 'a.mp4');
+    tinyMp4(src);
+    const lib = new PaperLibrary(root, { now: () => '2026-09-12T00:00:00.000Z' });
+    const id = newDocumentId();
+    lib.createVideo({
+      id, sourcePath: src, filename: 'a.mp4', contentType: 'video/mp4', bytes: 9, mutationId: 'm1',
+    });
+    const okId = newAnalysisId();
+    lib.writeVideoAnalysis({
+      id: okId, documentId: id, status: 'done', createdAt: '2026-09-12T00:00:01.000Z',
+      updatedAt: '2026-09-12T00:00:01.000Z',
+      cues: [{ id: 0, start: 0, end: 1.2, text: 'hello' }],
+    });
+    const staleId = newAnalysisId();
+    lib.writeVideoAnalysis({
+      id: staleId, documentId: id, status: 'running', createdAt: '2026-09-12T00:00:02.000Z',
+      updatedAt: '2026-09-12T00:00:02.000Z', mutationId: 'stale',
+    });
+    expect(lib.videoListState(lib.getDocument(id)!)).toBe('analyzing');
+    const live = new Set<string>();
+    const reaped = lib.interruptStaleVideoAnalysis(id, (aid) => live.has(aid));
+    expect(reaped?.status).toBe('failed');
+    expect(reaped?.lastError).toBe('Analysis interrupted');
+    expect(lib.currentCues(id)?.cues[0].text).toBe('hello');
+    expect(lib.videoListState(lib.getDocument(id)!)).toBe('failed');
+    live.add(staleId);
+    lib.writeVideoAnalysis({
+      id: staleId, documentId: id, status: 'running', createdAt: '2026-09-12T00:00:02.000Z',
+      updatedAt: '2026-09-12T00:00:02.000Z',
+    });
+    const kept = lib.interruptStaleVideoAnalysis(id, (aid) => live.has(aid));
+    expect(kept?.status).toBe('running');
+    expect(lib.videoListState(lib.getDocument(id)!)).toBe('analyzing');
+  });
+
   it('restores only the same fingerprint (S5)', () => {
     const root = mkdtempSync(join(tmpdir(), 'r-vid-s5-'));
     const src = join(root, 'a.mp4');
