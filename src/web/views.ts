@@ -804,7 +804,7 @@ export function renderVideoReader(opts: {
         `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
         `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
         `<form class="video-title-form" data-revision="${revision}">` +
-          `<label>Title <input id="video-title" name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled video"></label>` +
+          `<label>Title <input id="video-title" name="title" value="${escapeHtml(opts.title)}" placeholder="Untitled video"></label>` +
           `<button type="button" id="save-title">Save title</button>` +
         `</form>` +
         `<p id="title-error" class="video-error" hidden></p>` +
