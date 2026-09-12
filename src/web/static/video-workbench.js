@@ -168,6 +168,41 @@ export function bindVideoWorkbench() {
     }
   });
 
+  document.getElementById('save-title')?.addEventListener('click', async () => {
+    const btn = document.getElementById('save-title');
+    const input = document.getElementById('video-title');
+    const err = document.getElementById('title-error');
+    const form = document.querySelector('.video-title-form');
+    if (!btn || !input) return;
+    const title = input.value;
+    const expectedRevision = Number(form?.dataset.revision || '1');
+    btn.disabled = true;
+    if (err) { err.hidden = true; err.textContent = ''; }
+    try {
+      const res = await fetch('/library/documents/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title, expectedRevision, mutationId: crypto.randomUUID() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (err) {
+          err.hidden = false;
+          err.textContent = data.message || 'Save failed';
+        }
+        return;
+      }
+      location.reload();
+    } catch (e) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = e && e.message ? e.message : 'Save failed';
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   document.getElementById('analyze-btn')?.addEventListener('click', async () => {
     const btn = document.getElementById('analyze-btn');
     const statusEl = document.getElementById('analyze-status');

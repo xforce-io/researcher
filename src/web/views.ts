@@ -754,6 +754,7 @@ export function renderVideoReader(opts: {
   id: string;
   title: string;
   updatedAt: string;
+  revision?: number;
   root?: string;
   mediaExists: boolean;
   runtimeMissing: string[];
@@ -761,6 +762,7 @@ export function renderVideoReader(opts: {
   product?: { cues: Array<{ id: number; start: number; end: number; text: string; zh?: string }>; noSpeech: boolean };
 }): string {
   const heading = opts.title || 'Untitled video';
+  const revision = opts.revision ?? 1;
   const cuesJson = jsonForScript(opts.product?.cues ?? []);
   const analyzing = opts.latest?.status === 'queued' || opts.latest?.status === 'running';
   const failed = opts.latest?.status === 'failed';
@@ -801,7 +803,11 @@ export function renderVideoReader(opts: {
       `<header class="video-head">` +
         `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
         `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
-        `<h1>${escapeHtml(heading)}</h1>` +
+        `<form class="video-title-form" data-revision="${revision}">` +
+          `<label>Title <input id="video-title" name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled video"></label>` +
+          `<button type="button" id="save-title">Save title</button>` +
+        `</form>` +
+        `<p id="title-error" class="video-error" hidden></p>` +
         `<p class="video-actions">` +
           `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
         `</p>` +

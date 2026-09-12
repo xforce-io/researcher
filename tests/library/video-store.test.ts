@@ -143,4 +143,23 @@ describe('video store', () => {
     expect(lib.videoMediaExists(doc)).toBe(true);
     expect(lib.listDocuments()).toHaveLength(1);
   });
+
+  it('updates video title and rejects more than 200 code points', () => {
+    const root = mkdtempSync(join(tmpdir(), 'r-vid-title-'));
+    const src = join(root, 'a.mp4');
+    tinyMp4(src);
+    const lib = new PaperLibrary(root, { now: () => '2026-09-12T00:00:00.000Z' });
+    const id = newDocumentId();
+    lib.createVideo({
+      id, sourcePath: src, filename: 'a.mp4', contentType: 'video/mp4', bytes: 9, mutationId: 'm1',
+    });
+    const saved = lib.updateVideoTitle({ id, title: 'Readable', expectedRevision: 1, mutationId: 't1' });
+    expect(saved.title).toBe('Readable');
+    expect(saved.revision).toBe(2);
+    expect(saved.media?.bytes).toBe(9);
+    expect(() => lib.updateVideoTitle({
+      id, title: 'x'.repeat(201), expectedRevision: 2, mutationId: 't2',
+    })).toThrow(/200 code points/);
+    expect(lib.getDocument(id)?.title).toBe('Readable');
+  });
 });
