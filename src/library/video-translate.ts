@@ -2,6 +2,8 @@ import type { VideoCue } from './model.js';
 
 const CJK = /[\u4e00-\u9fff]/;
 const CHUNK = 40;
+export const TRANSLATE_REQUEST_TIMEOUT_MS = 20_000;
+export const TRANSLATE_STAGE_BUDGET_MS = 120_000;
 
 export type CueTranslator = (texts: string[]) => Promise<string[]>;
 
@@ -19,26 +21,57 @@ export function parseJsonStringArray(raw: string, expected: number): string[] {
 export async function attachChineseCues(
   cues: VideoCue[],
   translate: CueTranslator,
+  opts?: { now?: () => number; budgetMs?: number },
 ): Promise<VideoCue[]> {
   if (!cues.length) return cues;
   if (cues.every((c) => CJK.test(c.text))) return cues;
   const need = cues.map((c) => (CJK.test(c.text) ? '' : c.text));
   const toSend = need.filter(Boolean);
   if (!toSend.length) return cues;
+  const now = opts?.now ?? Date.now;
+  const budget = opts?.budgetMs ?? TRANSLATE_STAGE_BUDGET_MS;
+  const started = now();
   const translated: string[] = [];
   for (let i = 0; i < toSend.length; i += CHUNK) {
+    const remain = started + budget - now();
+    if (remain <= 0) break;
     const chunk = toSend.slice(i, i + CHUNK);
-    const part = await translate(chunk);
-    if (part.length !== chunk.length) {
-      throw new Error('translator chunk length mismatch');
-    }
+    const part = await raceTranslate(translate, chunk, Math.min(remain, TRANSLATE_REQUEST_TIMEOUT_MS));
+    if (!part) break;
     translated.push(...part);
   }
   let k = 0;
   return cues.map((c, i) => {
     if (!need[i]) return c;
+    if (k >= translated.length) return c;
     const zh = translated[k++] || '';
     return zh ? { ...c, zh } : c;
+  });
+}
+
+function raceTranslate(
+  translate: CueTranslator,
+  chunk: string[],
+  ms: number,
+): Promise<string[] | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string[] | undefined) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(undefined), Math.max(0, ms));
+    translate(chunk).then(
+      (part) => {
+        clearTimeout(timer);
+        finish(Array.isArray(part) && part.length === chunk.length ? part : undefined);
+      },
+      () => {
+        clearTimeout(timer);
+        finish(undefined);
+      },
+    );
   });
 }
 
@@ -78,7 +111,12 @@ export async function defaultTranslateToZh(texts: string[]): Promise<string[]> {
   const errors: string[] = [];
   for (const cfg of translatorClients()) {
     try {
-      const client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseURL, maxRetries: 0 });
+      const client = new OpenAI({
+        apiKey: cfg.apiKey,
+        baseURL: cfg.baseURL,
+        maxRetries: 0,
+        timeout: TRANSLATE_REQUEST_TIMEOUT_MS,
+      });
       const raw = await client.chat.completions.create({
         model: cfg.model,
         temperature: 0,
@@ -89,7 +127,7 @@ export async function defaultTranslateToZh(texts: string[]): Promise<string[]> {
           },
           { role: 'user', content: JSON.stringify(texts) },
         ],
-      });
+      }, { signal: AbortSignal.timeout(TRANSLATE_REQUEST_TIMEOUT_MS) });
       const content = raw.choices?.[0]?.message?.content ?? '';
       return parseJsonStringArray(content, texts.length);
     } catch (err) {

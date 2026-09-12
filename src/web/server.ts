@@ -22,8 +22,9 @@ import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryU
 import { isSafeLibraryId, PaperLibrary, newAnalysisId, newDocumentId, newReadId } from '../library/store.js';
 import { isNoteDocType, isVideoDocType, parseDocType } from '../library/doc-type.js';
 import { classifyAnalysis } from '../library/video.js';
-import { attachChineseCues, defaultTranslateToZh } from '../library/video-translate.js';
+import { attachChineseCues, defaultTranslateToZh, type CueTranslator } from '../library/video-translate.js';
 import { analyzeRuntime, defaultVideoAnalyzeRunner, type VideoAnalyzeRunner } from '../library/video-analyze.js';
+import { VideoAnalysisLiveSet } from './video-analysis-live.js';
 import { readMultipartVideo } from './multipart.js';
 import { normalizePaperInput } from '../library/identity.js';
 import { acquireSharedLease } from '../library/maintenance.js';
@@ -39,6 +40,7 @@ export interface ServeOptions {
   /** Test/override: 热榜 loader. Default is fetchTrendingPapers with a short timeout. */
   trendingLoader?: HomeTrendingLoader;
   videoAnalyzeRunner?: VideoAnalyzeRunner;
+  videoTranslate?: CueTranslator;
 }
 
 const STATIC_DIR = join(dirname(fileURLToPath(import.meta.url)), 'static');
@@ -70,8 +72,12 @@ export async function startServer(opts: ServeOptions): Promise<{ port: number; c
     );
   }
 
+  const liveAnalyses = new VideoAnalysisLiveSet();
   const server = createServer((req, res) => {
-    handle(req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime, opts.trendingLoader, opts.videoAnalyzeRunner).catch((err) => {
+    handle(
+      req, res, opts.root, registry, libraryReadRunner, opts.setupRuntime, opts.trendingLoader,
+      opts.videoAnalyzeRunner, liveAnalyses, opts.videoTranslate,
+    ).catch((err) => {
       send(res, 500, 'text/plain', String(err instanceof Error ? err.message : err));
     });
   });
@@ -100,7 +106,10 @@ async function handle(
   setupRuntime?: AgentRuntime,
   trendingLoader?: HomeTrendingLoader,
   videoAnalyzeRunner?: VideoAnalyzeRunner,
+  liveAnalyses?: VideoAnalysisLiveSet,
+  videoTranslate?: CueTranslator,
 ): Promise<void> {
+  const live = liveAnalyses ?? new VideoAnalysisLiveSet();
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const path = url.pathname;
 
@@ -153,9 +162,10 @@ async function handle(
     const q = url.searchParams.get('q') ?? '';
     const accept = req.headers.accept ?? '';
     if (accept.includes('application/json')) {
-      return sendJsonDocuments(res, root, { type, status, query: q });
+      return sendJsonDocuments(res, root, { type, status, query: q }, live);
     }
     try {
+      new PaperLibrary(root).interruptStaleVideoAnalyses((id) => live.has(id));
       return send(res, 200, 'text/html; charset=utf-8', renderLibrary(loadLibrary(root, { type: 'all', status: 'all' })));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -167,7 +177,7 @@ async function handle(
     const status = url.searchParams.get('status') ?? 'all';
     const type = url.searchParams.get('type') ?? 'all';
     const q = url.searchParams.get('q') ?? '';
-    return sendJsonDocuments(res, root, { type, status, query: q });
+    return sendJsonDocuments(res, root, { type, status, query: q }, live);
   }
   if (req.method === 'GET' && path === '/library/documents/new') {
     if ((url.searchParams.get('type') ?? 'note') !== 'note') {
@@ -198,6 +208,8 @@ async function handle(
       libraryReadRunner,
       url,
       videoAnalyzeRunner,
+      liveAnalyses: live,
+      videoTranslate,
     });
     if (handled) return;
   }
@@ -394,9 +406,11 @@ function sendJsonDocuments(
   res: ServerResponse,
   root: string,
   opts: { type: string; status: string; query: string },
+  live: VideoAnalysisLiveSet,
 ): void {
   const lib = new PaperLibrary(root);
   try {
+    lib.interruptStaleVideoAnalyses((id) => live.has(id));
     const docs = lib.filterDocuments(opts);
     send(res, 200, 'application/json; charset=utf-8', JSON.stringify(docs.map((d) => ({
       id: d.id,
@@ -489,17 +503,21 @@ async function handleDocumentResource(
     libraryReadRunner: LibraryReadRunner;
     url: URL;
     videoAnalyzeRunner?: VideoAnalyzeRunner;
+    liveAnalyses: VideoAnalysisLiveSet;
+    videoTranslate?: CueTranslator;
   },
 ): Promise<boolean> {
-  const { root, documentId, rest, registry, libraryReadRunner, url, videoAnalyzeRunner } = ctx;
+  const { root, documentId, rest, registry, libraryReadRunner, url, videoAnalyzeRunner, liveAnalyses, videoTranslate } = ctx;
   const lib = new PaperLibrary(root);
   const doc = lib.getDocument(documentId);
+  const isLive = (id: string) => liveAnalyses.has(id);
 
   if (req.method === 'GET' && rest === '') {
     if (!doc) {
       send(res, 404, 'text/plain', 'unknown document');
       return true;
     }
+    if (isVideoDocType(doc.docType)) lib.interruptStaleVideoAnalysis(documentId, isLive);
     const accept = req.headers.accept ?? '';
     if (accept.includes('application/json')) {
       if (isVideoDocType(doc.docType)) {
@@ -613,13 +631,14 @@ async function handleDocumentResource(
     return true;
   }
   if (rest === 'analyses' && req.method === 'POST') {
-    await handleStartVideoAnalysis(req, res, root, documentId, videoAnalyzeRunner);
+    await handleStartVideoAnalysis(req, res, root, documentId, liveAnalyses, videoAnalyzeRunner, videoTranslate);
     return true;
   }
   if (rest.startsWith('analyses/') && req.method === 'GET') {
     if (!doc) { sendJsonErr(res, 404, 'not_found', 'unknown document'); return true; }
     const analysisId = decodeURIComponent(rest.slice('analyses/'.length));
-    const rec = lib.getVideoAnalysis(documentId, analysisId);
+    const rec = lib.interruptStaleVideoAnalysis(documentId, isLive, analysisId)
+      ?? lib.getVideoAnalysis(documentId, analysisId);
     if (!rec) { sendJsonErr(res, 404, 'not_found', 'unknown analysis'); return true; }
     sendJson(res, 200, rec);
     return true;
@@ -1164,7 +1183,9 @@ async function handleStartVideoAnalysis(
   res: ServerResponse,
   root: string,
   documentId: string,
+  live: VideoAnalysisLiveSet,
   runner?: VideoAnalyzeRunner,
+  videoTranslate?: CueTranslator,
 ): Promise<void> {
   const payload = await readJsonBody<{ mutationId?: string }>(req, res);
   if (!payload) return;
@@ -1178,13 +1199,34 @@ async function handleStartVideoAnalysis(
     sendJsonErr(res, 503, 'analyzer_unavailable', `${runtime.missing.join(' and ')} not found on PATH`);
     return;
   }
-  const latest = lib.latestVideoAnalysis(documentId);
-  if (latest && (latest.status === 'queued' || latest.status === 'running')) {
-    if (payload.mutationId && latest.mutationId === payload.mutationId) {
-      sendJson(res, 202, { id: latest.id, status: latest.status });
+  const liveId = live.forDocument(documentId);
+  if (liveId) {
+    const rec = lib.getVideoAnalysis(documentId, liveId);
+    if (payload.mutationId && rec?.mutationId === payload.mutationId) {
+      sendJson(res, 202, { id: liveId, status: rec.status });
       return;
     }
     sendJsonErr(res, 409, 'analysis_in_progress', 'an analysis is already running');
+    return;
+  }
+  const interrupted = lib.interruptStaleVideoAnalysis(documentId, (id) => live.has(id));
+  if (
+    payload.mutationId
+    && interrupted
+    && interrupted.mutationId === payload.mutationId
+    && (interrupted.status === 'done' || interrupted.status === 'failed')
+  ) {
+    sendJson(res, 202, { id: interrupted.id, status: interrupted.status });
+    return;
+  }
+  const latest = lib.latestVideoAnalysis(documentId);
+  if (
+    payload.mutationId
+    && latest
+    && latest.mutationId === payload.mutationId
+    && (latest.status === 'done' || latest.status === 'failed')
+  ) {
+    sendJson(res, 202, { id: latest.id, status: latest.status });
     return;
   }
   const analysisId = newAnalysisId();
@@ -1197,11 +1239,13 @@ async function handleStartVideoAnalysis(
     updatedAt: now,
     mutationId: payload.mutationId,
   });
+  live.add(documentId, analysisId);
   sendJson(res, 202, { id: analysisId, status: 'queued' });
+  const translate = videoTranslate ?? (runner ? false : defaultTranslateToZh);
   void runVideoAnalysisJob({
-    root, documentId, analysisId,
+    root, documentId, analysisId, live,
     runner: runner ?? defaultVideoAnalyzeRunner,
-    translate: !runner,
+    translate,
   });
 }
 
@@ -1209,25 +1253,25 @@ async function runVideoAnalysisJob(opts: {
   root: string;
   documentId: string;
   analysisId: string;
+  live: VideoAnalysisLiveSet;
   runner: VideoAnalyzeRunner;
-  translate?: boolean;
+  translate: CueTranslator | false;
 }): Promise<void> {
   const lib = new PaperLibrary(opts.root);
   const doc = lib.getDocument(opts.documentId);
   const existing = lib.getVideoAnalysis(opts.documentId, opts.analysisId);
-  if (!doc || !existing) return;
-  const started = { ...existing, status: 'running' as const, updatedAt: new Date().toISOString() };
-  lib.writeVideoAnalysis(started);
+  if (!doc || !existing) {
+    opts.live.delete(opts.analysisId);
+    return;
+  }
   try {
+    const started = { ...existing, status: 'running' as const, updatedAt: new Date().toISOString() };
+    lib.writeVideoAnalysis(started);
     const workDir = join(opts.root, '.researcher-workspace', 'tmp', opts.analysisId);
     const result = await opts.runner({ mediaPath: lib.videoMediaPath(doc), workDir });
     let cues = result.cues;
-    if (opts.translate !== false) {
-      try {
-        cues = await attachChineseCues(cues, defaultTranslateToZh);
-      } catch {
-        /* English cues still publish */
-      }
+    if (opts.translate) {
+      cues = await attachChineseCues(cues, opts.translate);
     }
     const noSpeech = classifyAnalysis(cues).noSpeech;
     lib.writeVideoAnalysis({
@@ -1240,12 +1284,18 @@ async function runVideoAnalysisJob(opts: {
   } catch (err) {
     const command = (err as { command?: string }).command;
     const message = err instanceof Error ? err.message : String(err);
-    lib.writeVideoAnalysis({
-      ...started,
-      status: 'failed',
-      updatedAt: new Date().toISOString(),
-      lastError: command ? `${command}: ${message}` : message,
-    });
+    try {
+      lib.writeVideoAnalysis({
+        ...existing,
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        lastError: command ? `${command}: ${message}` : message,
+      });
+    } catch {
+      /* live set still cleared in finally */
+    }
+  } finally {
+    opts.live.delete(opts.analysisId);
   }
 }
 
