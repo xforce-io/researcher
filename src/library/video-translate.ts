@@ -36,7 +36,7 @@ export async function attachChineseCues(
     const remain = started + budget - now();
     if (remain <= 0) break;
     const chunk = toSend.slice(i, i + CHUNK);
-    const part = await raceTranslate(translate, chunk, remain);
+    const part = await raceTranslate(translate, chunk, Math.min(remain, TRANSLATE_REQUEST_TIMEOUT_MS));
     if (!part) break;
     translated.push(...part);
   }

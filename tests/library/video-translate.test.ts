@@ -63,4 +63,13 @@ describe('video Chinese cues', () => {
     expect(out[0].zh).toBe('zh:line 0');
     expect(out[40].zh).toBeUndefined();
   });
+
+  it('caps a hung translator at the 20s per-request limit', async () => {
+    vi.useFakeTimers();
+    const cues = [{ id: 0, start: 0, end: 1, text: 'Hello' }];
+    const p = attachChineseCues(cues, () => new Promise(() => {}), { budgetMs: 120_000 });
+    await vi.advanceTimersByTimeAsync(20_000);
+    const out = await p;
+    expect(out).toEqual(cues);
+  });
 });

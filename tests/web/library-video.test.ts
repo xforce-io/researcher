@@ -232,6 +232,7 @@ describe('video analysis terminal state (#193)', () => {
   let base: string;
   const speech = Buffer.from('speech-mp4');
   let blocking: Promise<void> | undefined;
+  let throwNext = false;
 
   function armBlock(): () => void {
     let release = () => {};
@@ -264,6 +265,10 @@ describe('video analysis terminal state (#193)', () => {
       videoAnalyzeRunner: async () => {
         const wait = blocking;
         if (wait) await wait;
+        if (throwNext) {
+          throwNext = false;
+          throw Object.assign(new Error('injected runner fail'), { command: 'whisper' });
+        }
         return { cues: [{ id: 0, start: 0, end: 2, text: 'Hello Benny' }] };
       },
       videoTranslate: async () => {
@@ -395,5 +400,29 @@ describe('video analysis terminal state (#193)', () => {
     });
     expect(after.status).toBe(202);
     await waitDone(created.id, (await after.json() as { id: string }).id);
+  });
+
+  it('clears the live job when the runner throws so Analyze can start again', async () => {
+    const created = await (await addVideo('s-fail.mp4', 'm-fail')).json() as { id: string };
+    throwNext = true;
+    const first = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'fail-1' }),
+    });
+    expect(first.status).toBe(202);
+    const { id: firstId } = await first.json() as { id: string };
+    const failed = await waitDone(created.id, firstId);
+    expect(failed.status).toBe('failed');
+    const retry = await fetch(`${base}/library/documents/${created.id}/analyses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mutationId: 'fail-2' }),
+    });
+    expect(retry.status).toBe(202);
+    const retryId = (await retry.json() as { id: string }).id;
+    expect(retryId).not.toBe(firstId);
+    const done = await waitDone(created.id, retryId);
+    expect(done.status).toBe('done');
   });
 });

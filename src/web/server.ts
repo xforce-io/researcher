@@ -1264,9 +1264,9 @@ async function runVideoAnalysisJob(opts: {
     opts.live.delete(opts.analysisId);
     return;
   }
-  const started = { ...existing, status: 'running' as const, updatedAt: new Date().toISOString() };
-  lib.writeVideoAnalysis(started);
   try {
+    const started = { ...existing, status: 'running' as const, updatedAt: new Date().toISOString() };
+    lib.writeVideoAnalysis(started);
     const workDir = join(opts.root, '.researcher-workspace', 'tmp', opts.analysisId);
     const result = await opts.runner({ mediaPath: lib.videoMediaPath(doc), workDir });
     let cues = result.cues;
@@ -1284,12 +1284,16 @@ async function runVideoAnalysisJob(opts: {
   } catch (err) {
     const command = (err as { command?: string }).command;
     const message = err instanceof Error ? err.message : String(err);
-    lib.writeVideoAnalysis({
-      ...started,
-      status: 'failed',
-      updatedAt: new Date().toISOString(),
-      lastError: command ? `${command}: ${message}` : message,
-    });
+    try {
+      lib.writeVideoAnalysis({
+        ...existing,
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        lastError: command ? `${command}: ${message}` : message,
+      });
+    } catch {
+      /* live set still cleared in finally */
+    }
   } finally {
     opts.live.delete(opts.analysisId);
   }
