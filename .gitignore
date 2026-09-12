@@ -5,3 +5,4 @@ coverage/
 *.log
 .claude/
 .worktrees/
+.grok/verify-runs/
