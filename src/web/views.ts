@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import katex from 'katex';
-import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicView, WorkspaceHomeModel } from './discovery.js';
+import type { DashboardModel, LibraryPaperDetailView, LibraryPaperSummary, LibraryView, TopicCard, TopicLinkPanelView, TopicView, WorkspaceHomeModel } from './discovery.js';
 import { HOME_TRENDING_CAP, type HomeTrendingItem } from './home-trending.js';
 import {
   displayLibraryReadMarkdown,
@@ -760,6 +760,7 @@ export function renderVideoReader(opts: {
   runtimeMissing: string[];
   latest?: { status: string; lastError?: string };
   product?: { cues: Array<{ id: number; start: number; end: number; text: string; zh?: string }>; noSpeech: boolean };
+  panel?: TopicLinkPanelView;
 }): string {
   const heading = opts.title || 'Untitled video';
   const revision = opts.revision ?? 1;
@@ -798,6 +799,7 @@ export function renderVideoReader(opts: {
       `<button type="button" id="restore-btn">Restore media</button>` +
       `<p id="restore-hint" class="muted" data-restore-empty>Choose a file to restore.</p></div>`;
   const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
+  const topicSections = renderTopicLinkSections(opts.panel);
   const body = topbar(opts.root ?? '', 'library') +
     `<main class="video-reader" data-video-id="${escapeHtml(opts.id)}">` +
       `<header class="video-head">` +
@@ -813,6 +815,9 @@ export function renderVideoReader(opts: {
         `</p>` +
         `<p id="analyze-status" class="status" hidden></p>` +
         analyzingBanner + runtimeNote + failBanner +
+        // Topic link lives in the head, never inside .video-workbench: #191 locked
+        // the workbench to a remaining-viewport two-column with its own scroll.
+        (topicSections ? `<div class="doc-topic-link">${topicSections}</div>` : '') +
       `</header>` +
       `<div class="video-workbench">` +
         `<section class="video-stage" data-player-slot>${player}</section>` +
@@ -833,14 +838,19 @@ export function renderVideoReader(opts: {
   return page(`${heading} · researcher`, body, { htmlClass: 'video-shell' });
 }
 
-export function renderNoteReader(doc: { id: string; title: string; body: string; updatedAt: string }): string {
+export function renderNoteReader(
+  doc: { id: string; title: string; body: string; updatedAt: string },
+  panel?: TopicLinkPanelView,
+): string {
   const heading = doc.title || 'Untitled note';
+  const topicSections = renderTopicLinkSections(panel);
   const body = topbar('', 'library') +
     `<main class="note-reader">` +
       `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
       `<p class="muted">note · Saved · ${escapeHtml(doc.updatedAt)}</p>` +
       `<h1>${escapeHtml(heading)}</h1>` +
       `<div class="note-body">${markedHtml(doc.body)}</div>` +
+      (topicSections ? `<div class="doc-topic-link">${topicSections}</div>` : '') +
       `<p class="note-editor-actions"><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
     `</main>`;
   return page(`${heading} · researcher`, body);
@@ -949,27 +959,41 @@ function renderDeepReadAction(
   return renderDeepReadForm(paperId, isRerun ? 'Re-run read' : 'Deep read', isRerun);
 }
 
-function topicLinksOf(v: LibraryPaperDetailView) {
+/** Panel view for a paper detail: the panel itself never reads paper fields. */
+function panelOf(v: LibraryPaperDetailView, editTopic?: string): TopicLinkPanelView {
+  return {
+    documentId: v.paper.id,
+    linkedTopicCount: v.paper.linkedTopicCount,
+    integratedTopicCount: v.paper.integratedTopicCount,
+    topics: v.topics,
+    links: v.links,
+    integrations: v.integrations,
+    topicSuggestions: v.topicSuggestions,
+    editTopic,
+  };
+}
+
+function topicLinksOf(v: TopicLinkPanelView) {
   return v.links.filter((l) => l.surfaceType === 'topic');
 }
 
-function unlinkedSuggestions(v: LibraryPaperDetailView) {
+function unlinkedSuggestions(v: TopicLinkPanelView) {
   const linked = new Set(topicLinksOf(v).map((l) => l.surfaceId));
   return (v.topicSuggestions ?? []).filter((s) => !linked.has(s.topicId));
 }
 
-function shouldShowTopicSuggest(v: LibraryPaperDetailView): boolean {
+function shouldShowTopicSuggest(v: TopicLinkPanelView): boolean {
   if (unlinkedSuggestions(v).length === 0) return false;
   // Multi-link or any integration: facts dominate; hide Suggest.
-  if (v.paper.linkedTopicCount >= 2) return false;
-  if (v.integrations.length > 0 || v.paper.integratedTopicCount > 0) return false;
+  if (v.linkedTopicCount >= 2) return false;
+  if (v.integrations.length > 0 || v.integratedTopicCount > 0) return false;
   return true;
 }
 
-function renderTopicSuggestList(v: LibraryPaperDetailView): string {
+function renderTopicSuggestList(v: TopicLinkPanelView): string {
   if (!shouldShowTopicSuggest(v)) return '';
   const suggestions = unlinkedSuggestions(v);
-  const weak = v.paper.linkedTopicCount === 1;
+  const weak = v.linkedTopicCount === 1;
   const heading = weak ? 'Also consider' : 'Suggest';
   const items = suggestions.map((s) =>
     `<button type="button" class="topic-suggest-item" ` +
@@ -993,7 +1017,8 @@ function paperDetailHref(paperId: string, editTopic?: string): string {
   return editTopic ? `${base}?edit=${encodeURIComponent(editTopic)}` : base;
 }
 
-function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): string {
+export function renderLinkTopicAction(v: TopicLinkPanelView): string {
+  const editTopic = v.editTopic;
   const linkedTopicIds = new Set(topicLinksOf(v).map((l) => l.surfaceId));
   const editing = editTopic && linkedTopicIds.has(editTopic)
     ? topicLinksOf(v).find((l) => l.surfaceId === editTopic)
@@ -1002,8 +1027,8 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
   if (editing) {
     const why = escapeHtml(editing.rationale ?? '');
     const form =
-      `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links">` +
-        `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+      `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links">` +
+        `<input type="hidden" name="paperId" value="${escapeHtml(v.documentId)}">` +
         `<input type="hidden" name="surfaceType" value="topic">` +
         `<input type="hidden" name="surfaceId" value="${escapeHtml(editing.surfaceId)}">` +
         `<input type="hidden" name="topic" value="${escapeHtml(editing.surfaceId)}">` +
@@ -1012,7 +1037,7 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
           `<label>Why (optional)<input name="rationale" value="${why}" placeholder="why this topic"></label>` +
         `</div>` +
         `<button class="primary topic-link-submit" type="submit">Update</button>` +
-        `<a class="secondary" href="${paperDetailHref(v.paper.id)}">Cancel</a>` +
+        `<a class="secondary" href="${paperDetailHref(v.documentId)}">Cancel</a>` +
       `</form>`;
     return `<div class="topic-link-panel">${form}</div>`;
   }
@@ -1027,8 +1052,8 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
     unlinked.map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`).join('');
   const button = linkedTopicIds.size >= 1 ? 'Link another topic' : 'Link topic';
   const form =
-    `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links">` +
-      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+    `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(v.documentId)}">` +
       `<input type="hidden" name="surfaceType" value="topic">` +
       (suggest
         ? `<div class="topic-link-manual-head muted">Details <span class="topic-link-manual-or">or pick topic yourself</span></div>`
@@ -1041,6 +1066,17 @@ function renderLinkTopicAction(v: LibraryPaperDetailView, editTopic?: string): s
     `</form>`;
   const script = suggest ? `<script>${TOPIC_SUGGEST_JS}</script>` : '';
   return `<div class="topic-link-panel">${suggest}${form}</div>${script}`;
+}
+
+/**
+ * Linked topics + Topic link panel as one block, for documents that have no
+ * paper inspector to host them (#197).
+ */
+function renderTopicLinkSections(panel: TopicLinkPanelView | undefined): string {
+  if (!panel) return '';
+  return `<section class="detail-panel"><h2>Linked topics</h2>` +
+      `<ul class="meta-list">${renderLinkedTopicRows(panel)}</ul></section>` +
+    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(panel)}</section>`;
 }
 
 /** Marker TOPIC_SUGGEST_JS: fill form only — never POST /library/link. */
@@ -1204,7 +1240,7 @@ export function renderLibraryPaper(
   return page(`${v.paper.displayTitle} · researcher`, body);
 }
 
-function renderLinkedTopicRows(v: LibraryPaperDetailView): string {
+export function renderLinkedTopicRows(v: TopicLinkPanelView): string {
   const integrated = new Set(v.integrations.map((i) => i.topicId));
   const rows = topicLinksOf(v).map((l) => {
     const badge = integrated.has(l.surfaceId)
@@ -1217,8 +1253,8 @@ function renderLinkedTopicRows(v: LibraryPaperDetailView): string {
       `<div class="linked-topic-head">` +
         `<b>${escapeHtml(l.surfaceId)}</b> ${badge}` +
         `<span class="linked-topic-actions">` +
-          `<a class="link-button" href="${paperDetailHref(v.paper.id, l.surfaceId)}">Edit</a>` +
-          `<form class="inline-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/links/topic/${encodeURIComponent(l.surfaceId)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/links/topic/${encodeURIComponent(l.surfaceId)}" data-json-method="DELETE" onsubmit="return confirm('Remove this topic link?');">` +
+          `<a class="link-button" href="${paperDetailHref(v.documentId, l.surfaceId)}">Edit</a>` +
+          `<form class="inline-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" data-json-method="DELETE" onsubmit="return confirm('Remove this topic link?');">` +
             `<button type="submit" class="link-button">Unlink</button>` +
           `</form>` +
         `</span>` +
@@ -1227,8 +1263,8 @@ function renderLinkedTopicRows(v: LibraryPaperDetailView): string {
   return rows || '<li>—</li>';
 }
 
-function renderMiniMap(v: LibraryPaperDetailView): string {
-  const links = topicLinksOf(v);
+function renderMiniMap(v: LibraryPaperDetailView, panel: TopicLinkPanelView): string {
+  const links = topicLinksOf(panel);
   if (links.length === 0) return '<p class="muted">No topic link yet.</p>';
   const topics = links
     .map((l) => `<div class="mini-node"><b>Topic</b><span>${escapeHtml(l.surfaceId)}</span></div>`)
@@ -1261,11 +1297,12 @@ function renderPaperInspector(
       `</form></section>`
     : `<section class="detail-panel"><h2>Delete</h2>` +
       `<p class="muted">Linked or integrated papers cannot be deleted. Unlink from all topics first.</p></section>`;
-  const showMiniMap = v.paper.readStatus !== 'unread' && topicLinksOf(v).length > 0;
+  const panel = panelOf(v, editTopic);
+  const showMiniMap = v.paper.readStatus !== 'unread' && topicLinksOf(panel).length > 0;
   return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
-    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${renderLinkedTopicRows(v)}</ul></section>` +
-    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(v, editTopic)}</section>` +
-    (showMiniMap ? `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v)}</section>` : '') +
+    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${renderLinkedTopicRows(panel)}</ul></section>` +
+    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(panel)}</section>` +
+    (showMiniMap ? `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v, panel)}</section>` : '') +
     `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
     deleteAction;
 }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
+import { loadDashboard, loadLibrary, loadLibraryPaper, loadTopic, loadTopicLinkPanel, loadWorkspaceHome, resolveTopicDir } from './discovery.js';
 import { loadHomeTrending, type HomeTrendingLoader } from './home-trending.js';
 import { renderHomeTrendingPanel, renderLibrary, renderLibraryPaper, renderNoteEditor, renderNoteReader, renderVideoReader, renderTopic, renderDoc, renderMarkdown, renderTopics, renderWorkspaceHome } from './views.js';
 import { safeDocPath, safePaperPath } from './safe-path.js';
@@ -534,12 +534,18 @@ async function handleDocumentResource(
       sendJson(res, 200, doc);
       return true;
     }
+    // Any docType can carry topic links (#197); the panel is document-level.
+    const editTopicParam = url.searchParams.get('edit')?.trim() || undefined;
     if (doc.docType === 'note') {
-      send(res, 200, 'text/html; charset=utf-8', renderNoteReader(doc));
+      send(res, 200, 'text/html; charset=utf-8', renderNoteReader(
+        doc,
+        loadTopicLinkPanel(root, documentId, editTopicParam) ?? undefined,
+      ));
       return true;
     }
     if (isVideoDocType(doc.docType)) {
       send(res, 200, 'text/html; charset=utf-8', renderVideoReader({
+        panel: loadTopicLinkPanel(root, documentId, editTopicParam) ?? undefined,
         id: doc.id,
         title: doc.title,
         updatedAt: doc.updatedAt,
@@ -562,8 +568,7 @@ async function handleDocumentResource(
     const activeRead = active
       ? { taskId: active.id, startedAt: active.startedAt, readId: reading?.id, documentId }
       : null;
-    const editTopic = url.searchParams.get('edit')?.trim() || undefined;
-    send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopic));
+    send(res, 200, 'text/html; charset=utf-8', renderLibraryPaper(paper, activeRead, editTopicParam));
     return true;
   }
 
@@ -972,8 +977,7 @@ async function handleLinks(
     sendJsonErr(res, 404, 'not_found', 'unknown document');
     return;
   }
-  if (noteActionBlocked(res, doc.docType)) return;
-
+  // No docType gate here: topic link is a document-level capability (#197).
   if (rest === 'links' && req.method === 'GET') {
     sendJson(res, 200, lib.listLinks(documentId).map((l) => ({
       documentId: l.paperId,

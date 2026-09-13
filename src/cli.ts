@@ -95,8 +95,8 @@ library
     if (code !== 0) process.exitCode = code;
   });
 library
-  .command('link <paper-id>')
-  .description('Link a library paper to a topic')
+  .command('link <document-id>')
+  .description('Link a library document to a topic')
   .requiredOption('--topic <topic>', 'topic id/path')
   .option('--rationale <text>', 'optional reason for the link')
   .action(async (paperId: string, opts: { topic: string; rationale?: string }) => {
@@ -104,16 +104,16 @@ library
     runLibraryLink({ paperId, cwd: process.cwd(), topic: opts.topic, rationale: opts.rationale });
   });
 library
-  .command('unlink <paper-id>')
-  .description('Remove a library paper link from a topic')
+  .command('unlink <document-id>')
+  .description('Remove a library document link from a topic')
   .requiredOption('--topic <topic>', 'topic id/path')
   .action(async (paperId: string, opts: { topic: string }) => {
     const { runLibraryUnlink } = await import('./commands/library.js');
     runLibraryUnlink({ paperId, cwd: process.cwd(), topic: opts.topic });
   });
 library
-  .command('integrate <paper-id>')
-  .description('Record that a library paper has been integrated into a topic')
+  .command('integrate <document-id>')
+  .description('Record that a library document has been integrated into a topic')
   .requiredOption('--topic <topic>', 'topic id/path')
   .option('--note <path>', 'integrated note path')
   .option('--zone <zone>', 'active, buffer, or history')

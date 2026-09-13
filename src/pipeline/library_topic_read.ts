@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { identifiersForSource, paperIdForSource, sourceRefForId } from '../library/identity.js';
-import { PaperLibrary } from '../library/store.js';
+import { displayTitle, PaperLibrary } from '../library/store.js';
 import type { Paper, PaperRead } from '../library/model.js';
+import { cuesIntegrationBody, integrationSourceState } from './integration_source.js';
 import { nextNoteNumber } from '../state/note_index.js';
 import { DEFAULT_FM, serializeNote } from '../state/zone.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from '../web/library-read.js';
@@ -16,13 +17,107 @@ export interface LibraryTopicReadOptions {
 }
 
 export async function libraryTopicRead(ctx: RunContext, opts: LibraryTopicReadOptions): Promise<void> {
-  if (!ctx.addSourceId) throw new Error('library topic read requires addSourceId in context');
+  // Exactly one addressing mode (#197): a source ref (discover / add / read) or
+  // an existing Library document (linked queue). Never both, never neither.
+  if (ctx.addSourceId && ctx.addDocumentId) {
+    throw new Error('library topic read requires exactly one of addSourceId / addDocumentId, got both');
+  }
+  if (!ctx.addSourceId && !ctx.addDocumentId) {
+    throw new Error('library topic read requires addSourceId or addDocumentId in context');
+  }
 
-  const source = sourceRefForId(ctx.addSourceId);
-  const paperId = paperIdForSource(source);
   const lib = new PaperLibrary(opts.workspaceRoot);
+  const documentId = ctx.addDocumentId ?? paperIdForSource(sourceRefForId(ctx.addSourceId!));
+
+  if (ctx.addSourceId) upsertSourceDocument(lib, ctx.addSourceId);
+
+  const doc = lib.getDocument(documentId);
+  if (!doc) throw new Error(`unknown document for topic integration: ${documentId}`);
+
+  const state = integrationSourceState(lib, doc);
+  if (!state.ready) {
+    throw new Error(`document ${documentId} has no integration source: ${state.reason}`);
+  }
+
+  let title: string;
+  let body: string;
+  if (state.kind === 'read') {
+    const paper = lib.getPaper(documentId);
+    if (!paper) throw new Error(`document is not deep-readable: ${documentId}`);
+    // Keep seen.jsonl behaviour identical for external material reached by id.
+    ctx.addSourceId = paper.canonicalSource.id;
+    const read = await ensureLibraryRead({
+      workspaceRoot: opts.workspaceRoot,
+      paper,
+      lib,
+      ctx,
+      runner: opts.libraryReadRunner,
+    });
+    if (!read.artifactPath) throw new Error(`Library read for ${paper.id} has no artifact path`);
+    const artifactAbs = join(opts.workspaceRoot, read.artifactPath);
+    if (!existsSync(artifactAbs)) throw new Error(`Library read artifact missing: ${read.artifactPath}`);
+    const artifact = readFileSync(artifactAbs, 'utf8');
+    // The read runner may have written the title: re-read before naming the note.
+    const fresh = lib.getPaper(paper.id) ?? paper;
+    title = paperTitle(fresh);
+    body = [
+      `> Topic integration note derived from Library read artifact \`${read.artifactPath}\`.`,
+      '',
+      '## Library read',
+      '',
+      libraryReadEmbedBody(artifact, title),
+    ].join('\n');
+  } else if (state.kind === 'note-body') {
+    title = displayTitle(doc);
+    body = [
+      '> Topic integration note derived from a standalone Library note.',
+      '',
+      '## Note',
+      '',
+      doc.body.trim(),
+    ].join('\n');
+  } else {
+    const product = lib.currentCues(documentId);
+    if (!product) throw new Error(`video transcript vanished during integration: ${documentId}`);
+    title = displayTitle(doc);
+    body = [
+      '> Topic integration note derived from the video transcript.',
+      '',
+      '## Transcript',
+      '',
+      cuesIntegrationBody(product.cues),
+    ].join('\n');
+  }
+
+  const noteRelPath = writeTopicIntegrationNote({ ctx, title, body });
+
+  const topicId = opts.topicPath ?? inferTopicPath(opts.workspaceRoot, ctx.projectRoot);
+  // Defer Library "integrated" until synthesize actually rewrites the landscape.
+  // Marking here made Web show "in landscape" while 00_research_landscape.md was still empty.
+  if (!lib.listLinks(documentId).some((l) => l.surfaceType === 'topic' && l.surfaceId === topicId)) {
+    lib.upsertLink({
+      paperId: documentId,
+      surfaceType: 'topic',
+      surfaceId: topicId,
+      rationale: ctx.triageReason,
+    });
+  }
+  ctx.pendingLibraryIntegration = {
+    workspaceRoot: opts.workspaceRoot,
+    paperId: documentId,
+    topicId,
+    notePath: noteRelPath,
+    zone: 'active',
+    summary: ctx.triageReason,
+  };
+}
+
+/** Discover / add / read reach the Library by source ref, creating the document. */
+function upsertSourceDocument(lib: PaperLibrary, addSourceId: string): void {
+  const source = sourceRefForId(addSourceId);
+  const paperId = paperIdForSource(source);
   const existingPaper = lib.getPaper(paperId);
-  let paper = lib.upsertPaper({
+  lib.upsertPaper({
     id: paperId,
     canonicalSource: existingPaper?.canonicalSource ?? source,
     sources: [...(existingPaper?.sources ?? []), source],
@@ -32,47 +127,10 @@ export async function libraryTopicRead(ctx: RunContext, opts: LibraryTopicReadOp
     authors: existingPaper?.authors,
     abstract: existingPaper?.abstract,
   });
+}
 
-  const read = await ensureLibraryRead({
-    workspaceRoot: opts.workspaceRoot,
-    paper,
-    lib,
-    ctx,
-    runner: opts.libraryReadRunner,
-  });
-  if (!read.artifactPath) throw new Error(`Library read for ${paper.id} has no artifact path`);
-
-  const artifactAbs = join(opts.workspaceRoot, read.artifactPath);
-  if (!existsSync(artifactAbs)) throw new Error(`Library read artifact missing: ${read.artifactPath}`);
-  const artifact = readFileSync(artifactAbs, 'utf8');
-  paper = lib.getPaper(paper.id) ?? paper;
-
-  const noteRelPath = writeTopicIntegrationNote({
-    ctx,
-    paper,
-    artifact,
-    artifactPath: read.artifactPath,
-  });
-
-  const topicId = opts.topicPath ?? inferTopicPath(opts.workspaceRoot, ctx.projectRoot);
-  // Defer Library "integrated" until synthesize actually rewrites the landscape.
-  // Marking here made Web show "in landscape" while 00_research_landscape.md was still empty.
-  if (!lib.listLinks(paper.id).some((l) => l.surfaceType === 'topic' && l.surfaceId === topicId)) {
-    lib.upsertLink({
-      paperId: paper.id,
-      surfaceType: 'topic',
-      surfaceId: topicId,
-      rationale: ctx.triageReason,
-    });
-  }
-  ctx.pendingLibraryIntegration = {
-    workspaceRoot: opts.workspaceRoot,
-    paperId: paper.id,
-    topicId,
-    notePath: noteRelPath,
-    zone: 'active',
-    summary: ctx.triageReason,
-  };
+function paperTitle(paper: Paper): string {
+  return paper.title || paper.identifiers.arxiv || paper.identifiers.url || paper.id;
 }
 
 /** Record Library integration after landscape synthesize has been verified. */
@@ -149,26 +207,16 @@ function latestReadableArtifact(lib: PaperLibrary, paperId: string, workspaceRoo
 
 function writeTopicIntegrationNote(opts: {
   ctx: RunContext;
-  paper: Paper;
-  artifact: string;
-  artifactPath: string;
+  title: string;
+  body: string;
 }): string {
   const destinationDir = join(opts.ctx.projectRoot, 'notes', 'active');
   mkdirSync(destinationDir, { recursive: true });
   const nextNum = nextNoteNumber(opts.ctx.projectRoot).toString().padStart(2, '0');
-  const title = opts.paper.title || opts.paper.identifiers.arxiv || opts.paper.identifiers.url || opts.paper.id;
+  const title = opts.title;
   const filename = `${nextNum}_${slugify(title)}.md`;
   const relPath = `notes/active/${filename}`;
-  const body = [
-    `# ${title}`,
-    '',
-    `> Topic integration note derived from Library read artifact \`${opts.artifactPath}\`.`,
-    '',
-    '## Library read',
-    '',
-    libraryReadEmbedBody(opts.artifact, title),
-    '',
-  ].join('\n');
+  const body = [`# ${title}`, '', opts.body, ''].join('\n');
   const content = serializeNote({ ...DEFAULT_FM, zone: 'active', tags: [] }, body);
   writeFileSync(join(opts.ctx.projectRoot, relPath), content);
   opts.ctx.newNoteFilename = filename;
