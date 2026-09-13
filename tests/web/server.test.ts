@@ -679,7 +679,7 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   expect(map).toContain('feeds/ai-safety');
 
   const editPage = await (await fetch(base + `/library/documents/${paperId}?edit=trace`)).text();
-  expect(editPage).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
+  expect(editPage).toMatch(/class="primary topic-link-submit"[^>]*>保存关联</);
 
   const update = await fetch(base + `/library/documents/${paperId}/links`, {
     method: 'POST',
