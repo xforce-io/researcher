@@ -674,7 +674,7 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/)?.[0] ?? '';
   expect(addSelect).not.toContain('value="trace"');
   expect(addSelect).not.toContain('value="feeds/ai-safety"');
-  const map = html.match(/<section class="detail-panel"><h2>Mini map<\/h2>[\s\S]*?<\/section>/)?.[0] ?? '';
+  const map = html.match(/<section class="detail-panel"><h2>关联概览<\/h2>[\s\S]*?<\/section>/)?.[0] ?? '';
   expect(map).toContain('trace');
   expect(map).toContain('feeds/ai-safety');
 
