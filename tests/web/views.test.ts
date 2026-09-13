@@ -1435,5 +1435,13 @@ describe('renderVideoReader', () => {
     expect(script).toContain('if (!programmaticScroll)');
     expect(html.match(/class="cue"/g)?.length).toBe(40);
   });
+
+  it('caps video-head height so a tall topic panel cannot collapse the workbench', () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    const head = css.match(/\.video-head\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(head).toMatch(/max-height:/);
+    expect(head).toMatch(/overflow-y:\s*auto/);
+    expect(css).toMatch(/\.video-workbench\s*\{[^}]*flex:\s*1/s);
+  });
 });
 
