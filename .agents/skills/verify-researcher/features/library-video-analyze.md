@@ -33,6 +33,14 @@ Web 控制台。无 CLI analyze 入口。
 
 判定：`documentId` 不变；新分析完成前旧台词仍在。
 
+## #200 S1
+
+前置：Library 已有 1 条已分析视频；详情 Topic 面板（含 Suggest）内容高度高于剩余视口。
+
+打开该视频详情。不得只见 Title / Analyze / Topic link。播放器与至少一条台词在首屏可见；`.video-head` 可滚。
+
+判定：`.video-workbench`、`video`、`#cues` 渲染高度均 > 8px 且与视口相交；documentId 不变。
+
 ## 不做
 
 进度条、取消、分析历史、把 Analyze 当只读、改标题。
