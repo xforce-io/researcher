@@ -219,8 +219,8 @@ async function handle(
     if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
     return send(res, 200, 'text/css; charset=utf-8', readFileSync(f));
   }
-  if (req.method === 'GET' && path === '/static/video-workbench.js') {
-    const f = join(STATIC_DIR, 'video-workbench.js');
+  if (req.method === 'GET' && (path === '/static/video-workbench.js' || path === '/static/document-detail.js')) {
+    const f = join(STATIC_DIR, path.slice('/static/'.length));
     if (!existsSync(f)) return send(res, 404, 'text/plain', 'not found');
     return send(res, 200, 'text/javascript; charset=utf-8', readFileSync(f));
   }

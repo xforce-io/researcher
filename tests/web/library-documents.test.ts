@@ -125,7 +125,7 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
     const editor = await (await fetch(base + '/library/documents/new?type=note')).text();
     expect(editor).toContain('setEditingEnabled');
     expect(editor).toContain('beforeunload');
-    expect(editor).toContain('Unsaved changes. Discard?');
+    expect(editor).toContain('存在未保存内容，确认放弃？');
     expect(editor).toContain("e.target.closest('a')");
     expect(editor).toContain('class="brand"');
     expect(editor).toContain('nav-link');

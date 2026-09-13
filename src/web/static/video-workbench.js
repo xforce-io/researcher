@@ -1,3 +1,4 @@
+/* eslint-env browser */
 /** Shipped video-detail workbench logic. Tests import this file. */
 
 export function visibleCues(cues, query) {
@@ -45,6 +46,21 @@ export function formatCueClock(seconds) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+/** Return escaped markup; queries are literal, never regular expressions or HTML. */
+export function highlightedCue(text, query) {
+  const source = String(text ?? '');
+  const needle = String(query ?? '').trim();
+  const escape = (value) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  if (!needle) return escape(source);
+  const expression = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+  let html = '', start = 0;
+  for (const match of source.matchAll(expression)) {
+    html += escape(source.slice(start, match.index)) + '<mark>' + escape(match[0]) + '</mark>';
+    start = match.index + match[0].length;
+  }
+  return html + escape(source.slice(start));
+}
+
 export function bindVideoWorkbench() {
   const cues = Array.isArray(window.__CUES) ? window.__CUES : [];
   const player = document.getElementById('player');
@@ -68,13 +84,14 @@ export function bindVideoWorkbench() {
     const hits = hitsForQuery();
     if (hitCount) {
       const needle = (q?.value || '').trim();
-      if (!needle) hitCount.textContent = `${cues.length} cues`;
-      else if (!hits.length) hitCount.textContent = '0 hits';
+      if (!needle) hitCount.textContent = `${cues.length} 句台词`;
+      else if (!hits.length) hitCount.textContent = '无命中';
       else if (hitIndex >= 0) hitCount.textContent = `${hitIndex + 1}/${hits.length}`;
-      else hitCount.textContent = `${hits.length} hits`;
+      else hitCount.textContent = `${hits.length} 处命中`;
     }
+    ['prevHit', 'nextHit'].forEach((id) => { const button = document.getElementById(id); if (button) button.disabled = !hits.length; });
     if (cues.length && vis.length === 0) {
-      list.innerHTML = '<p class="status">No matching cues.</p>';
+      list.innerHTML = '<p class="status">没有匹配的台词。</p>';
       return;
     }
     if (!cues.length) return;
@@ -86,9 +103,9 @@ export function bindVideoWorkbench() {
       '</div></article>'
     ).join('');
     vis.forEach((c, i) => {
-      list.querySelectorAll('.txt')[i].textContent = c.text;
+      list.querySelectorAll('.txt')[i].innerHTML = highlightedCue(c.text, q?.value);
       const zhEl = list.querySelectorAll('.cue')[i].querySelector('.txt-zh');
-      if (zhEl && c.zh) zhEl.textContent = c.zh;
+      if (zhEl && c.zh) zhEl.innerHTML = highlightedCue(c.zh, q?.value);
     });
   }
 
@@ -109,7 +126,7 @@ export function bindVideoWorkbench() {
   function seekCueId(cueId, play) {
     const cue = cues.find((c) => c.id === cueId);
     if (!cue) return;
-    if (!window.__MEDIA) { alert('Media file is missing. Restore it to seek.'); return; }
+    if (!window.__MEDIA) { alert('媒体缺失，恢复后才能定位播放。'); return; }
     follow = true;
     if (player) {
       player.currentTime = cue.start;
@@ -174,6 +191,7 @@ export function bindVideoWorkbench() {
     const err = document.getElementById('title-error');
     const form = document.querySelector('.video-title-form');
     if (!btn || !input) return;
+    if (btn.disabled) return;
     const title = input.value;
     const expectedRevision = Number(form?.dataset.revision || '1');
     btn.disabled = true;
@@ -188,7 +206,7 @@ export function bindVideoWorkbench() {
       if (!res.ok) {
         if (err) {
           err.hidden = false;
-          err.textContent = data.message || 'Save failed';
+          err.textContent = data.message || '保存失败，请重试';
         }
         return;
       }
@@ -196,13 +214,13 @@ export function bindVideoWorkbench() {
     } catch (e) {
       if (err) {
         err.hidden = false;
-        err.textContent = e && e.message ? e.message : 'Save failed';
+        err.textContent = e && e.message ? e.message : '保存失败，请重试';
       }
     } finally {
       btn.disabled = false;
     }
   };
-  document.getElementById('save-title')?.addEventListener('click', saveTitle);
+  // The submit button uses the form submit event, including Enter.
   document.querySelector('.video-title-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     saveTitle();
@@ -213,14 +231,14 @@ export function bindVideoWorkbench() {
     const statusEl = document.getElementById('analyze-status');
     const setIdle = (msg) => {
       btn.disabled = false;
-      btn.textContent = 'Analyze';
+      btn.textContent = '视频分析';
       if (statusEl) {
         statusEl.hidden = !msg;
         statusEl.textContent = msg || '';
       }
     };
     btn.disabled = true;
-    btn.textContent = 'Analyzing…';
+    btn.textContent = '分析中…';
     try {
       const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses', {
         method: 'POST',
@@ -229,19 +247,19 @@ export function bindVideoWorkbench() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setIdle(data.message || (res.status === 503 ? 'analyzer unavailable' : 'analyze failed'));
+        setIdle(data.message || (res.status === 503 ? '视频分析暂不可用' : '视频分析失败'));
         return;
       }
       for (;;) {
         await new Promise((r) => setTimeout(r, 800));
         const stRes = await fetch('/library/documents/' + encodeURIComponent(id) + '/analyses/' + encodeURIComponent(data.id));
-        if (!stRes.ok) { setIdle('analysis failed'); return; }
+        if (!stRes.ok) { setIdle('视频分析失败'); return; }
         let st;
-        try { st = await stRes.json(); } catch { setIdle('analysis failed'); return; }
+        try { st = await stRes.json(); } catch { setIdle('视频分析失败'); return; }
         if (st.status === 'done' || st.status === 'failed') { location.reload(); return; }
       }
     } catch (err) {
-      setIdle(err && err.message ? err.message : 'analyze failed');
+      setIdle(err && err.message ? err.message : '视频分析失败');
     }
   });
 
@@ -249,14 +267,14 @@ export function bindVideoWorkbench() {
     const file = document.getElementById('restore-file')?.files?.[0];
     const hint = document.getElementById('restore-hint');
     if (!file) {
-      if (hint) { hint.hidden = false; hint.textContent = 'Choose a file to restore.'; }
+      if (hint) { hint.hidden = false; hint.textContent = '请选择需要恢复的文件。'; }
       return;
     }
     const body = new FormData();
     body.append('file', file, file.name);
     const res = await fetch('/library/documents/' + encodeURIComponent(id) + '/media/restore', { method: 'POST', body });
-    if (res.status === 409) { alert('Not the same media file.'); return; }
-    if (!res.ok) { alert('Restore failed'); return; }
+    if (res.status === 409) { alert('所选文件与原媒体不一致。'); return; }
+    if (!res.ok) { alert('恢复失败'); return; }
     location.reload();
   });
 

@@ -253,7 +253,7 @@ it('adds a trending paper then lands on its detail without Deep read', async () 
   expect(page.status).toBe(200);
   const html = await page.text();
   expect(html).toContain('Deep read');
-  expect(html).toContain('Topic link');
+  expect(html).toContain('管理 topic 关联');
   expect(html).not.toContain('read_paper_arxiv_2609_01597.md');
 });
 
@@ -458,7 +458,7 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   expect(selectedHtml).toContain('Deep read');
   expect(selectedHtml).toContain('class="linked-topic-row"');
   expect(selectedHtml).toMatch(/<b>trace<\/b>/);
-  expect(selectedHtml).toContain('Link another topic');
+  expect(selectedHtml).toContain('关联其它 topic');
 });
 
 it('deletes an unlinked library paper and refuses a linked one', async () => {
@@ -669,7 +669,7 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   expect(html).toContain('trace');
   expect(html).toContain('feeds/ai-safety');
   expect(html).toContain('feed-side failure modes');
-  expect(html).toContain('Link another topic');
+  expect(html).toContain('关联其它 topic');
   expect(html).toContain(`?edit=trace`);
   const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/)?.[0] ?? '';
   expect(addSelect).not.toContain('value="trace"');
@@ -705,9 +705,9 @@ it('serves canonical paper detail URLs and 404s old aliases', async () => {
   const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345', { redirect: 'manual' });
   expect(res.status).toBe(200);
   const html = await res.text();
-  expect(html).toContain('paper-doc-head');
-  expect(html).toContain('Re-run read');
-  expect(html).toContain('Link another topic');
+  expect(html).toContain('document-header');
+  expect(html).toContain('重新深读');
+  expect(html).toContain('关联其它 topic');
   expect((await fetch(base + '/library/p/paper_arxiv_2401_12345', { redirect: 'manual' })).status).toBe(404);
   expect((await fetch(base + '/library/add', { method: 'POST' })).status).toBe(404);
 });
