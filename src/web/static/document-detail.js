@@ -20,7 +20,12 @@ if (dialog && open) {
     if (restoreFocus) open.focus();
   } catch { /* Storage may be disabled. */ }
   open.addEventListener('click', () => dialog.showModal());
-  dialog.querySelector('[data-close-topics]')?.addEventListener('click', () => dialog.close());
+  dialog.querySelectorAll('[data-close-topics]').forEach((control) => {
+    control.addEventListener('click', (event) => {
+      event.preventDefault();
+      dialog.close();
+    });
+  });
   dialog.addEventListener('close', () => {
     if (dialog.hasAttribute('data-auto-open')) {
       try { sessionStorage.setItem(focusKey, '1'); } catch { /* Optional focus across navigation. */ }

@@ -1052,7 +1052,7 @@ export function renderLinkTopicAction(v: TopicLinkPanelView): string {
           `<label>关联理由（可选）<input name="rationale" value="${why}" placeholder="说明与此 topic 的关系"></label>` +
         `</div>` +
         `<button class="primary topic-link-submit" type="submit">保存关联</button>` +
-        `<a class="secondary" href="${paperDetailHref(v.documentId)}">取消</a>` +
+        `<a class="secondary" data-close-topics href="${paperDetailHref(v.documentId)}">取消</a>` +
       `</form>`;
     return `<div class="topic-link-panel">${form}</div>`;
   }
