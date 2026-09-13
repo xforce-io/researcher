@@ -46,7 +46,7 @@ serve 放后台；先确认 `http://127.0.0.1:$PORT/library` 可连再 Doctor。
 
 ## Evidence
 
-每次 Drive 写入仓库 `.grok/verify-runs/<issue-no>/`（该目录不进 git）：
+每次 Drive 写入仓库 `.grok/verify-runs/<issue-no>/`（该目录不进 git）。无 Issue 的维护回归用 `.grok/verify-runs/regression/`，或用户给定的 run id：
 
 | 文件 | 内容 |
 |---|---|
