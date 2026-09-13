@@ -14,7 +14,7 @@ Web 控制台。无 CLI 改名入口。
 
 ## #194 S2
 
-输入超过 200 个 Unicode 码点 → Save → 可见错误、原标题保留 → 改成合法标题再 Save 成功。
+必须能键入或粘贴满 201 个 Unicode 码点（禁止 `maxlength` 或截断使 Save 不可达）→ Save title → 标题旁可见错误、磁盘原标题保留 → 改成合法标题再 Save 成功。控件让该操作不可达则本 Story fail，不要改走纯 API 顶替。
 
 ## 不做
 

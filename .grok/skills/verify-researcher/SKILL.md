@@ -26,6 +26,8 @@ node dist/cli.js serve "$ROOT" -p "$PORT"
 
 控制台：`http://127.0.0.1:$PORT/`。日志写入 Evidence 目录的 `serve.log`。
 
+serve 放后台；先确认 `http://127.0.0.1:$PORT/library` 可连再 Doctor。Cleanup 只停本次进程，不要停用户日常 4500。
+
 ## Doctor
 
 全部成立才 Drive：
@@ -39,6 +41,8 @@ node dist/cli.js serve "$ROOT" -p "$PORT"
 ## Drive
 
 只打开 `features/` 里对上本 Issue `S1…Sn` 的文件（外加本次会碰到的、先前已 pass 的功能）。文件列出的**每一条用户入口都要走**；只走 API 或只走按钮其中一条算未完成。
+
+控件（`maxlength`、`disabled`）使某条 `S*` 的规定操作不可达 → 该 Story `fail`，不要改操作迁就 UI。
 
 ## Evidence
 
