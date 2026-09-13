@@ -720,7 +720,7 @@ describe('renderLibraryPaper delete affordance', () => {
     });
     expect(html).toContain('data-json-method="DELETE"');
     expect(html).toContain(`/library/documents/${basePaper.id}`);
-    expect(html).toContain('Delete from Library');
+    expect(html).toContain('从 Library 删除');
   });
 
   it('hides delete form for linked papers', () => {
@@ -741,8 +741,8 @@ describe('renderLibraryPaper delete affordance', () => {
       integrations: [],
       topicSuggestions: [],
     });
-    expect(html).not.toContain('Delete from Library');
-    expect(html).toContain('cannot be deleted');
+    expect(html).not.toContain('从 Library 删除');
+    expect(html).toContain('不能删除');
   });
 });
 
@@ -833,23 +833,23 @@ describe('renderLibrary', () => {
     expect(html).toContain('paper-inspector');
     expect(html).toContain(`/library/documents/${library.papers[0].id}/reads`);
     expect(html).toContain('name="paperId"');
-    expect(html).toContain('Re-run read');
+    expect(html).toContain('重新深读');
     expect(html).toContain('name="force" value="1"');
-    expect(html).toContain('All available topics are linked');
-    expect(html).not.toContain('Link topic');
+    expect(html).toContain('没有可关联的 topic');
+    expect(html).not.toContain('id="topic-link-form"');
     expect(html).not.toContain('name="relation"');
     expect(html).not.toContain('Context<select');
     expect(html).toContain('<h2>Findings</h2>');
-    expect(html).toContain('Linked topics');
+    expect(html).toContain('已关联 topic');
     expect(html).toContain(`/library/documents/${library.papers[0].id}/links/topic/trace`);
-    expect(html).toContain('Mini map');
+    expect(html).toContain('关联概览');
     expect(html).toContain('trace');
     expect(html).toContain('id="annotations"');
     expect(html).toContain('href="#annotations"');
-    expect(html).toContain('Annotations · 1');
+    expect(html).toContain('文档批注 · 1');
     // Breadcrumb wayfinding + primary Notes CTA (project button language).
-    expect(html).toContain('paper-crumb');
-    expect(html).toContain('aria-label="Breadcrumb"');
+    expect(html).toContain('document-back');
+    expect(html).toContain('class="document-header"');
     expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#annotations"/);
     // Notes jump only in the page head (not duplicated in the reader chrome).
     expect(html.match(/href="#annotations"/g)?.length).toBe(1);
@@ -932,12 +932,12 @@ describe('renderLibrary', () => {
       topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail);
-    expect(html).toContain('Read interrupted');
-    expect(html).toContain('no active read task is running');
-    expect(html).toContain('Retry deep read');
+    expect(html).toContain('深读已中断');
+    expect(html).toContain('当前没有正在执行的任务');
+    expect(html).toContain('重试深读');
     expect(html).toContain('name="force" value="1"');
     expect(html).not.toContain('Live stage stream is unavailable');
-    expect(html).not.toContain('disabled>Deep read</button>');
+    expect(html).not.toContain('disabled>深读</button>');
     expect(html).not.toContain('/library/read/');
     expect(html).toContain('class="read-item"');
     expect(html).toContain('class="read-path mono"');
@@ -956,11 +956,11 @@ describe('renderLibrary', () => {
       topicSuggestions: [],
     };
     const html = renderLibraryPaper(detail, { taskId: 'task-9', startedAt: 1719000000000 });
-    expect(html).toContain('Reading and parsing');
+    expect(html).toContain('深读中');
     expect(html).toContain('role="status"');
     expect(html).toContain('id="library-read-heading"');
     expect(html).toContain('id="library-read-retry"');
-    expect(html).toContain('disabled>Deep read</button>');
+    expect(html).toContain('disabled>深读</button>');
     expect(html).toContain('id="library-read-stages"');
     expect(html).toContain('Fetch source');
     expect(html).toContain('Draft read artifact');
@@ -1057,8 +1057,8 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(rows).toHaveLength(2);
     expect(html).toContain('governance depth');
     expect(html).toContain('L1 triage');
-    expect(html).toMatch(/linked-topic-row[\s\S]*trace[\s\S]*in landscape/);
-    expect(html).toMatch(/linked-topic-row[\s\S]*decision[\s\S]*not in landscape/);
+    expect(html).toMatch(/linked-topic-row[\s\S]*trace[\s\S]*已集成/);
+    expect(html).toMatch(/linked-topic-row[\s\S]*decision[\s\S]*尚未集成/);
     expect(html).toContain('/links/topic/decision');
     expect(html).toContain('/links/topic/trace');
     expect(html).toContain(`href="/library/documents/${paper.id}?edit=decision"`);
@@ -1072,7 +1072,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
       integrations: [],
       topicSuggestions: suggestions,
     }));
-    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link another topic</);
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>关联其它 topic</);
     expect(html).toMatch(/<option value=""[^>]*>/);
     expect(html).toContain('value="trace"');
     expect(html).toContain('value="data"');
@@ -1081,7 +1081,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(addSelect?.[0]).toBeDefined();
     expect(addSelect?.[0]).not.toContain('value="decision"');
     expect(addSelect?.[0]).toMatch(/<option value=""[^>]*selected/);
-    expect(html).toContain('Also consider');
+    expect(html).toContain('也可考虑');
     expect(html).not.toContain('data-suggest-topic="decision"');
     expect(html).toContain('data-suggest-topic="trace"');
   });
@@ -1092,29 +1092,29 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
       links: [twoLinks[0]],
       integrations: [],
     }), null, 'decision');
-    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Update</);
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>保存关联</);
     expect(html).toMatch(/<input type="hidden" name="topic" value="decision">/);
     expect(html).toMatch(/name="rationale"[^>]*value="governance depth"/);
     expect(html).toContain(`href="/library/documents/${paper.id}"`);
-    expect(html).toContain('Cancel');
+    expect(html).toContain('取消');
   });
 
   it('S4 keeps a distinct Unlink control per linked topic', () => {
     const html = renderLibraryPaper(view());
-    const unlinks = html.match(/class="link-button">Unlink<\/button>/g) ?? [];
+    const unlinks = html.match(/class="link-button">解除关联<\/button>/g) ?? [];
     expect(unlinks).toHaveLength(2);
   });
 
   it('S5 mini map names every linked topic', () => {
     const html = renderLibraryPaper(view());
-    const map = html.match(/<section class="detail-panel"><h2>Mini map<\/h2>[\s\S]*?<\/section>/);
+    const map = html.match(/<section class="detail-panel"><h2>关联概览<\/h2>[\s\S]*?<\/section>/);
     expect(map?.[0]).toBeDefined();
     expect(map?.[0]).toContain('decision');
     expect(map?.[0]).toContain('trace');
     expect(map?.[0]).toContain('mini-map-topics');
   });
 
-  it('hides Mini map when unread with exactly one topic link (#167)', () => {
+  it('hides 关联概览 when unread with exactly one topic link (#167)', () => {
     const html = renderLibraryPaper(view({
       paper: { ...paper, readStatus: 'unread', linkedTopicCount: 1, integratedTopicCount: 0 },
       links: [twoLinks[0]],
@@ -1124,8 +1124,8 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
     expect(html).toContain('Deep read');
     expect(html).toContain('decision');
     expect(html).toContain('governance depth');
-    expect(html).toMatch(/Link another topic/);
-    expect(html).not.toMatch(/<h2>Mini map<\/h2>/);
+    expect(html).toMatch(/关联其它 topic/);
+    expect(html).not.toMatch(/<h2>关联概览<\/h2>/);
     expect(html).not.toContain('class="mini-map');
     expect(html).not.toContain('mini-node');
     expect(html).not.toContain('mini-edge');
@@ -1141,9 +1141,9 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
         { slug: 'trace', path: 'trace', active: true, available: true },
       ],
     }));
-    expect(html).not.toContain('Link another topic');
-    expect(html).not.toContain('Link topic');
-    expect(html).toMatch(/all available topics are linked/i);
+    expect(html).not.toContain('关联其它 topic');
+    expect(html).not.toContain('id="topic-link-form"');
+    expect(html).toMatch(/没有可关联的 topic/i);
   });
 });
 
@@ -1375,8 +1375,8 @@ describe('renderVideoReader', () => {
     const script = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/video-workbench.js'), 'utf8');
     expect(script).toContain('if (!stRes.ok)');
     expect(script).toContain('setIdle');
-    expect(script).toContain('analysis failed');
-    expect(script).toContain("btn.textContent = 'Analyze'");
+    expect(script).toContain('视频分析失败');
+    expect(script).toContain("btn.textContent = '视频分析'");
     expect(script).toContain("querySelector('.video-title-form')");
     expect(script).toContain('e.preventDefault()');
     expect(script).toContain('saveTitle');
@@ -1392,15 +1392,15 @@ describe('renderVideoReader', () => {
         noSpeech: false,
       },
     });
-    expect(html).toContain('/ws/research');
-    expect(html).toMatch(/class="root">\/ws\/research</);
-    expect(html).toContain('video · 2026-09-11');
+    expect(html).not.toContain('/ws/research');
+    expect(html).toMatch(/class="root"></);
+    expect(html).toContain('视频</span><span>2026-09-11');
     expect(html).not.toMatch(/video · 2026-09-11T15:04:05/);
     expect(html).toContain('>25:17<');
     expect(html).not.toMatch(/class="t">1517/);
-    expect(html).toMatch(/data-analyzing>Analyzing/);
+    expect(html).toMatch(/data-analyzing>分析中/);
     expect(html).toContain('data-restore-empty');
-    expect(html).toContain('Choose a file to restore.');
+    expect(html).toContain('请选择需要恢复的文件。');
     expect(html).toContain('class="txt-zh">你好 Benny');
     expect(html).toContain('id="cue-q" type="search"');
     expect(html).not.toMatch(/id="cue-q"[^>]*disabled/);
@@ -1411,7 +1411,7 @@ describe('renderVideoReader', () => {
     expect(html.indexOf('data-transcript-slot')).toBeLessThan(html.indexOf('id="prevHit"'));
     expect(html).toContain('id="nextHit"');
     expect(html).toContain('id="hitCount"');
-    expect(html).toContain('Choose a file to restore.');
+    expect(html).toContain('请选择需要恢复的文件。');
   });
 
   it('is a remaining-viewport workbench with independent cue scroll, not a 980px article', () => {

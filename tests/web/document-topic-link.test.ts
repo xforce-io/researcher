@@ -94,7 +94,7 @@ describe('document topic link over HTTP (#197 S1–S4)', () => {
     for (let i = 0; i < 40; i += 1) {
       const st = await (await fetch(`${base}/library/documents/${id}/analyses/${analysisId}`)).json() as { status: string };
       if (st.status === 'done') return id;
-      if (st.status === 'failed') throw new Error('analysis failed');
+      if (st.status === 'failed') throw new Error('视频分析失败');
       await new Promise((r) => setTimeout(r, 50));
     }
     throw new Error('analysis timeout');
@@ -116,15 +116,15 @@ describe('document topic link over HTTP (#197 S1–S4)', () => {
 
     const detailBefore = await (await fetch(`${base}/library/documents/${id}`)).text();
     expect(detailBefore).toContain('topic-link-panel');
-    expect(detailBefore).toContain('Link topic');
+    expect(detailBefore).toContain('关联 topic');
 
     const linked = await linkTopic(id, 'agents', 'same trust theme');
     expect(linked.status).toBe(201);
 
     const detail = await (await fetch(`${base}/library/documents/${id}`)).text();
-    expect(detail).toContain('Linked topics');
+    expect(detail).toContain('已关联 topic');
     expect(detail).toContain('agents');
-    expect(detail).toContain('Link another topic');
+    expect(detail).toContain('关联其它 topic');
 
     const topicPage = await (await fetch(`${base}/t/agents`)).text();
     expect(topicPage).toContain('Trust curve for coding agents');
@@ -143,7 +143,7 @@ describe('document topic link over HTTP (#197 S1–S4)', () => {
 
     const detail = await (await fetch(`${base}/library/documents/${id}`)).text();
     expect(detail).toContain('topic-link-panel');
-    expect(detail).toContain('Linked topics');
+    expect(detail).toContain('已关联 topic');
     // Panel must not be inside the workbench: #191 owns that scroll contract.
     expect(detail.indexOf('doc-topic-link')).toBeLessThan(detail.indexOf('video-workbench'));
 

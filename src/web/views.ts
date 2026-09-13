@@ -536,7 +536,7 @@ document.addEventListener('submit', function (e) {
 
 function page(title: string, body: string, opts?: { htmlClass?: string }): string {
   const hc = opts?.htmlClass ? ` class="${escapeHtml(opts.htmlClass)}"` : '';
-  return `<!doctype html><html lang="en"${hc}><head><meta charset="utf-8">` +
+  return `<!doctype html><html lang="${body.includes('document-detail') || body.includes('note-editor') ? 'zh-CN' : 'en'}"${hc}><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css"></head>` +
     `<body${hc}>${body}<script>${JSON_FORM_JS}</script></body></html>`;
@@ -665,17 +665,17 @@ export function renderNoteEditor(opts: {
   const body = topbar('', 'library') +
     `<main class="note-editor">` +
       `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
-      `<h1>${opts.isNew ? 'Write note' : 'Edit note'}</h1>` +
+      `<h1>${opts.isNew ? '撰写自主笔记' : '编辑自主笔记'}</h1>` +
       `<form id="note-form" class="note-editor-form" data-action="${escapeHtml(action)}" data-new="${opts.isNew ? '1' : '0'}" data-revision="${opts.revision ?? 1}" data-id="${escapeHtml(opts.id)}">` +
-        `<label class="note-editor-field">Title` +
-          `<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="Untitled note">` +
+        `<label class="note-editor-field">标题` +
+          `<input name="title" maxlength="200" value="${escapeHtml(opts.title)}" placeholder="未命名自主笔记">` +
         `</label>` +
-        `<label class="note-editor-field">Body` +
+        `<label class="note-editor-field">正文` +
           `<textarea name="body" required rows="18" autofocus>${escapeHtml(opts.body)}</textarea>` +
         `</label>` +
         `<div class="note-editor-actions">` +
-          `<button class="primary" type="submit" data-save>Save</button>` +
-          `<a class="secondary" href="/library" data-cancel>Cancel</a>` +
+          `<button class="primary" type="submit" data-save>保存</button>` +
+          `<a class="secondary" href="/library" data-cancel>取消</a>` +
           `<p class="save-status" aria-live="polite"></p>` +
         `</div>` +
       `</form>` +
@@ -703,7 +703,7 @@ document.addEventListener('click', (e) => {
   if (a.target === '_blank') return;
   const href = a.getAttribute('href') || '';
   if (!href || href.startsWith('#')) return;
-  if (!confirm('Unsaved changes. Discard?')) e.preventDefault();
+  if (!confirm('存在未保存内容，确认放弃？')) e.preventDefault();
 });
 window.addEventListener('beforeunload', (e) => {
   if (!dirty || form.dataset.saving === '1') return;
@@ -719,7 +719,7 @@ form.addEventListener('submit', async (e) => {
   const body = bodyEl.value;
   const isNew = form.dataset.new === '1';
   const status = form.querySelector('.save-status');
-  status.textContent = 'Saving';
+  status.textContent = '保存中…';
   const payload = isNew
     ? { docType: 'note', id: form.dataset.id, title, body, mutationId }
     : { title, body, expectedRevision: Number(form.dataset.revision), mutationId };
@@ -730,17 +730,17 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      status.textContent = 'Not saved';
+      status.textContent = '保存失败，请重试';
       form.dataset.saving = '0';
       setEditingEnabled(true);
       return;
     }
     const data = await res.json();
     dirty = false;
-    status.textContent = 'Saved';
+    status.textContent = '已保存';
     location.href = data.url;
   } catch {
-    status.textContent = 'Not saved';
+    status.textContent = '保存失败，请重试';
     form.dataset.saving = '0';
     setEditingEnabled(true);
   }
@@ -749,6 +749,30 @@ form.addEventListener('submit', async (e) => {
     `</main>`;
   return page('Note · researcher', body);
 }
+
+function renderDocumentHeader(opts: {
+  title: string; type: string; updatedAt: string; status: string; actions?: string; panel?: TopicLinkPanelView;
+}): string {
+  const links = opts.panel ? topicLinksOf(opts.panel) : [];
+  return `<header class="document-header">` +
+    `<a class="document-back" href="/library">← Library</a>` +
+    `<h1>${escapeHtml(opts.title)}</h1>` +
+    `<div class="document-meta"><span>${escapeHtml(opts.type)}</span><span>${fmtShortDate(opts.updatedAt) || '日期未知'}</span><span>${escapeHtml(opts.status)}</span></div>` +
+    `<div class="document-tools"><div class="document-actions">${opts.actions ?? ''}` +
+      (opts.panel ? `<button type="button" class="secondary" data-open-topics>管理 topic 关联</button>` : '') +
+    `</div><div class="document-topic-summary">${links.length ? links.map((l) => `<span class="tag-chip">${escapeHtml(l.surfaceId)}</span>`).join('') : '<span class="muted">尚未关联 topic</span>'}</div></div>` +
+    `<p class="document-feedback" role="status" hidden></p></header>`;
+}
+
+function renderDocumentTopics(panel: TopicLinkPanelView | undefined): string {
+  if (!panel) return '';
+  return `<dialog class="document-topic-dialog doc-topic-link" aria-labelledby="document-topics-title"${panel.editTopic ? ' data-auto-open' : ''}>` +
+    `<div class="document-dialog-head"><h2 id="document-topics-title">管理 topic 关联</h2><button type="button" class="secondary" data-close-topics autofocus>关闭</button></div>` +
+    `<section class="detail-panel"><h3>已关联 topic</h3><ul class="meta-list">${renderLinkedTopicRows(panel)}</ul></section>` +
+    `<section class="detail-panel"><h3>${panel.editTopic ? '编辑关联' : '关联 topic'}</h3>${renderLinkTopicAction(panel)}</section></dialog>`;
+}
+
+const DOCUMENT_SCRIPT = '<script type="module" src="/static/document-detail.js"></script>';
 
 export function renderVideoReader(opts: {
   id: string;
@@ -762,7 +786,7 @@ export function renderVideoReader(opts: {
   product?: { cues: Array<{ id: number; start: number; end: number; text: string; zh?: string }>; noSpeech: boolean };
   panel?: TopicLinkPanelView;
 }): string {
-  const heading = opts.title || 'Untitled video';
+  const heading = opts.title || '未命名视频';
   const revision = opts.revision ?? 1;
   const cuesJson = jsonForScript(opts.product?.cues ?? []);
   const analyzing = opts.latest?.status === 'queued' || opts.latest?.status === 'running';
@@ -770,10 +794,10 @@ export function renderVideoReader(opts: {
   let cuePanel: string;
   if (!opts.product) {
     cuePanel = analyzing
-      ? `<p class="status">Analyzing…</p>`
-      : `<p class="status">Not analyzed yet.</p>`;
+      ? `<p class="status">分析中…</p>`
+      : `<p class="status">尚未分析，点击视频分析生成台词。</p>`;
   } else if (opts.product.noSpeech || opts.product.cues.length === 0) {
-    cuePanel = `<p class="status" data-no-speech>No speech detected</p>`;
+    cuePanel = `<p class="status" data-no-speech>未检测到语音</p>`;
   } else {
     cuePanel = opts.product.cues.map((c) =>
       `<article class="cue" data-id="${c.id}" data-start="${c.start}" data-end="${c.end}">` +
@@ -784,57 +808,52 @@ export function renderVideoReader(opts: {
     ).join('');
   }
   const analyzingBanner = analyzing
-    ? `<p class="status" data-analyzing>Analyzing…</p>`
+    ? `<p class="status" data-analyzing>分析中…</p>`
     : '';
   const failBanner = failed
-    ? `<p class="video-error">${escapeHtml(opts.latest?.lastError || 'Analysis failed')}</p>`
+    ? `<p class="video-error">${escapeHtml(opts.latest?.lastError || '分析失败')}</p>`
     : '';
   const runtimeNote = opts.runtimeMissing.length
-    ? `<p class="muted">Analyze needs ${escapeHtml(opts.runtimeMissing.join(' and '))} on PATH.</p>`
+    ? `<p class="muted">视频分析需要 ${escapeHtml(opts.runtimeMissing.join(' and '))}，请先配置运行环境。</p>`
     : '';
   const player = opts.mediaExists
     ? `<video id="player" controls preload="metadata" src="/library/documents/${encodeURIComponent(opts.id)}/media"></video>`
-    : `<div class="video-missing"><p>Media file is missing. Transcript remains searchable. Restore the same file to play.</p>` +
+    : `<div class="video-missing"><p>媒体文件缺失。台词仍可搜索；恢复同一文件后可播放。</p>` +
       `<input id="restore-file" type="file" accept=".mp4,.webm,video/mp4,video/webm">` +
-      `<button type="button" id="restore-btn">Restore media</button>` +
-      `<p id="restore-hint" class="muted" data-restore-empty>Choose a file to restore.</p></div>`;
+      `<button type="button" id="restore-btn">恢复媒体</button>` +
+      `<p id="restore-hint" class="muted" data-restore-empty>请选择需要恢复的文件。</p></div>`;
   const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
-  const topicSections = renderTopicLinkSections(opts.panel);
-  const body = topbar(opts.root ?? '', 'library') +
-    `<main class="video-reader" data-video-id="${escapeHtml(opts.id)}">` +
-      `<header class="video-head">` +
-        `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
-        `<p class="muted">video · ${fmtShortDate(opts.updatedAt)}</p>` +
-        `<form class="video-title-form" data-revision="${revision}">` +
-          `<label>Title <input id="video-title" name="title" value="${escapeHtml(opts.title)}" placeholder="Untitled video"></label>` +
-          `<button type="button" id="save-title">Save title</button>` +
-        `</form>` +
-        `<p id="title-error" class="video-error" hidden></p>` +
-        `<p class="video-actions">` +
-          `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>Analyze</button>` +
-        `</p>` +
-        `<p id="analyze-status" class="status" hidden></p>` +
+  const body = topbar('', 'library') +
+    `<main class="video-reader document-detail" data-video-id="${escapeHtml(opts.id)}">` +
+      `<div class="video-head">` +
+        renderDocumentHeader({ title: heading, type: '视频', updatedAt: opts.updatedAt,
+          status: analyzing ? '分析中' : failed ? '分析失败' : opts.product ? '已分析' : '未分析', panel: opts.panel,
+          actions: `<button type="button" class="secondary" id="edit-title" aria-expanded="false">编辑标题</button>` +
+            `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>${analyzing ? '分析中…' : '视频分析'}</button>` }) +
+        `<form class="video-title-form" data-revision="${revision}" hidden>` +
+          `<label>标题<input id="video-title" name="title" value="${escapeHtml(opts.title)}" placeholder="未命名视频"></label>` +
+          `<div class="document-actions"><button type="submit" class="primary" id="save-title">保存标题</button>` +
+          `<button type="button" class="secondary" id="cancel-title">取消</button></div>` +
+          `<p id="title-error" class="video-error" role="alert" hidden></p></form>` +
+        `<p id="analyze-status" class="status" role="status" hidden></p>` +
         analyzingBanner + runtimeNote + failBanner +
-        // Topic link lives in the head, never inside .video-workbench: #191 locked
-        // the workbench to a remaining-viewport two-column with its own scroll.
-        (topicSections ? `<div class="doc-topic-link">${topicSections}</div>` : '') +
-      `</header>` +
+      `</div>` + renderDocumentTopics(opts.panel) +
       `<div class="video-workbench">` +
         `<section class="video-stage" data-player-slot>${player}</section>` +
         `<section class="video-transcript" data-transcript-slot>` +
           `<div class="transcript-toolbar">` +
-            `<label class="video-search">Search transcript <input id="cue-q" type="search"></label>` +
+            `<label class="video-search">搜索台词 <input id="cue-q" type="search"></label>` +
             `<div class="hit-nav">` +
-              `<span id="hitCount">${opts.product?.cues.length ?? 0} cues</span>` +
-              `<button type="button" id="prevHit" title="Previous hit">↑</button>` +
-              `<button type="button" id="nextHit" title="Next hit">↓</button>` +
+              `<span id="hitCount">${opts.product?.cues.length ?? 0} 句台词</span>` +
+              `<button type="button" id="prevHit" title="上一处命中">↑</button>` +
+              `<button type="button" id="nextHit" title="下一处命中">↓</button>` +
             `</div>` +
           `</div>` +
           `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
         `</section>` +
       `</div>` +
     `</main><script>window.__CUES=${cuesJson};window.__MEDIA=${opts.mediaExists ? 'true' : 'false'};</script>` +
-    `<script type="module" src="/static/video-workbench.js"></script>`;
+    `<script type="module" src="/static/video-workbench.js"></script>` + DOCUMENT_SCRIPT;
   return page(`${heading} · researcher`, body, { htmlClass: 'video-shell' });
 }
 
@@ -842,17 +861,13 @@ export function renderNoteReader(
   doc: { id: string; title: string; body: string; updatedAt: string },
   panel?: TopicLinkPanelView,
 ): string {
-  const heading = doc.title || 'Untitled note';
-  const topicSections = renderTopicLinkSections(panel);
+  const heading = doc.title || '未命名自主笔记';
   const body = topbar('', 'library') +
-    `<main class="note-reader">` +
-      `<p class="note-editor-back"><a href="/library">← Library</a></p>` +
-      `<p class="muted">note · Saved · ${escapeHtml(doc.updatedAt)}</p>` +
-      `<h1>${escapeHtml(heading)}</h1>` +
-      `<div class="note-body">${markedHtml(doc.body)}</div>` +
-      (topicSections ? `<div class="doc-topic-link">${topicSections}</div>` : '') +
-      `<p class="note-editor-actions"><a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">Edit</a></p>` +
-    `</main>`;
+    `<main class="note-reader document-detail">` +
+      renderDocumentHeader({ title: heading, type: '自主笔记', updatedAt: doc.updatedAt, status: '已保存', panel,
+        actions: `<a class="secondary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">编辑笔记</a>` }) +
+      renderDocumentTopics(panel) +
+      `<div class="note-body">${markedHtml(doc.body)}</div></main>` + DOCUMENT_SCRIPT;
   return page(`${heading} · researcher`, body);
 }
 
@@ -929,9 +944,9 @@ function renderDeepReadAction(
   if (status === 'reading') {
     if (!activeRead) {
       return `<div class="read-status-panel stale" role="status" aria-live="polite">` +
-        `<div class="read-status-copy"><span class="stale-dot"></span><div><b>Read interrupted</b>` +
-        `<p>This paper was restored in a reading state, but no active read task is running. The previous task likely stopped before recording a final state.</p></div></div>` +
-        renderDeepReadForm(paperId, 'Retry deep read', true) +
+        `<div class="read-status-copy"><span class="stale-dot"></span><div><b>深读已中断</b>` +
+        `<p>上次深读已中断，当前没有正在执行的任务。</p></div></div>` +
+        renderDeepReadForm(paperId, '重试深读', true) +
       `</div>`;
     }
     const attrs = ` data-library-task="${escapeHtml(activeRead.taskId)}" data-started-at="${activeRead.startedAt}" data-paper-id="${escapeHtml(paperId)}" data-read-id="${escapeHtml(activeRead.readId ?? '')}"`;
@@ -939,9 +954,9 @@ function renderDeepReadAction(
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
     return `<div class="read-status-panel" role="status" aria-live="polite">` +
-      `<div class="read-status-copy"><span class="pulse-dot"></span><div><b id="library-read-heading">Reading and parsing</b>` +
-      `<p id="library-read-status"${attrs}>Extracting paper text and drafting a Library read artifact.</p></div></div>` +
-      `<button id="library-read-retry" class="primary" type="button" disabled>Deep read</button>` +
+      `<div class="read-status-copy"><span class="pulse-dot"></span><div><b id="library-read-heading">深读中</b>` +
+      `<p id="library-read-status"${attrs}>正在提取内容并生成深读产物。</p></div></div>` +
+      `<button id="library-read-retry" class="primary" type="button" disabled>深读</button>` +
       `<ol id="library-read-stages" class="run-stages library-read-stages">${stages}</ol>` +
       `<pre id="library-read-log" class="library-read-log"></pre>` +
     `</div>`;
@@ -949,14 +964,14 @@ function renderDeepReadAction(
   if (status === 'failed') {
     const err = lastError
       ? `<p class="read-error mono">${escapeHtml(lastError)}</p>`
-      : `<p>The previous deep read failed. Retry to run it again.</p>`;
+      : `<p>上次深读失败，可重试。</p>`;
     return `<div class="read-status-panel stale" role="status">` +
-      `<div class="read-status-copy"><span class="stale-dot"></span><div><b>Read failed</b>${err}</div></div>` +
-      renderDeepReadForm(paperId, 'Retry deep read', true) +
+      `<div class="read-status-copy"><span class="stale-dot"></span><div><b>深读失败</b>${err}</div></div>` +
+      renderDeepReadForm(paperId, '重试深读', true) +
     `</div>`;
   }
   const isRerun = status === 'read';
-  return renderDeepReadForm(paperId, isRerun ? 'Re-run read' : 'Deep read', isRerun);
+  return renderDeepReadForm(paperId, isRerun ? '重新深读' : '深读', isRerun);
 }
 
 /** Panel view for a paper detail: the panel itself never reads paper fields. */
@@ -994,19 +1009,19 @@ function renderTopicSuggestList(v: TopicLinkPanelView): string {
   if (!shouldShowTopicSuggest(v)) return '';
   const suggestions = unlinkedSuggestions(v);
   const weak = v.linkedTopicCount === 1;
-  const heading = weak ? 'Also consider' : 'Suggest';
+  const heading = weak ? '也可考虑' : '推荐 topic';
   const items = suggestions.map((s) =>
     `<button type="button" class="topic-suggest-item" ` +
       `data-suggest-topic="${escapeHtml(s.topicId)}" ` +
       `data-rationale="${escapeHtml(s.rationaleDraft)}">` +
       `<span class="topic-suggest-id mono">${escapeHtml(s.topicId)}</span>` +
-      `<span class="topic-suggest-score mono" title="heuristic score">${s.score.toFixed(0)}</span>` +
+      `<span class="topic-suggest-score mono" title="匹配分（启发式）">${s.score.toFixed(0)}</span>` +
       `<span class="topic-suggest-why muted">${escapeHtml(s.reason)}</span>` +
     `</button>`,
   ).join('');
   return `<div class="topic-suggest${weak ? ' is-weak' : ''}" data-topic-suggest>` +
     `<div class="topic-suggest-head"><span>${heading}</span>` +
-      `<span class="muted topic-suggest-hint">pick → edit below → Link</span></div>` +
+      `<span class="muted topic-suggest-hint">选择推荐 → 确认详情 → 关联</span></div>` +
     `<div class="topic-suggest-list" role="list">${items}</div>` +
     `<p class="topic-suggest-status muted" data-suggest-status hidden></p>` +
   `</div>`;
@@ -1032,12 +1047,12 @@ export function renderLinkTopicAction(v: TopicLinkPanelView): string {
         `<input type="hidden" name="surfaceType" value="topic">` +
         `<input type="hidden" name="surfaceId" value="${escapeHtml(editing.surfaceId)}">` +
         `<input type="hidden" name="topic" value="${escapeHtml(editing.surfaceId)}">` +
-        `<p class="topic-link-manual-head">Update <span class="mono">${escapeHtml(editing.surfaceId)}</span></p>` +
+        `<p class="topic-link-manual-head">更新 <span class="mono">${escapeHtml(editing.surfaceId)}</span></p>` +
         `<div class="topic-link-fields">` +
-          `<label>Why (optional)<input name="rationale" value="${why}" placeholder="why this topic"></label>` +
+          `<label>关联理由（可选）<input name="rationale" value="${why}" placeholder="说明与此 topic 的关系"></label>` +
         `</div>` +
-        `<button class="primary topic-link-submit" type="submit">Update</button>` +
-        `<a class="secondary" href="${paperDetailHref(v.documentId)}">Cancel</a>` +
+        `<button class="primary topic-link-submit" type="submit">保存关联</button>` +
+        `<a class="secondary" data-close-topics href="${paperDetailHref(v.documentId)}">取消</a>` +
       `</form>`;
     return `<div class="topic-link-panel">${form}</div>`;
   }
@@ -1045,38 +1060,27 @@ export function renderLinkTopicAction(v: TopicLinkPanelView): string {
   const unlinked = v.topics.filter((t) => t.available && !linkedTopicIds.has(t.path));
   const suggest = renderTopicSuggestList(v);
   if (unlinked.length === 0) {
-    return `<div class="topic-link-panel"><p class="muted">All available topics are linked.</p></div>`;
+    return `<div class="topic-link-panel"><p class="muted">没有可关联的 topic：请确认 topic 可用或检查已有关系。</p></div>`;
   }
   const topicOptions =
-    `<option value="" selected disabled>Select topic…</option>` +
+    `<option value="" selected disabled>选择 topic…</option>` +
     unlinked.map((t) => `<option value="${escapeHtml(t.path)}">${escapeHtml(t.path)}</option>`).join('');
-  const button = linkedTopicIds.size >= 1 ? 'Link another topic' : 'Link topic';
+  const button = linkedTopicIds.size >= 1 ? '关联其它 topic' : '关联 topic';
   const form =
     `<form id="topic-link-form" class="topic-link-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.documentId)}">` +
       `<input type="hidden" name="surfaceType" value="topic">` +
       (suggest
-        ? `<div class="topic-link-manual-head muted">Details <span class="topic-link-manual-or">or pick topic yourself</span></div>`
+        ? `<div class="topic-link-manual-head muted">详情 <span class="topic-link-manual-or">也可手动选择 topic</span></div>`
         : '') +
       `<div class="topic-link-fields">` +
-        `<label>Topic<select name="topic" required>${topicOptions}</select></label>` +
-        `<label>Why (optional)<input name="rationale" placeholder="why this topic"></label>` +
+        `<label>topic<select name="topic" required>${topicOptions}</select></label>` +
+        `<label>关联理由（可选）<input name="rationale" placeholder="说明与此 topic 的关系"></label>` +
       `</div>` +
       `<button class="primary topic-link-submit" type="submit">${button}</button>` +
     `</form>`;
   const script = suggest ? `<script>${TOPIC_SUGGEST_JS}</script>` : '';
   return `<div class="topic-link-panel">${suggest}${form}</div>${script}`;
-}
-
-/**
- * Linked topics + Topic link panel as one block, for documents that have no
- * paper inspector to host them (#197).
- */
-function renderTopicLinkSections(panel: TopicLinkPanelView | undefined): string {
-  if (!panel) return '';
-  return `<section class="detail-panel"><h2>Linked topics</h2>` +
-      `<ul class="meta-list">${renderLinkedTopicRows(panel)}</ul></section>` +
-    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(panel)}</section>`;
 }
 
 /** Marker TOPIC_SUGGEST_JS: fill form only — never POST /library/link. */
@@ -1106,7 +1110,7 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
     form.classList.add('has-suggest-pick');
     if (status) {
       status.hidden = false;
-      status.textContent = 'Selected ' + topic + ' — review details, then press Link topic.';
+      status.textContent = '已选择 ' + topic + '，确认详情后点击关联。';
     }
     if (submit) submit.focus({ preventScroll: true });
   });
@@ -1137,11 +1141,11 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
     `<option value="${k}"${k === 'note' ? ' selected' : ''}>${k}</option>`,
   ).join('');
   const items = v.notes.map((n) => {
-    const pinLabel = n.pinned ? 'Unpin' : 'Pin';
+    const pinLabel = n.pinned ? '取消置顶' : '置顶';
     return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
       `<div class="paper-note-head">` +
         `<span class="note-kind">${escapeHtml(n.kind)}</span>` +
-        `${n.pinned ? '<span class="note-pin-badge">pinned</span>' : ''}` +
+        `${n.pinned ? '<span class="note-pin-badge">已置顶</span>' : ''}` +
         `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
       `</div>` +
       `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` +
@@ -1150,8 +1154,8 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
           `<input type="hidden" name="pinned" value="${n.pinned ? '0' : '1'}">` +
           `<button class="secondary note-action-btn" type="submit">${pinLabel}</button>` +
         `</form>` +
-        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="DELETE" onsubmit="return confirm('Delete this note?');">` +
-          `<button class="danger note-action-btn" type="submit">Delete</button>` +
+        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="DELETE" onsubmit="return confirm('删除这条文档批注？');">` +
+          `<button class="danger note-action-btn" type="submit">删除</button>` +
         `</form>` +
       `</div>` +
     `</li>`;
@@ -1159,21 +1163,21 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
 
   return `<section class="detail-panel paper-notes-panel" id="annotations">` +
     `<div class="paper-notes-head">` +
-      `<h2>Annotations</h2>` +
-      `<span class="muted">Your attention on this paper — survives re-read</span>` +
+      `<h2>文档批注</h2>` +
+      `<span class="muted">记录你的思考，重新深读后仍保留</span>` +
     `</div>` +
     `<form class="paper-note-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations">` +
       `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
-      `<label class="note-body-label">New note` +
-        `<textarea name="body" rows="3" required placeholder="Markdown ok — e.g. **selection** not generation"></textarea>` +
+      `<label class="note-body-label">新增批注` +
+        `<textarea name="body" rows="3" required placeholder="支持 Markdown"></textarea>` +
       `</label>` +
       `<div class="paper-note-form-row">` +
-        `<label>Kind<select name="kind">${kindOptions}</select></label>` +
-        `<label class="note-pin-check"><input type="checkbox" name="pinned" value="1"> Pin</label>` +
-        `<button class="primary" type="submit">Add note</button>` +
+        `<label>类型<select name="kind">${kindOptions}</select></label>` +
+        `<label class="note-pin-check"><input type="checkbox" name="pinned" value="1"> 置顶</label>` +
+        `<button class="primary" type="submit">添加批注</button>` +
       `</div>` +
     `</form>` +
-    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">No notes yet. Capture what you want to remember.</li>'}</ul>` +
+    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">尚无文档批注，记录值得记住的内容。</li>'}</ul>` +
   `</section>`;
 }
 
@@ -1186,13 +1190,13 @@ export function renderLibraryPaper(
   // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
     `<a class="primary paper-jump-notes" href="#annotations">` +
-      `Annotations${noteCount > 0 ? ` · ${noteCount}` : ''}` +
+      `文档批注${noteCount > 0 ? ` · ${noteCount}` : ''}` +
     `</a>`;
   const identity = renderPaperIdentityMeta(v);
   const readBody = v.latestReadArtifact
     ? renderLibraryReadBody(v.latestReadArtifact.markdown, v.paper.displayTitle)
     : `<div class="read-empty">` +
-        `<p class="muted">No deep-read artifact yet.</p>` +
+        `<p class="muted">尚无深读产物，可点击深读开始。</p>` +
         `<ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul>` +
       `</div>`;
   const pathHint = v.latestReadArtifact
@@ -1207,45 +1211,30 @@ export function renderLibraryPaper(
       identity +
       readBody +
     `</section>`;
-  // Breadcrumb (wayfinding), not a second primary nav — Library is the parent list.
-  const crumb =
-    `<nav class="paper-crumb" aria-label="Breadcrumb">` +
-      `<a class="secondary paper-crumb-back" href="/library">` +
-        `<span class="paper-crumb-arrow" aria-hidden="true">←</span> Library` +
-      `</a>` +
-      `<span class="paper-crumb-sep" aria-hidden="true">/</span>` +
-      `<span class="paper-crumb-here">Paper</span>` +
-    `</nav>`;
-  const body = topbar(v.paper.id, 'library') +
-    `<main class="paper-detail-shell">` +
+  const panel = panelOf(v, editTopic);
+  const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  const body = topbar('', 'library') +
+    `<main class="paper-detail-shell document-detail">` +
       `<section class="paper-detail-main">` +
-        crumb +
-        `<div class="library-head paper-doc-head">` +
-          `<div>` +
-            `<h1>${escapeHtml(v.paper.displayTitle)}</h1>` +
-            `<p class="mono paper-canonical">${escapeHtml(v.paper.canonicalId)}` +
-              `${v.paper.sourceLabel ? ` · ${escapeHtml(v.paper.sourceLabel)}` : ''}</p>` +
-          `</div>` +
-          `<div class="paper-head-actions">` +
-            notesJump +
-            renderStatusBadge(v.paper.readStatus) +
-          `</div>` +
-        `</div>` +
+        renderDocumentHeader({ title: v.paper.displayTitle, type: v.paper.docType || 'paper', updatedAt: v.paper.updatedAt,
+          status: ({ unread: '未深读', reading: '深读中', read: '已深读', failed: '深读失败', saved: '已保存', queued: '排队中', analyzing: '分析中', missing: '内容缺失' })[v.paper.readStatus] || '状态未知', panel,
+          actions: notesJump + renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError) }) +
+        renderDocumentTopics(panel) +
         readSurface +
         renderPaperNotes(v) +
       `</section>` +
-      `<aside class="paper-inspector">${renderPaperInspector(v, activeRead, editTopic)}</aside>` +
+      `<aside class="paper-inspector">${renderPaperInspector(v, editTopic)}</aside>` +
     `</main>` +
     `${v.paper.readStatus === 'reading' && activeRead ? `<script>${LIBRARY_READ_JS}</script>` : ''}`;
-  return page(`${v.paper.displayTitle} · researcher`, body);
+  return page(`${v.paper.displayTitle} · researcher`, body + DOCUMENT_SCRIPT);
 }
 
 export function renderLinkedTopicRows(v: TopicLinkPanelView): string {
   const integrated = new Set(v.integrations.map((i) => i.topicId));
   const rows = topicLinksOf(v).map((l) => {
     const badge = integrated.has(l.surfaceId)
-      ? `<span class="source-badge">in landscape</span>`
-      : `<span class="muted">not in landscape</span>`;
+      ? `<span class="source-badge">已集成</span>`
+      : `<span class="muted">尚未集成</span>`;
     const why = l.rationale
       ? `<p class="linked-topic-why muted">${escapeHtml(l.rationale)}</p>`
       : '';
@@ -1253,14 +1242,14 @@ export function renderLinkedTopicRows(v: TopicLinkPanelView): string {
       `<div class="linked-topic-head">` +
         `<b>${escapeHtml(l.surfaceId)}</b> ${badge}` +
         `<span class="linked-topic-actions">` +
-          `<a class="link-button" href="${paperDetailHref(v.documentId, l.surfaceId)}">Edit</a>` +
-          `<form class="inline-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" data-json-method="DELETE" onsubmit="return confirm('Remove this topic link?');">` +
-            `<button type="submit" class="link-button">Unlink</button>` +
+          `<a class="link-button" href="${paperDetailHref(v.documentId, l.surfaceId)}">编辑</a>` +
+          `<form class="inline-form" action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.documentId)}/links/topic/${encodeURIComponent(l.surfaceId)}" data-json-method="DELETE" onsubmit="return confirm('解除此 topic 关联？');">` +
+            `<button type="submit" class="link-button">解除关联</button>` +
           `</form>` +
         `</span>` +
       `</div>${why}</li>`;
   }).join('');
-  return rows || '<li>—</li>';
+  return rows || '<li class="muted">尚未关联 topic</li>';
 }
 
 function renderMiniMap(v: LibraryPaperDetailView, panel: TopicLinkPanelView): string {
@@ -1278,32 +1267,27 @@ function renderMiniMap(v: LibraryPaperDetailView, panel: TopicLinkPanelView): st
 
 function renderPaperInspector(
   v: LibraryPaperDetailView,
-  activeRead: ActiveTaskView | null = null,
   editTopic?: string,
 ): string {
   const integrations = v.integrations.map((i) =>
     `<li><b>${escapeHtml(i.topicId)}</b> ${i.zone ? `<span class="source-badge">${escapeHtml(i.zone)}</span>` : ''} ` +
     `<span class="mono">${escapeHtml(i.notePath ?? i.integratedAt)}</span></li>`
   ).join('');
-  const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
   const canDelete = v.paper.linkedTopicCount === 0 && v.links.length === 0 && v.integrations.length === 0;
   const deleteAction = canDelete
-    ? `<section class="detail-panel danger-panel"><h2>Delete</h2>` +
-      `<p class="muted">Remove this unlinked paper and its Library reads from the workspace.</p>` +
+    ? `<section class="detail-panel danger-panel"><h2>删除文档</h2>` +
+      `<p class="muted">删除此未关联的 paper 及其深读记录。</p>` +
       `<form class="deep-read-form" action="/library/documents/${encodeURIComponent(v.paper.id)}" method="post"` +
       ` data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}" data-json-method="DELETE"` +
-      ` onsubmit="return confirm('Delete this paper from the Library? This cannot be undone.');">` +
-      `<button class="danger" type="submit">Delete from Library</button>` +
+      ` onsubmit="return confirm('从 Library 删除此 paper？此操作不可撤销。');">` +
+      `<button class="danger" type="submit">从 Library 删除</button>` +
       `</form></section>`
-    : `<section class="detail-panel"><h2>Delete</h2>` +
-      `<p class="muted">Linked or integrated papers cannot be deleted. Unlink from all topics first.</p></section>`;
+    : `<section class="detail-panel"><h2>删除文档</h2>` +
+      `<p class="muted">已关联或已集成的 paper 不能删除。请先检查 topic 关联。</p></section>`;
   const panel = panelOf(v, editTopic);
   const showMiniMap = v.paper.readStatus !== 'unread' && topicLinksOf(panel).length > 0;
-  return `<section class="detail-panel"><h2>Actions</h2>${renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError)}</section>` +
-    `<section class="detail-panel"><h2>Linked topics</h2><ul class="meta-list">${renderLinkedTopicRows(panel)}</ul></section>` +
-    `<section class="detail-panel"><h2>Topic link</h2>${renderLinkTopicAction(panel)}</section>` +
-    (showMiniMap ? `<section class="detail-panel"><h2>Mini map</h2>${renderMiniMap(v, panel)}</section>` : '') +
-    `<section class="detail-panel"><h2>Integrations</h2><ul class="meta-list">${integrations || '<li>—</li>'}</ul></section>` +
+  return (showMiniMap ? `<section class="detail-panel"><h2>关联概览</h2>${renderMiniMap(v, panel)}</section>` : '') +
+    `<section class="detail-panel"><h2>集成记录</h2><ul class="meta-list">${integrations || '<li class="muted">尚无集成记录</li>'}</ul></section>` +
     deleteAction;
 }
 

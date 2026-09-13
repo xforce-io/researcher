@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  highlightedCue,
   centeredScrollTop,
   currentCueInVisible,
   cycleHitIndex,
@@ -45,5 +46,16 @@ describe('shipped video-workbench visible set and current cue', () => {
     expect(cycleHitIndex(hits, 1, 1)).toBe(0);
     expect(cycleHitIndex(hits, 0, -1)).toBe(1);
     expect(cycleHitIndex([], 0, 1)).toBe(-1);
+  });
+});
+
+
+describe('literal safe cue highlights (#203 S3)', () => {
+  it('escapes untrusted content and highlights repeated case-insensitive text', () => {
+    expect(highlightedCue('<img src=x> TRUST & trust', 'trust')).toBe('&lt;img src=x&gt; <mark>TRUST</mark> &amp; <mark>trust</mark>');
+    expect(highlightedCue('a.b aXb', '.')).toBe('a<mark>.</mark>b aXb');
+    expect(highlightedCue('你好，你好', '你好')).toBe('<mark>你好</mark>，<mark>你好</mark>');
+    expect(highlightedCue('<script>', '')).toBe('&lt;script&gt;');
+    expect(highlightedCue('a[bc', '[')).toBe('a<mark>[</mark>bc');
   });
 });

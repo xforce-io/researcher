@@ -95,9 +95,9 @@ describe('library video HTTP (S1–S5)', () => {
     const page = await (await fetch(base + created.url)).text();
     expect(page).toContain('talk');
     expect(page).toContain('/media');
-    expect(page).toContain(root);
-    expect(page).toMatch(/video · \d{4}-\d{2}-\d{2}</);
-    expect(page).not.toMatch(/video · \d{4}-\d{2}-\d{2}T/);
+    expect(page).not.toContain(root);
+    expect(page).toMatch(/视频<\/span><span>\d{4}-\d{2}-\d{2}</);
+    expect(page).not.toMatch(/视频<\/span><span>\d{4}-\d{2}-\d{2}T/);
     expect(page).toContain('src="/static/video-workbench.js"');
     expect(page).toContain('class="video-workbench"');
     const media = await fetch(base + created.url + '/media');
@@ -126,7 +126,7 @@ describe('library video HTTP (S1–S5)', () => {
     expect(started.status).toBe(202);
     const { id: analysisId } = await started.json() as { id: string };
     const mid = await (await fetch(`${base}/library/documents/${speechDoc.id}`)).text();
-    expect(mid).toMatch(/data-analyzing>Analyzing/);
+    expect(mid).toMatch(/data-analyzing>分析中/);
     const done = await waitDone(speechDoc.id, analysisId);
     expect(done.status).toBe('done');
     const cues = await (await fetch(`${base}/library/documents/${speechDoc.id}/cues`)).json() as {
@@ -150,7 +150,7 @@ describe('library video HTTP (S1–S5)', () => {
     expect(empty.cues).toEqual([]);
     expect(empty.noSpeech).toBe(true);
     const page = await (await fetch(`${base}/library/documents/${silentDoc.id}`)).text();
-    expect(page).toContain('No speech detected');
+    expect(page).toContain('未检测到语音');
     expect(page).not.toContain('Analysis failed');
   });
 
@@ -203,11 +203,11 @@ describe('library video HTTP (S1–S5)', () => {
     const mediaPath = new PaperLibrary(root).videoMediaPath(new PaperLibrary(root).getDocument(created.id)!);
     unlinkSync(mediaPath);
     const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
-    expect(page).toContain('Media file is missing');
+    expect(page).toContain('媒体文件缺失');
     expect(page).toContain('Hello Benny');
     expect(page).toContain('id="cue-q"');
     expect(page).not.toMatch(/id="cue-q"[^>]*disabled/);
-    expect(page).toContain('Choose a file to restore.');
+    expect(page).toContain('请选择需要恢复的文件。');
     const other = new FormData();
     other.append('file', new Blob([silent], { type: 'video/mp4' }), 'other.mp4');
     const denied = await fetch(`${base}/library/documents/${created.id}/media/restore`, { method: 'POST', body: other });
@@ -375,7 +375,7 @@ describe('video analysis terminal state (#193)', () => {
     expect(started.status).toBe(202);
     const { id: analysisId } = await started.json() as { id: string };
     const mid = await (await fetch(`${base}/library/documents/${created.id}`)).text();
-    expect(mid).toMatch(/data-analyzing>Analyzing|Hello Benny/);
+    expect(mid).toMatch(/data-analyzing>分析中|Hello Benny/);
     const done = await waitDone(created.id, analysisId) as { status: string; cues?: Array<{ text: string; zh?: string }> };
     expect(done.status).toBe('done');
     const cues = await (await fetch(`${base}/library/documents/${created.id}/cues`)).json() as {
@@ -385,7 +385,7 @@ describe('video analysis terminal state (#193)', () => {
     expect(cues.cues[0].zh).toBeUndefined();
     const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
     expect(page).toContain('Hello Benny');
-    expect(page).not.toMatch(/data-analyzing>Analyzing/);
+    expect(page).not.toMatch(/data-analyzing>分析中/);
     expect(page).toContain('id="analyze-btn"');
     expect(page).not.toMatch(/id="analyze-btn"[^>]*disabled/);
     const again = await fetch(`${base}/library/documents/${created.id}/analyses`, {
@@ -420,7 +420,7 @@ describe('video analysis terminal state (#193)', () => {
     });
     const page = await (await fetch(`${base}/library/documents/${created.id}`)).text();
     expect(page).toContain('Hello Benny');
-    expect(page).not.toMatch(/data-analyzing>Analyzing/);
+    expect(page).not.toMatch(/data-analyzing>分析中/);
     expect(page).toContain('Analysis interrupted');
     expect(page).not.toMatch(/id="analyze-btn"[^>]*disabled/);
     const st = await (await fetch(`${base}/library/documents/${created.id}/analyses/${staleId}`)).json() as {

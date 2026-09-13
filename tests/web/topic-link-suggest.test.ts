@@ -158,11 +158,11 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
     expect(html).toContain('class="topic-suggest"');
     expect(html).toContain('data-suggest-topic="decision"');
     expect(html).toContain('selection gate / verifier');
-    expect(html).toContain('pick → edit below → Link');
+    expect(html).toContain('选择推荐 → 确认详情 → 关联');
     expect(html).toContain('/library/documents/paper_arxiv_2607_05391/links');
     expect(html).toContain('name="topic"');
     // Confirm is primary, panel-level — not a secondary buried control
-    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>关联 topic</);
     // Suggest rows are type=button only (not form submit)
     expect(html).toMatch(/type="button" class="topic-suggest-item"/);
     expect(html).not.toMatch(/class="topic-suggest-item"[^>]*type="submit"/);
@@ -175,9 +175,9 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
   it('hides Suggest shell when suggestions empty; form still has primary Link', () => {
     const html = renderLibraryPaper(base({ topicSuggestions: [] }));
     expect(html).not.toContain('class="topic-suggest"');
-    expect(html).not.toContain('pick → edit below → Link');
+    expect(html).not.toContain('选择推荐 → 确认详情 → 关联');
     expect(html).toContain('/library/documents/paper_arxiv_2607_05391/links');
-    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>Link topic</);
+    expect(html).toMatch(/class="primary topic-link-submit"[^>]*>关联 topic</);
   });
 
   it('weakens Suggest label when already linked once', () => {
@@ -195,7 +195,7 @@ describe('renderLibraryPaper Topic link Suggest UI', () => {
         updatedAt: '2026-07-01T00:00:00Z',
       }],
     }));
-    expect(html).toContain('Also consider');
+    expect(html).toContain('也可考虑');
     expect(html).toContain('class="topic-suggest is-weak"');
   });
 
