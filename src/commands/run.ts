@@ -15,6 +15,7 @@ import { synthesize } from '../pipeline/synthesize.js';
 import { rebalance } from '../pipeline/rebalance.js';
 import { packageStage } from '../pipeline/package.js';
 import { classifyContradictions } from '../pipeline/contradictions.js';
+import { integrationSourceState } from '../pipeline/integration_source.js';
 import type { RunContext } from '../pipeline/context.js';
 import type { LibraryReadRunner } from '../web/library-read.js';
 import { PaperLibrary } from '../library/store.js';
@@ -40,8 +41,9 @@ export type RunOutcome =
   | 'no-candidate'    // discover ran but nothing worth deep-reading this tick
   | 'thin-signal'     // soul too thin to draft; punted to open_questions.md
   | 'no-queries'      // discover requested but no arxiv queries configured
-  | 'all-integrated'  // linked papers exist and all are integrated; discover off
-  | 'nothing-to-run'; // no pending linked paper and discover off
+  | 'all-integrated'  // linked documents exist and all are integrated; discover off
+  | 'blocked-queue'   // linked documents pending but none has an integration source
+  | 'nothing-to-run'; // no pending linked document and discover off
 
 export interface RunResult {
   outcome: RunOutcome;
@@ -74,20 +76,27 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     if (opts.discover !== true) {
       const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
       const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
-      const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
-      if (!linkedId) {
+      const scan = scanLinkedLibraryQueue({ workspaceRoot, topicPath });
+      if (!scan.candidateId) {
         emitEvent({ type: 'plan', stages: ['bootstrap'] });
-        const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath });
-        if (empty === 'all-integrated') {
+        const empty = classifyEmptyLinkedQueue({ workspaceRoot, topicPath, blocked: scan.blocked });
+        if (empty === 'blocked-queue') {
           process.stdout.write(
-            `autonomous tick: all linked Library papers already integrated — discover off. (${runDir.id})\n` +
-            `Link another paper, or re-run with --discover to search arxiv.\n`,
+            `autonomous tick: linked documents are waiting but none can be integrated yet — discover off. (${runDir.id})\n` +
+            describeBlocked(scan.blocked) +
+            `Resolve the reason above, or re-run with --discover to search arxiv.\n`,
+          );
+          setOutcome('blocked-queue');
+        } else if (empty === 'all-integrated') {
+          process.stdout.write(
+            `autonomous tick: all linked Library documents already integrated — discover off. (${runDir.id})\n` +
+            `Link another document, or re-run with --discover to search arxiv.\n`,
           );
           setOutcome('all-integrated');
         } else {
           process.stdout.write(
-            `autonomous tick: nothing to run — no pending linked paper and discover off. (${runDir.id})\n` +
-            `Link a Library paper, or re-run with --discover to search arxiv.\n`,
+            `autonomous tick: nothing to run — no pending linked document and discover off. (${runDir.id})\n` +
+            `Link a Library document, or re-run with --discover to search arxiv.\n`,
           );
           setOutcome('nothing-to-run');
         }
@@ -116,17 +125,18 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
     // users see them under Related papers and expect Run to consume them.
     const workspaceRoot = opts.workspaceRoot ?? opts.cwd;
     const topicPath = opts.topicPath ?? inferTopicPath(workspaceRoot, opts.cwd);
-    const linkedId = pickLinkedLibraryCandidate({ workspaceRoot, topicPath });
+    const scan = scanLinkedLibraryQueue({ workspaceRoot, topicPath });
 
-    if (linkedId) {
+    if (scan.candidateId) {
       emitEvent({
         type: 'plan',
         stages: ['bootstrap', 'soul', 'read', 'rebalance', 'synthesize', 'package'],
       });
-      ctx!.addSourceId = linkedId;
+      ctx!.addDocumentId = scan.candidateId;
       ctx!.triageReason = 'library-linked candidate (not yet in landscape)';
       process.stdout.write(
-        `autonomous tick: using library-linked candidate ${linkedId} (skip discover). (${runDir.id})\n`,
+        `autonomous tick: using library-linked candidate ${scan.candidateId} (skip discover). (${runDir.id})\n` +
+        (scan.blocked.length ? `held back this run:\n${describeBlocked(scan.blocked)}` : ''),
       );
     } else {
       // discover requested (empty-queue fast path already returned above when off)
@@ -147,10 +157,10 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       ]);
     }
 
-    if (!ctx!.addSourceId) {
+    if (!ctx!.addSourceId && !ctx!.addDocumentId) {
       process.stdout.write(
         `autonomous tick: no deep-read candidate this run (${runDir.id}).\n` +
-        `landscape unchanged — link a Library paper or wait for discover hits.\n`,
+        `landscape unchanged — link a Library document or wait for discover hits.\n`,
       );
       setOutcome('no-candidate');
       return;
@@ -176,24 +186,43 @@ export async function runRun(opts: RunOptions): Promise<RunResult> {
       },
       { name: 'package',    fn: async () => packageStage(ctx!) },
     ]);
-    process.stdout.write(`done. run id: ${runDir.id} (deep-read: ${ctx!.addSourceId})\n`);
+    process.stdout.write(`done. run id: ${runDir.id} (integrated: ${ctx!.addDocumentId ?? ctx!.addSourceId})\n`);
     reportContradictions(ctx!);
     setOutcome('completed');
   });
   return { outcome, runId: runDir.id };
 }
 
-/** Oldest linked Library paper for this topic that is not yet integrated. Prefers arxiv. */
-export function pickLinkedLibraryCandidate(opts: {
+/** A linked document that cannot be integrated yet, and why. */
+export interface BlockedLinkedDocument {
+  documentId: string;
+  docType: string;
+  reason: string;
+}
+
+export interface LinkedQueueScan {
+  /** Oldest linked document that already has an integration source. */
+  candidateId: string | null;
+  /** Linked, not yet integrated, but missing an integration source. */
+  blocked: BlockedLinkedDocument[];
+}
+
+/**
+ * Scan the topic's linked queue (#197). Returns the oldest integrable document
+ * plus the ones held back, so a video without a transcript can neither be
+ * integrated as an empty note nor block the rest of the queue forever.
+ */
+export function scanLinkedLibraryQueue(opts: {
   workspaceRoot: string;
   topicPath: string;
-}): string | null {
-  if (!opts.topicPath) return null;
+}): LinkedQueueScan {
+  const empty: LinkedQueueScan = { candidateId: null, blocked: [] };
+  if (!opts.topicPath) return empty;
   let lib: PaperLibrary;
   try {
     lib = new PaperLibrary(opts.workspaceRoot);
   } catch {
-    return null;
+    return empty;
   }
   const integrated = new Set(
     lib.listIntegrations()
@@ -205,23 +234,38 @@ export function pickLinkedLibraryCandidate(opts: {
     .filter((l) => !integrated.has(l.paperId))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  let fallback: string | null = null;
+  const blocked: BlockedLinkedDocument[] = [];
+  let candidateId: string | null = null;
   for (const link of links) {
-    const paper = lib.getPaper(link.paperId);
-    if (!paper) continue;
-    const id = paper.canonicalSource.id;
-    if (paper.canonicalSource.kind === 'arxiv') return id;
-    if (!fallback) fallback = id;
+    const doc = lib.getDocument(link.paperId);
+    if (!doc) continue;
+    const state = integrationSourceState(lib, doc);
+    if (!state.ready) {
+      blocked.push({ documentId: doc.id, docType: doc.docType, reason: state.reason });
+      continue;
+    }
+    if (!candidateId) candidateId = doc.id;
   }
-  return fallback;
+  return { candidateId, blocked };
 }
 
-/** When discover is off and no pending linked paper: distinguish empty vs all done. */
+/** Oldest integrable linked document for this topic, as a documentId. */
+export function pickLinkedLibraryCandidate(opts: {
+  workspaceRoot: string;
+  topicPath: string;
+}): string | null {
+  return scanLinkedLibraryQueue(opts).candidateId;
+}
+
+/** No integrable candidate: distinguish blocked queue vs empty vs all done. */
 export function classifyEmptyLinkedQueue(opts: {
   workspaceRoot: string;
   topicPath: string;
-}): 'all-integrated' | 'nothing-to-run' {
+  blocked?: BlockedLinkedDocument[];
+}): 'blocked-queue' | 'all-integrated' | 'nothing-to-run' {
   if (!opts.topicPath) return 'nothing-to-run';
+  const blocked = opts.blocked ?? scanLinkedLibraryQueue(opts).blocked;
+  if (blocked.length > 0) return 'blocked-queue';
   let lib: PaperLibrary;
   try {
     lib = new PaperLibrary(opts.workspaceRoot);
@@ -231,6 +275,11 @@ export function classifyEmptyLinkedQueue(opts: {
   // Only count work that was or is part of the integrate queue.
   const hasIntegration = lib.listIntegrations().some((i) => i.topicId === opts.topicPath);
   return hasIntegration ? 'all-integrated' : 'nothing-to-run';
+}
+
+/** Held-back documents must be visible: silence would look like they integrated. */
+function describeBlocked(blocked: BlockedLinkedDocument[]): string {
+  return blocked.map((b) => `  - ${b.documentId} (${b.docType}): ${b.reason}\n`).join('');
 }
 
 function inferTopicPath(workspaceRoot: string, topicDir: string): string {

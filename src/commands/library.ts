@@ -164,8 +164,8 @@ export function runLibraryMigrate(opts: LibraryMigrateCliOptions): number {
 export function runLibraryLink(opts: LibraryLinkOptions): void {
   const write = opts.write ?? defaultWrite;
   const lib = new PaperLibrary(opts.cwd);
-  const paper = lib.getPaper(opts.paperId);
-  if (!paper) throw new Error(`unknown paper id: ${opts.paperId}`);
+  // Any document can be linked to a topic (#197), not only papers.
+  if (!lib.getDocument(opts.paperId)) throw new Error(`unknown document id: ${opts.paperId}`);
   const link = lib.upsertLink({
     paperId: opts.paperId,
     surfaceType: 'topic',
@@ -178,8 +178,7 @@ export function runLibraryLink(opts: LibraryLinkOptions): void {
 export function runLibraryIntegrate(opts: LibraryIntegrateOptions): void {
   const write = opts.write ?? defaultWrite;
   const lib = new PaperLibrary(opts.cwd);
-  const paper = lib.getPaper(opts.paperId);
-  if (!paper) throw new Error(`unknown paper id: ${opts.paperId}`);
+  if (!lib.getDocument(opts.paperId)) throw new Error(`unknown document id: ${opts.paperId}`);
   const integratedAt = new Date().toISOString();
   const integration = lib.upsertIntegration({
     paperId: opts.paperId,
@@ -202,7 +201,7 @@ export function runLibraryIntegrate(opts: LibraryIntegrateOptions): void {
 export function runLibraryUnlink(opts: LibraryUnlinkOptions): void {
   const write = opts.write ?? defaultWrite;
   const lib = new PaperLibrary(opts.cwd);
-  if (!lib.getPaper(opts.paperId)) throw new Error(`unknown paper id: ${opts.paperId}`);
+  if (!lib.getDocument(opts.paperId)) throw new Error(`unknown document id: ${opts.paperId}`);
   lib.unlink(opts.paperId, 'topic', opts.topic);
   write(`${opts.paperId}\ttopic:${opts.topic}\tunlinked\n`);
 }

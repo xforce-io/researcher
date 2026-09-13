@@ -157,6 +157,21 @@ export interface LibraryPaperDetailView {
   /** Heuristic suggestions for Topic link panel (#97). Empty ⇒ no Suggest UI. */
   topicSuggestions: TopicLinkSuggestion[];
 }
+/**
+ * Document-level input for the topic link panel (#197). Any docType can carry
+ * one: the panel needs document identity and link facts, never paper fields.
+ */
+export interface TopicLinkPanelView {
+  documentId: string;
+  linkedTopicCount: number;
+  integratedTopicCount: number;
+  topics: LibraryTopicRef[];
+  links: PaperSurfaceLink[];
+  integrations: TopicIntegration[];
+  topicSuggestions: TopicLinkSuggestion[];
+  /** Selected topic whose rationale is being edited (`?edit=`). */
+  editTopic?: string;
+}
 
 const slugOf = (p: string) => encodeURIComponent(p);
 
@@ -506,6 +521,10 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   };
 }
 
+function topicSuggestProfiles(root: string, topics: LibraryTopicRef[]): TopicSuggestProfile[] {
+  return topics.filter((t) => t.available).map((t) => loadTopicSuggestProfile(root, t.path));
+}
+
 function computeTopicSuggestions(opts: {
   root: string;
   paper: Paper;
@@ -513,9 +532,6 @@ function computeTopicSuggestions(opts: {
   topics: LibraryTopicRef[];
   latestReadMarkdown: string | null;
 }): TopicLinkSuggestion[] {
-  const profiles: TopicSuggestProfile[] = opts.topics
-    .filter((t) => t.available)
-    .map((t) => loadTopicSuggestProfile(opts.root, t.path));
   // Pinned notes first for stronger signal.
   const noteBodies = [...opts.notes]
     .sort((a, b) => Number(b.pinned) - Number(a.pinned))
@@ -529,8 +545,71 @@ function computeTopicSuggestions(opts: {
         ? extractReadSuggestExcerpt(opts.latestReadMarkdown)
         : undefined,
     },
-    profiles,
+    topicSuggestProfiles(opts.root, opts.topics),
   );
+}
+
+/** Max characters of note body / transcript fed to the heuristic (design §4.5). */
+const DOC_SUGGEST_TEXT_MAX = 8_000;
+
+/** Transcript as suggest signal: original line plus its Chinese cue when present. */
+function cuesSuggestText(lib: PaperLibrary, documentId: string): string {
+  const product = lib.currentCues(documentId);
+  if (!product || product.noSpeech) return '';
+  return product.cues
+    .map((c) => (c.zh ? `${c.text} ${c.zh}` : c.text))
+    .join('\n')
+    .slice(0, DOC_SUGGEST_TEXT_MAX);
+}
+
+/**
+ * Suggest signals for a non-paper document: notes use their own body, videos use
+ * the current transcript. Neither has a deep-read artifact, so no readExcerpt.
+ */
+function computeDocumentTopicSuggestions(opts: {
+  root: string;
+  lib: PaperLibrary;
+  doc: LibraryDocument;
+  topics: LibraryTopicRef[];
+}): TopicLinkSuggestion[] {
+  const text = isVideoDocType(opts.doc.docType)
+    ? cuesSuggestText(opts.lib, opts.doc.id)
+    : opts.doc.body.slice(0, DOC_SUGGEST_TEXT_MAX);
+  return suggestTopicLinks(
+    {
+      title: displayTitle(opts.doc),
+      tags: opts.doc.tags,
+      notes: text ? [text] : [],
+    },
+    topicSuggestProfiles(opts.root, opts.topics),
+  );
+}
+
+/**
+ * Topic link panel input for any Library document (#197). Paper detail keeps
+ * using `loadLibraryPaper`; this serves note and video detail.
+ */
+export function loadTopicLinkPanel(
+  root: string,
+  documentId: string,
+  editTopic?: string,
+): TopicLinkPanelView | null {
+  const lib = new PaperLibrary(root);
+  const doc = lib.getDocument(documentId);
+  if (!doc) return null;
+  const topics = libraryTopics(root);
+  const links = lib.listLinks(documentId);
+  const integrations = lib.listIntegrations(documentId);
+  return {
+    documentId,
+    linkedTopicCount: new Set(links.filter((l) => l.surfaceType === 'topic').map((l) => l.surfaceId)).size,
+    integratedTopicCount: new Set(integrations.map((i) => i.topicId)).size,
+    topics,
+    links,
+    integrations,
+    topicSuggestions: computeDocumentTopicSuggestions({ root, lib, doc, topics }),
+    editTopic,
+  };
 }
 
 function loadTopicSuggestProfile(root: string, topicPath: string): TopicSuggestProfile {
@@ -612,11 +691,13 @@ export function loadTopic(root: string, slug: string): TopicView | null {
     rqs = py.research_questions;
   } catch { /* partial topic: leave config-derived fields empty */ }
   const lib = new PaperLibrary(root);
+  // Any docType can be linked (#197): rebuild from documents, not papers, so
+  // note and video links are listed instead of silently dropped.
   const relatedPapers = lib.listLinks()
     .filter((l) => l.surfaceType === 'topic' && l.surfaceId === topic.path)
     .map((l) => {
-      const paper = lib.getPaper(l.paperId);
-      return paper ? summarizePaper(lib, paper, topic.path) : null;
+      const doc = lib.getDocument(l.paperId);
+      return doc ? summarizeDocument(lib, doc, topic.path) : null;
     })
     .filter((p): p is LibraryPaperSummary => p !== null);
   const notes = listNotes(topicDir);

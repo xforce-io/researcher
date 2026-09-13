@@ -2,7 +2,7 @@
 
 - Issue：[#197](https://github.com/xforce-io/researcher/issues/197)
 - L1：[概念方向与范围](https://github.com/xforce-io/researcher/issues/197#issuecomment-5650191113)，用户已 Approved
-- 状态：**Draft**
+- 状态：**Approved**
 - 日期：2026-09-13
 - 分支：`feat/197-note-video-topic-link`
 
@@ -71,7 +71,7 @@ Issue 是验收依据，本文件是详细设计的唯一事实源。L1 未被�
 | 文档类型 | 集成来源 | 集成 note 正文 | 无来源 |
 |---|---|---|---|
 | 外部材料（有 `canonicalSource`） | 深读产物（`ensureLibraryRead` 生成或复用现有） | `libraryReadEmbedBody`，现状不变 | 深读失败即该阶段失败，现状不变 |
-| 自主笔记 | 文档正文 | 正文原样嵌入 | 正文 trim 后为空 |
+| 自主笔记 | 文档正文 | 正文原样嵌入 | 正文 trim 后为空（领域已禁止空正文，故该分支只是防御） |
 | 视频 | 当前台词产物（`lib.currentCues`） | 每句一行 `[mm:ss] 原文`，有 `zh` 时次行缩进附中文台词 | 从未成功分析、或成功空产物（`noSpeech`） |
 
 集成 note 的落盘位置、编号、frontmatter、`pendingLibraryIntegration` 与 `finalizeLibraryIntegration` 的时点全部沿用现状（`src/pipeline/library_topic_read.ts:50-75`、`:79-110`）：仍然只在 synthesize 证明 landscape 变了之后才记 integration。

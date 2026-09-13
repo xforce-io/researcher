@@ -7,6 +7,7 @@ export type RunOutcomeEvent =
   | 'thin-signal'
   | 'no-queries'
   | 'all-integrated'
+  | 'blocked-queue'
   | 'nothing-to-run';
 
 /**

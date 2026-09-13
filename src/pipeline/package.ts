@@ -19,7 +19,11 @@ const LANDSCAPE = 'notes/00_research_landscape.md';
 export async function packageReview(ctx: RunContext, extraAllowedPrefixes: string[] = []): Promise<string> {
   if (!ctx.newNoteFilename || !ctx.newNoteContent || !ctx.newNoteRelPath) throw new Error('package requires note context');
   if (!ctx.contradictionsPath) throw new Error('package requires contradictionsPath');
-  if (!ctx.addSourceId) throw new Error('package (Plan 1, add mode) requires addSourceId');
+  // #197: linked-queue runs address a Library document; only source-addressed
+  // runs carry an addSourceId (external material backfills it in the read stage).
+  if (!ctx.addSourceId && !ctx.addDocumentId) {
+    throw new Error('package (Plan 1, add mode) requires addSourceId or addDocumentId');
+  }
 
   // 0. fail fast if user has unrelated uncommitted changes — otherwise they get
   //    swept into the researcher branch when we stage workshop docs.
@@ -88,7 +92,7 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   const runSummaryPath = await packageReview(ctx, ZONE_DIRS.map((z) => z + '/'));
   // packageReview already asserted these are present; narrow for the rest of the stage.
   const newNoteFilename = ctx.newNoteFilename!;
-  const addSourceId = ctx.addSourceId!;
+  const addSourceId = ctx.addSourceId;
 
   // 2. snapshot the to-be-committed files into memory before the branch dance.
   //    We branch from main to keep each PR independent, but synthesize/read just wrote into the
@@ -177,8 +181,10 @@ export async function packageStage(ctx: RunContext): Promise<void> {
   writeFileSync(seenPath, cumulativeSeen);
 
   // 5. update state files (Seen.append + watermark) on the new branch's checked-out tree.
+  // Notes and videos have no source ref: seen.jsonl is the discover watermark,
+  // and integrations already dedupe the linked queue.
   const seen = new Seen(seenPath);
-  if (!seen.has(addSourceId)) {
+  if (addSourceId && !seen.has(addSourceId)) {
     seen.append({
       id: addSourceId,
       source: addSourceId.startsWith('arxiv:') ? 'arxiv' : 'url',

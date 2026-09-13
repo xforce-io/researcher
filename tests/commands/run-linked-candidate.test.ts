@@ -12,7 +12,7 @@ describe('pickLinkedLibraryCandidate (#111)', () => {
     mkdirSync(join(root, '.researcher-workspace/library'), { recursive: true });
   });
 
-  it('returns oldest non-integrated arxiv link for the topic', () => {
+  it('returns the oldest non-integrated linked document id for the topic', () => {
     const lib = new PaperLibrary(root, { now: () => '2026-07-28T00:00:00.000Z' });
     lib.upsertPaper({
       id: 'paper_arxiv_2607_21051',
@@ -31,7 +31,7 @@ describe('pickLinkedLibraryCandidate (#111)', () => {
     expect(pickLinkedLibraryCandidate({
       workspaceRoot: root,
       topicPath: 'agentic-model-training',
-    })).toBe('arxiv:2607.21051');
+    })).toBe('paper_arxiv_2607_21051');
   });
 
   it('skips papers already integrated into the topic', () => {

@@ -21,6 +21,11 @@ export interface RunContext {
   runDir: RunDir;
   // mode-specific
   addSourceId?: string;
+  /**
+   * Library document picked from the topic's linked queue (#197). Mutually
+   * exclusive with addSourceId; the read stage asserts exactly one is set.
+   */
+  addDocumentId?: string;
   /** When discover_triage chose this paper, the reason it recorded — used by
    * package stage when writing seen.jsonl in autonomous mode. */
   triageReason?: string;
