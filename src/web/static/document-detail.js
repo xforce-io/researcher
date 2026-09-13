@@ -5,6 +5,7 @@ const dialog = root?.querySelector('.document-topic-dialog');
 const open = root?.querySelector('[data-open-topics]');
 const feedback = root?.querySelector('.document-feedback');
 const messageKey = `document-feedback:${location.pathname}`;
+const focusKey = `document-topic-focus:${location.pathname}`;
 if (feedback) {
   try {
     const message = sessionStorage.getItem(messageKey);
@@ -13,10 +14,16 @@ if (feedback) {
   } catch { /* Storage may be disabled; persistence remains server-owned. */ }
 }
 if (dialog && open) {
+  try {
+    const restoreFocus = sessionStorage.getItem(focusKey);
+    sessionStorage.removeItem(focusKey);
+    if (restoreFocus) open.focus();
+  } catch { /* Storage may be disabled. */ }
   open.addEventListener('click', () => dialog.showModal());
   dialog.querySelector('[data-close-topics]')?.addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     if (dialog.hasAttribute('data-auto-open')) {
+      try { sessionStorage.setItem(focusKey, '1'); } catch { /* Optional focus across navigation. */ }
       location.href = location.pathname;
       return;
     }
