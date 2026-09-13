@@ -18,6 +18,7 @@
 
 - 独立超级仓：`researcher.workspace.yml` + 一个 topic 支柱（与 `tests/web/library-video.test.ts` 同形）。
 - 雷达与查篇需要外网（HF Daily Papers / arXiv）。
+- HF / arXiv 返回 429 或 503：该入口记 `fail(external)` 或 `skip`，`notes.md` 引用 stderr；不要改 CLI、不要写重试教条。
 - 深读走本机已配 runtime（不要为验证改 `~/.researcher/config.yaml`）。
 
 ## #170 S1
