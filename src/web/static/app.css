@@ -2135,8 +2135,14 @@ html.video-shell .topbar { flex-shrink: 0; }
   top:calc(var(--topbar-h) + 12px);
   width:100%;
   max-width:220px;
+  max-height:calc(100vh - var(--topbar-h) - 24px);
+  overflow:auto;
   padding-top:4px;
   gap:0;
+}
+.document-detail .paper-inspector .danger {
+  width:100%;
+  white-space:normal;
 }
 .document-detail .inspector-block {
   padding:10px 0 12px;
