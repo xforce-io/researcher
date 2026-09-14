@@ -467,31 +467,26 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
     rows.push(`<div><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`);
   };
 
-  if (fm?.authors) add('authors', fmValue('authors', fm.authors));
+  if (fm?.authors) add('作者', fmValue('authors', fm.authors));
 
   if (v.paper.canonicalId.startsWith('arxiv:')) {
     const id = v.paper.canonicalId.slice('arxiv:'.length);
     add(
-      'arxiv',
+      'arXiv',
       `<a href="https://arxiv.org/abs/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a>`,
     );
+  } else if (v.paper.canonicalId.startsWith('url:')) {
+    add('来源', escapeHtml(v.paper.canonicalId.slice(4)));
   } else if (v.paper.canonicalId) {
-    add('id', escapeHtml(v.paper.canonicalId));
+    add('编号', escapeHtml(v.paper.canonicalId));
   }
 
-  if (fm?.source_url) add('source', fmValue('source_url', fm.source_url));
-  if (fm?.pdf_url) add('pdf', fmValue('pdf_url', fm.pdf_url));
+  if (fm?.source_url) add('来源', fmValue('source_url', fm.source_url));
+  if (fm?.pdf_url) add('PDF', fmValue('pdf_url', fm.pdf_url));
 
   add(
-    'tags',
-    v.paper.tags.length ? renderTagChips(v.paper.tags) : '<span class="muted">none</span>',
-  );
-  add(
-    'status',
-    escapeHtml(
-      `${v.paper.readStatus} · ${v.paper.linkedTopicCount} link${v.paper.linkedTopicCount === 1 ? '' : 's'} · ` +
-      `${v.paper.integratedTopicCount} integrated · ${fmtShortDate(v.paper.updatedAt)}`,
-    ),
+    '标签',
+    v.paper.tags.length ? renderTagChips(v.paper.tags) : '<span class="muted">无</span>',
   );
 
   return rows.length ? `<dl class="fm paper-identity-fm">${rows.join('')}</dl>` : '';
@@ -556,6 +551,40 @@ function topbar(root: string, active: 'workspace' | 'library' | 'topics' | 'topi
 function fmtShortDate(iso: string): string {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
   return m ? m[1] : escapeHtml(iso);
+}
+
+function documentTypeLabel(docType: string | undefined): string {
+  if (docType === 'blog') return '博客';
+  if (docType === 'note') return '自主笔记';
+  if (docType === 'video') return '视频';
+  return '论文';
+}
+
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
+  unread: '未深读',
+  reading: '深读中',
+  read: '已深读',
+  failed: '深读失败',
+  saved: '已保存',
+  queued: '排队中',
+  analyzing: '分析中',
+  missing: '内容缺失',
+};
+
+function documentStatusLabel(status: string | undefined): string {
+  return (status && DOCUMENT_STATUS_LABELS[status]) || '状态未知';
+}
+
+const ANNOTATION_KIND_LABELS: Record<string, string> = {
+  note: '普通',
+  clarification: '澄清',
+  caveat: '注意',
+  idea: '想法',
+  question: '问题',
+};
+
+function annotationKindLabel(kind: string): string {
+  return ANNOTATION_KIND_LABELS[kind] ?? kind;
 }
 
 function renderTagChips(tags: string[]): string {
@@ -751,7 +780,7 @@ form.addEventListener('submit', async (e) => {
 }
 
 function renderDocumentHeader(opts: {
-  title: string; type: string; updatedAt: string; status: string; actions?: string; panel?: TopicLinkPanelView;
+  title: string; type: string; updatedAt: string; status: string; actions?: string; banner?: string; panel?: TopicLinkPanelView;
 }): string {
   const links = opts.panel ? topicLinksOf(opts.panel) : [];
   return `<header class="document-header">` +
@@ -761,7 +790,7 @@ function renderDocumentHeader(opts: {
     `<div class="document-tools"><div class="document-actions">${opts.actions ?? ''}` +
       (opts.panel ? `<button type="button" class="secondary" data-open-topics>管理 topic 关联</button>` : '') +
     `</div><div class="document-topic-summary">${links.length ? links.map((l) => `<span class="tag-chip">${escapeHtml(l.surfaceId)}</span>`).join('') : '<span class="muted">尚未关联 topic</span>'}</div></div>` +
-    `<p class="document-feedback" role="status" hidden></p></header>`;
+    `<p class="document-feedback" role="status" hidden></p>${opts.banner ?? ''}</header>`;
 }
 
 function renderDocumentTopics(panel: TopicLinkPanelView | undefined): string {
@@ -865,7 +894,7 @@ export function renderNoteReader(
   const body = topbar('', 'library') +
     `<main class="note-reader document-detail">` +
       renderDocumentHeader({ title: heading, type: '自主笔记', updatedAt: doc.updatedAt, status: '已保存', panel,
-        actions: `<a class="secondary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">编辑笔记</a>` }) +
+        actions: `<a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">编辑笔记</a>` }) +
       renderDocumentTopics(panel) +
       `<div class="note-body">${markedHtml(doc.body)}</div></main>` + DOCUMENT_SCRIPT;
   return page(`${heading} · researcher`, body);
@@ -921,9 +950,9 @@ interface ActiveTaskView {
 }
 
 const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
-  'fetch-source': 'Fetch source',
-  'draft-read': 'Draft read artifact',
-  'record-read': 'Record Library state',
+  'fetch-source': '获取来源',
+  'draft-read': '撰写深读产物',
+  'record-read': '写入 Library 状态',
 };
 
 function renderDeepReadForm(paperId: string, label: string, force = false): string {
@@ -956,9 +985,10 @@ function renderDeepReadAction(
     return `<div class="read-status-panel" role="status" aria-live="polite">` +
       `<div class="read-status-copy"><span class="pulse-dot"></span><div><b id="library-read-heading">深读中</b>` +
       `<p id="library-read-status"${attrs}>正在提取内容并生成深读产物。</p></div></div>` +
-      `<button id="library-read-retry" class="primary" type="button" disabled>深读</button>` +
+      `<button id="library-read-retry" class="primary" type="button" hidden>重试深读</button>` +
+      `<details class="read-run-details"><summary>运行详情</summary>` +
       `<ol id="library-read-stages" class="run-stages library-read-stages">${stages}</ol>` +
-      `<pre id="library-read-log" class="library-read-log"></pre>` +
+      `<pre id="library-read-log" class="library-read-log"></pre></details>` +
     `</div>`;
   }
   if (status === 'failed') {
@@ -1118,16 +1148,16 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
 
 function renderReads(reads: LibraryPaperDetailView['reads']): string {
   return reads.map((r) => {
-    const path = r.artifactPath ?? r.id;
-    const label = r.artifactPath ? basename(path) : r.id;
-    const err = r.lastError ? ` <span class="read-error mono" title="${escapeHtml(r.lastError)}">${escapeHtml(r.lastError)}</span>` : '';
-    return `<li class="read-item">${renderStatusBadge(r.status)}` +
-      `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(label)}</span>${err}</li>`;
+    const path = r.artifactPath;
+    const file = path
+      ? `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(basename(path))}</span>`
+      : '';
+    return `<li class="read-item">${renderStatusBadge(r.status)}${file}</li>`;
   }).join('');
 }
 
 function renderStatusBadge(status: LibraryPaperSummary['readStatus']): string {
-  return `<span class="status-badge ${escapeHtml(status)}">${escapeHtml(status)}</span>`;
+  return `<span class="status-badge ${escapeHtml(status)}">${escapeHtml(documentStatusLabel(status))}</span>`;
 }
 
 function basename(path: string): string {
@@ -1138,13 +1168,13 @@ const PAPER_NOTE_KINDS = ['note', 'clarification', 'caveat', 'idea', 'question']
 
 function renderPaperNotes(v: LibraryPaperDetailView): string {
   const kindOptions = PAPER_NOTE_KINDS.map((k) =>
-    `<option value="${k}"${k === 'note' ? ' selected' : ''}>${k}</option>`,
+    `<option value="${k}"${k === 'note' ? ' selected' : ''}>${escapeHtml(annotationKindLabel(k))}</option>`,
   ).join('');
   const items = v.notes.map((n) => {
     const pinLabel = n.pinned ? '取消置顶' : '置顶';
     return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
       `<div class="paper-note-head">` +
-        `<span class="note-kind">${escapeHtml(n.kind)}</span>` +
+        `<span class="note-kind">${escapeHtml(annotationKindLabel(n.kind))}</span>` +
         `${n.pinned ? '<span class="note-pin-badge">已置顶</span>' : ''}` +
         `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
       `</div>` +
@@ -1187,9 +1217,8 @@ export function renderLibraryPaper(
   editTopic?: string,
 ): string {
   const noteCount = v.notes.length;
-  // Page-level CTA: same .primary language as Add paper / Deep read / Add note.
   const notesJump =
-    `<a class="primary paper-jump-notes" href="#annotations">` +
+    `<a class="secondary paper-jump-notes" href="#annotations">` +
       `文档批注${noteCount > 0 ? ` · ${noteCount}` : ''}` +
     `</a>`;
   const identity = renderPaperIdentityMeta(v);
@@ -1197,28 +1226,26 @@ export function renderLibraryPaper(
     ? renderLibraryReadBody(v.latestReadArtifact.markdown, v.paper.displayTitle)
     : `<div class="read-empty">` +
         `<p class="muted">尚无深读产物，可点击深读开始。</p>` +
-        `<ul class="meta-list">${renderReads(v.reads) || '<li>—</li>'}</ul>` +
       `</div>`;
-  const pathHint = v.latestReadArtifact
-    ? `<span class="mono read-path" title="${escapeHtml(v.latestReadArtifact.path)}">${escapeHtml(basename(v.latestReadArtifact.path))}</span>`
-    : '';
   const readSurface =
     `<section class="reader read-surface paper-doc" id="read">` +
       `<div class="read-artifact-head">` +
-        `<h2 class="sr-only">Deep read</h2>` +
-        pathHint +
+        `<h2 class="sr-only">深读产物</h2>` +
       `</div>` +
       identity +
       readBody +
     `</section>`;
   const panel = panelOf(v, editTopic);
   const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  const readingOrFailed = v.paper.readStatus === 'reading' || v.paper.readStatus === 'failed';
+  const deepRead = renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError);
   const body = topbar('', 'library') +
     `<main class="paper-detail-shell document-detail">` +
       `<section class="paper-detail-main">` +
-        renderDocumentHeader({ title: v.paper.displayTitle, type: v.paper.docType || 'paper', updatedAt: v.paper.updatedAt,
-          status: ({ unread: '未深读', reading: '深读中', read: '已深读', failed: '深读失败', saved: '已保存', queued: '排队中', analyzing: '分析中', missing: '内容缺失' })[v.paper.readStatus] || '状态未知', panel,
-          actions: notesJump + renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError) }) +
+        renderDocumentHeader({ title: v.paper.displayTitle, type: documentTypeLabel(v.paper.docType), updatedAt: v.paper.updatedAt,
+          status: documentStatusLabel(v.paper.readStatus), panel,
+          actions: notesJump + (readingOrFailed ? '' : deepRead),
+          banner: readingOrFailed ? deepRead : '' }) +
         renderDocumentTopics(panel) +
         readSurface +
         renderPaperNotes(v) +
@@ -1254,12 +1281,12 @@ export function renderLinkedTopicRows(v: TopicLinkPanelView): string {
 
 function renderMiniMap(v: LibraryPaperDetailView, panel: TopicLinkPanelView): string {
   const links = topicLinksOf(panel);
-  if (links.length === 0) return '<p class="muted">No topic link yet.</p>';
+  if (links.length === 0) return '<p class="muted">尚未关联 topic</p>';
   const topics = links
-    .map((l) => `<div class="mini-node"><b>Topic</b><span>${escapeHtml(l.surfaceId)}</span></div>`)
+    .map((l) => `<div class="mini-node"><b>topic</b><span>${escapeHtml(l.surfaceId)}</span></div>`)
     .join('');
   return `<div class="mini-map${links.length > 1 ? ' is-multi' : ''}">` +
-    `<div class="mini-node"><b>Paper</b><span>${escapeHtml(v.paper.readStatus)}</span></div>` +
+    `<div class="mini-node"><b>文档</b><span>${escapeHtml(documentStatusLabel(v.paper.readStatus))}</span></div>` +
     `<div class="mini-edge"></div>` +
     `<div class="mini-map-topics">${topics}</div>` +
     `</div>`;
@@ -1275,19 +1302,28 @@ function renderPaperInspector(
   ).join('');
   const canDelete = v.paper.linkedTopicCount === 0 && v.links.length === 0 && v.integrations.length === 0;
   const deleteAction = canDelete
-    ? `<section class="detail-panel danger-panel"><h2>删除文档</h2>` +
-      `<p class="muted">删除此未关联的 paper 及其深读记录。</p>` +
+    ? `<section class="inspector-block inspector-danger"><h2>删除文档</h2>` +
+      `<p class="muted">删除此未关联的文档及其深读记录。</p>` +
       `<form class="deep-read-form" action="/library/documents/${encodeURIComponent(v.paper.id)}" method="post"` +
       ` data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}" data-json-method="DELETE"` +
-      ` onsubmit="return confirm('从 Library 删除此 paper？此操作不可撤销。');">` +
+      ` onsubmit="return confirm('从 Library 删除此文档？此操作不可撤销。');">` +
       `<button class="danger" type="submit">从 Library 删除</button>` +
       `</form></section>`
-    : `<section class="detail-panel"><h2>删除文档</h2>` +
-      `<p class="muted">已关联或已集成的 paper 不能删除。请先检查 topic 关联。</p></section>`;
+    : `<section class="inspector-block"><h2>删除文档</h2>` +
+      `<p class="muted">已关联或已集成的文档不能删除。请先检查 topic 关联。</p></section>`;
   const panel = panelOf(v, editTopic);
   const showMiniMap = v.paper.readStatus !== 'unread' && topicLinksOf(panel).length > 0;
-  return (showMiniMap ? `<section class="detail-panel"><h2>关联概览</h2>${renderMiniMap(v, panel)}</section>` : '') +
-    `<section class="detail-panel"><h2>集成记录</h2><ul class="meta-list">${integrations || '<li class="muted">尚无集成记录</li>'}</ul></section>` +
+  const artifact = v.latestReadArtifact
+    ? `<section class="inspector-block"><h2>深读产物</h2>` +
+      `<p class="mono read-path" title="${escapeHtml(v.latestReadArtifact.path)}">${escapeHtml(basename(v.latestReadArtifact.path))}</p></section>`
+    : '';
+  const history = v.reads.length
+    ? `<section class="inspector-block"><h2>深读记录</h2><ul class="meta-list">${renderReads(v.reads)}</ul></section>`
+    : '';
+  return (showMiniMap ? `<section class="inspector-block"><h2>关联概览</h2>${renderMiniMap(v, panel)}</section>` : '') +
+    artifact +
+    `<section class="inspector-block"><h2>集成记录</h2><ul class="meta-list">${integrations || '<li class="muted">尚无集成记录</li>'}</ul></section>` +
+    history +
     deleteAction;
 }
 
@@ -1314,8 +1350,9 @@ function renderLibraryStages() {
 
 function enableLibraryRetry() {
   if (!libRetry) return;
+  libRetry.hidden = false;
   libRetry.disabled = false;
-  libRetry.textContent = 'Retry';
+  libRetry.textContent = '重试深读';
   libRetry.addEventListener('click', () => {
     const paperId = libStatus && libStatus.dataset.paperId;
     if (!paperId) { window.location.reload(); return; }
@@ -1344,7 +1381,7 @@ if (libStatus && libStatus.dataset.libraryTask) {
   es.addEventListener('plan', (ev) => { libPlan = JSON.parse(ev.data).stages; renderLibraryStages(); });
   es.addEventListener('stage', (ev) => {
     libCurrent = JSON.parse(ev.data).name;
-    if (libStatus) libStatus.textContent = 'Current stage: ' + (libStageLabels[libCurrent] || libCurrent) + '.';
+    if (libStatus) libStatus.textContent = '正在提取内容并生成深读产物。';
     renderLibraryStages();
   });
   es.addEventListener('line', (ev) => appendLibraryLog(JSON.parse(ev.data)));
@@ -1354,16 +1391,16 @@ if (libStatus && libStatus.dataset.libraryTask) {
     try { data = JSON.parse(ev.data || '{}'); } catch {}
     libDone = data.status === 'done' || data.exitCode === 0;
     libFailed = !libDone;
-    if (libHeading) libHeading.textContent = libDone ? 'Read complete' : 'Read failed';
-    if (libStatus) libStatus.textContent = libDone ? 'Read artifact recorded. Refreshing to show the completed read.' : 'Read failed. Refresh to retry, or check the log below.';
+    if (libHeading) libHeading.textContent = libDone ? '深读完成' : '深读失败';
+    if (libStatus) libStatus.textContent = libDone ? '深读产物已记录，正在刷新。' : '深读失败，可重试或查看运行详情。';
     renderLibraryStages();
     if (libDone) window.setTimeout(() => window.location.reload(), 900);
     else enableLibraryRetry();
   });
-  es.onerror = () => appendLibraryLog('progress connection closed');
+  es.onerror = () => appendLibraryLog('进度连接已关闭');
 } else {
   renderLibraryStages();
-  appendLibraryLog('Live stage stream is unavailable for this restored reading state.');
+  appendLibraryLog('当前无法显示实时步骤。');
 }
 `;
 
