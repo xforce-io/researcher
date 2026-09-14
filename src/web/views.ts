@@ -1148,11 +1148,11 @@ const TOPIC_SUGGEST_JS = `/* TOPIC_SUGGEST_JS */
 
 function renderReads(reads: LibraryPaperDetailView['reads']): string {
   return reads.map((r) => {
-    const path = r.artifactPath ?? r.id;
-    const label = r.artifactPath ? basename(path) : r.id;
-    const err = r.lastError ? ` <span class="read-error mono" title="${escapeHtml(r.lastError)}">${escapeHtml(r.lastError)}</span>` : '';
-    return `<li class="read-item">${renderStatusBadge(r.status)}` +
-      `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(label)}</span>${err}</li>`;
+    const path = r.artifactPath;
+    const file = path
+      ? `<span class="read-path mono" title="${escapeHtml(path)}">${escapeHtml(basename(path))}</span>`
+      : '';
+    return `<li class="read-item">${renderStatusBadge(r.status)}${file}</li>`;
   }).join('');
 }
 
