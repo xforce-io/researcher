@@ -123,11 +123,21 @@ describe('document topic focus in Chromium (#205 S1)', () => {
         await dialog.waitFor({ state: 'visible' });
         await dialog.locator('input[name="rationale"]').fill('Do not save this draft.');
       }
+      if (path.mode === 'normal') {
+        // Observe after the application's existing close listener, not the native
+        // focus restoration that happens before the queued close event.
+        await dialog.evaluate((element) => {
+          element.addEventListener('close', () => element.setAttribute('data-observed-close', ''), { once: true });
+        });
+      }
       if (path.exit === 'escape') await page.keyboard.press('Escape');
       else if (path.exit === 'cancel') await dialog.getByRole('link', { name: '取消', exact: true }).click();
       else await dialog.getByRole('button', { name: '关闭', exact: true }).click();
       await page.waitForURL(detail);
       await dialog.waitFor({ state: 'hidden' });
+      if (path.mode === 'normal') {
+        await page.locator('.document-topic-dialog[data-observed-close]').waitFor({ state: 'attached' });
+      }
       expect(page.url()).toBe(detail);
       if (broken) {
         expect(injected).toBe(true);
