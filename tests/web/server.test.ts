@@ -252,7 +252,7 @@ it('adds a trending paper then lands on its detail without Deep read', async () 
   const page = await fetch(base + '/library/documents/paper_arxiv_2609_01597');
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain('Deep read');
+  expect(html).toContain('深读产物');
   expect(html).toContain('管理 topic 关联');
   expect(html).not.toContain('read_paper_arxiv_2609_01597.md');
 });
@@ -455,7 +455,7 @@ it('adds a paper through the web library without duplicating arXiv ids', async (
   const selectedHtml = await selected.text();
   expect(selectedHtml).toContain('paper-detail-main');
   expect(selectedHtml).toContain('paper-identity-fm');
-  expect(selectedHtml).toContain('Deep read');
+  expect(selectedHtml).toContain('深读产物');
   expect(selectedHtml).toContain('class="linked-topic-row"');
   expect(selectedHtml).toMatch(/<b>trace<\/b>/);
   expect(selectedHtml).toContain('关联其它 topic');
@@ -674,7 +674,7 @@ it('manages a second topic link without rewriting the first (#153)', async () =>
   const addSelect = html.match(/<select name="topic"[^>]*>[\s\S]*?<\/select>/)?.[0] ?? '';
   expect(addSelect).not.toContain('value="trace"');
   expect(addSelect).not.toContain('value="feeds/ai-safety"');
-  const map = html.match(/<section class="detail-panel"><h2>关联概览<\/h2>[\s\S]*?<\/section>/)?.[0] ?? '';
+  const map = html.match(/<section class="inspector-block"><h2>关联概览<\/h2>[\s\S]*?<\/section>/)?.[0] ?? '';
   expect(map).toContain('trace');
   expect(map).toContain('feeds/ai-safety');
 

@@ -9,6 +9,7 @@ import {
   renderDoc,
   renderLibrary,
   renderLibraryPaper,
+  renderNoteReader,
   renderTopic,
   renderTopics,
   renderVideoReader,
@@ -850,7 +851,9 @@ describe('renderLibrary', () => {
     // Breadcrumb wayfinding + primary Notes CTA (project button language).
     expect(html).toContain('document-back');
     expect(html).toContain('class="document-header"');
-    expect(html).toMatch(/class="primary paper-jump-notes"[^>]*href="#annotations"/);
+    expect(html).toMatch(/class="secondary paper-jump-notes"[^>]*href="#annotations"/);
+    expect(html).not.toMatch(/class="primary paper-jump-notes"/);
+    expect(html).toContain('>论文<');
     // Notes jump only in the page head (not duplicated in the reader chrome).
     expect(html.match(/href="#annotations"/g)?.length).toBe(1);
     expect(html).toContain(`/library/documents/${library.papers[0].id}/annotations`);
@@ -858,7 +861,10 @@ describe('renderLibrary', () => {
     expect(html).toContain('<strong>Selection</strong>');
     expect(html).toContain('<code>generation</code>');
     expect(html).toContain('clarification');
+    expect(html).toContain('澄清');
     expect(html).toContain('pinned');
+    expect(html).toContain('class="primary"');
+    expect(html).toContain('重新深读');
   });
 
   it('uses one document surface with aligned identity meta', () => {
@@ -907,12 +913,13 @@ describe('renderLibrary', () => {
     expect(html).not.toContain('<dt>kind</dt>');
     // Aligned identity table (not loose prose meta).
     expect(html).toContain('paper-identity-fm');
-    expect(html).toContain('<dt>authors</dt>');
+    expect(html).toContain('<dt>作者</dt>');
     expect(html).toContain('A Author');
-    expect(html).toContain('<dt>arxiv</dt>');
-    expect(html).toContain('<dt>source</dt>');
-    expect(html).toContain('<dt>pdf</dt>');
-    expect(html).toContain('<dt>status</dt>');
+    expect(html).toContain('<dt>arXiv</dt>');
+    expect(html).toContain('<dt>来源</dt>');
+    expect(html).toContain('<dt>PDF</dt>');
+    expect(html).not.toContain('<dt>status</dt>');
+    expect(html).not.toContain('0 links');
     expect(html).toContain('https://arxiv.org/abs/2401.12345');
     expect(html).toContain('Frame lede.');
     expect(html).toContain('<h2>Claims</h2>');
@@ -940,7 +947,7 @@ describe('renderLibrary', () => {
     expect(html).not.toContain('disabled>深读</button>');
     expect(html).not.toContain('/library/read/');
     expect(html).toContain('class="read-item"');
-    expect(html).toContain('class="read-path mono"');
+    expect(html).toContain('深读记录');
   });
 
   it('embeds active library read task metadata for live progress', () => {
@@ -960,18 +967,79 @@ describe('renderLibrary', () => {
     expect(html).toContain('role="status"');
     expect(html).toContain('id="library-read-heading"');
     expect(html).toContain('id="library-read-retry"');
-    expect(html).toContain('disabled>深读</button>');
+    expect(html).toContain('hidden>重试深读</button>');
+    expect(html).not.toContain('disabled>深读</button>');
+    expect(html).toContain('class="read-run-details"');
+    expect(html).toContain('运行详情');
     expect(html).toContain('id="library-read-stages"');
     expect(html).toContain('Fetch source');
     expect(html).toContain('Draft read artifact');
     expect(html).toContain('Record Library state');
-    expect(html).toContain("libHeading.textContent = libDone ? 'Read complete' : 'Read failed'");
-    expect(html).toContain("libRetry.textContent = 'Retry'");
+    expect(html).toContain("libHeading.textContent = libDone ? '深读完成' : '深读失败'");
+    expect(html).toContain("libRetry.textContent = '重试深读'");
     expect(html).toContain("cls = 'error'");
     expect(html).toContain('data-library-task="task-9"');
     expect(html).toContain('data-started-at="1719000000000"');
     expect(html).toContain('/library/documents/');
     expect(html).toContain('/reads/');
+  });
+
+  it('labels blog as 博客 and keeps the annotation jump secondary', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: { ...library.papers[0], docType: 'blog', displayTitle: 'A Blog Post' },
+      topics: library.topics,
+      reads: [],
+      notes: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(html).toContain('>博客<');
+    expect(html).toContain('尚未关联 topic');
+    expect(html).toMatch(/class="secondary paper-jump-notes"[^>]*href="#annotations"/);
+    expect(html).toContain('id="annotations"');
+    expect(html).toContain('重新深读');
+    expect(html).not.toMatch(/class="primary paper-jump-notes"/);
+  });
+});
+
+describe('document detail hierarchy (#207)', () => {
+  it('gives notes a primary edit action without an annotation jump', () => {
+    const html = renderNoteReader({
+      id: 'doc_note',
+      title: 'My note',
+      body: 'hello',
+      updatedAt: '2026-09-14T00:00:00Z',
+    });
+    expect(html).toContain('>自主笔记<');
+    expect(html).toMatch(/class="primary"[^>]*href="\/library\/documents\/doc_note\/edit"/);
+    expect(html).not.toContain('href="#annotations"');
+    expect(html).not.toContain('id="annotations"');
+  });
+
+  it('keeps video analyze as the only filled primary in the header actions', () => {
+    const html = renderVideoReader({
+      id: 'doc_video',
+      title: 'Talk',
+      updatedAt: '2026-09-14T00:00:00Z',
+      mediaExists: true,
+      runtimeMissing: [],
+    });
+    expect(html).toContain('>视频<');
+    expect(html).toContain('id="analyze-btn"');
+    expect(html).toMatch(/class="primary" id="analyze-btn"/);
+    expect(html).not.toContain('href="#annotations"');
+  });
+
+  it('offsets in-page jumps by more than the sticky topbar', () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    expect(css).toContain('--topbar-h: 58px');
+    expect(css).toContain('scroll-padding-top: calc(var(--topbar-h) + 16px)');
+    expect(css).toContain('#annotations');
+    expect(css).toContain('scroll-margin-top: calc(var(--topbar-h) + 16px)');
+    expect(css).not.toMatch(/#annotations[^{]*\{[^}]*scroll-margin-top:\s*18px/);
   });
 });
 
@@ -1107,7 +1175,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
 
   it('S5 mini map names every linked topic', () => {
     const html = renderLibraryPaper(view());
-    const map = html.match(/<section class="detail-panel"><h2>关联概览<\/h2>[\s\S]*?<\/section>/);
+    const map = html.match(/<section class="inspector-block"><h2>关联概览<\/h2>[\s\S]*?<\/section>/);
     expect(map?.[0]).toBeDefined();
     expect(map?.[0]).toContain('decision');
     expect(map?.[0]).toContain('trace');
@@ -1121,7 +1189,7 @@ describe('renderLibraryPaper multi-topic links (#153)', () => {
       integrations: [],
       latestReadArtifact: null,
     }));
-    expect(html).toContain('Deep read');
+    expect(html).toContain('深读产物');
     expect(html).toContain('decision');
     expect(html).toContain('governance depth');
     expect(html).toMatch(/关联其它 topic/);
