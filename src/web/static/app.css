@@ -2133,6 +2133,8 @@ html.video-shell .topbar { flex-shrink: 0; }
 .document-detail .paper-inspector {
   position:sticky;
   top:calc(var(--topbar-h) + 12px);
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
   width:100%;
   min-width:0;
   max-width:220px;
@@ -2141,8 +2143,15 @@ html.video-shell .topbar { flex-shrink: 0; }
   padding-top:4px;
   gap:0;
 }
+.document-detail .inspector-block,
+.document-detail .paper-inspector form {
+  min-width:0;
+  max-width:100%;
+}
 .document-detail .paper-inspector .danger {
   width:100%;
+  max-width:100%;
+  box-sizing:border-box;
   white-space:normal;
 }
 .document-detail .paper-inspector .read-path {
