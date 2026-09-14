@@ -475,6 +475,8 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
       'arXiv',
       `<a href="https://arxiv.org/abs/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a>`,
     );
+  } else if (v.paper.canonicalId.startsWith('url:')) {
+    add('来源', escapeHtml(v.paper.canonicalId.slice(4)));
   } else if (v.paper.canonicalId) {
     add('编号', escapeHtml(v.paper.canonicalId));
   }
@@ -778,7 +780,7 @@ form.addEventListener('submit', async (e) => {
 }
 
 function renderDocumentHeader(opts: {
-  title: string; type: string; updatedAt: string; status: string; actions?: string; panel?: TopicLinkPanelView;
+  title: string; type: string; updatedAt: string; status: string; actions?: string; banner?: string; panel?: TopicLinkPanelView;
 }): string {
   const links = opts.panel ? topicLinksOf(opts.panel) : [];
   return `<header class="document-header">` +
@@ -788,7 +790,7 @@ function renderDocumentHeader(opts: {
     `<div class="document-tools"><div class="document-actions">${opts.actions ?? ''}` +
       (opts.panel ? `<button type="button" class="secondary" data-open-topics>管理 topic 关联</button>` : '') +
     `</div><div class="document-topic-summary">${links.length ? links.map((l) => `<span class="tag-chip">${escapeHtml(l.surfaceId)}</span>`).join('') : '<span class="muted">尚未关联 topic</span>'}</div></div>` +
-    `<p class="document-feedback" role="status" hidden></p></header>`;
+    `<p class="document-feedback" role="status" hidden></p>${opts.banner ?? ''}</header>`;
 }
 
 function renderDocumentTopics(panel: TopicLinkPanelView | undefined): string {
@@ -948,9 +950,9 @@ interface ActiveTaskView {
 }
 
 const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
-  'fetch-source': 'Fetch source',
-  'draft-read': 'Draft read artifact',
-  'record-read': 'Record Library state',
+  'fetch-source': '获取来源',
+  'draft-read': '撰写深读产物',
+  'record-read': '写入 Library 状态',
 };
 
 function renderDeepReadForm(paperId: string, label: string, force = false): string {
@@ -1235,12 +1237,15 @@ export function renderLibraryPaper(
     `</section>`;
   const panel = panelOf(v, editTopic);
   const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  const readingOrFailed = v.paper.readStatus === 'reading' || v.paper.readStatus === 'failed';
+  const deepRead = renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError);
   const body = topbar('', 'library') +
     `<main class="paper-detail-shell document-detail">` +
       `<section class="paper-detail-main">` +
         renderDocumentHeader({ title: v.paper.displayTitle, type: documentTypeLabel(v.paper.docType), updatedAt: v.paper.updatedAt,
           status: documentStatusLabel(v.paper.readStatus), panel,
-          actions: notesJump + renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError) }) +
+          actions: notesJump + (readingOrFailed ? '' : deepRead),
+          banner: readingOrFailed ? deepRead : '' }) +
         renderDocumentTopics(panel) +
         readSurface +
         renderPaperNotes(v) +
@@ -1376,7 +1381,7 @@ if (libStatus && libStatus.dataset.libraryTask) {
   es.addEventListener('plan', (ev) => { libPlan = JSON.parse(ev.data).stages; renderLibraryStages(); });
   es.addEventListener('stage', (ev) => {
     libCurrent = JSON.parse(ev.data).name;
-    if (libStatus) libStatus.textContent = '当前步骤：' + (libStageLabels[libCurrent] || libCurrent);
+    if (libStatus) libStatus.textContent = '正在提取内容并生成深读产物。';
     renderLibraryStages();
   });
   es.addEventListener('line', (ev) => appendLibraryLog(JSON.parse(ev.data)));

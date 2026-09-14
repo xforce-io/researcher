@@ -972,9 +972,14 @@ describe('renderLibrary', () => {
     expect(html).toContain('class="read-run-details"');
     expect(html).toContain('运行详情');
     expect(html).toContain('id="library-read-stages"');
-    expect(html).toContain('Fetch source');
-    expect(html).toContain('Draft read artifact');
-    expect(html).toContain('Record Library state');
+    expect(html).toContain('获取来源');
+    expect(html).toContain('撰写深读产物');
+    expect(html).toContain('写入 Library 状态');
+    expect(html).not.toContain('Fetch source');
+    expect(html).toContain('正在提取内容并生成深读产物');
+    expect(html.indexOf('文档批注')).toBeLessThan(html.indexOf('管理 topic 关联'));
+    expect(html.indexOf('管理 topic 关联')).toBeLessThan(html.indexOf('read-status-panel'));
+    expect(html).toContain("libStatus.textContent = '正在提取内容并生成深读产物。'");
     expect(html).toContain("libHeading.textContent = libDone ? '深读完成' : '深读失败'");
     expect(html).toContain("libRetry.textContent = '重试深读'");
     expect(html).toContain("cls = 'error'");

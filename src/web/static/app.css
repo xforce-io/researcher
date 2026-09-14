@@ -2128,6 +2128,7 @@ html.video-shell .topbar { flex-shrink: 0; }
 .document-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 18px; margin-top:16px; }
 .document-actions, .document-topic-summary { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .document-actions form { margin:0; }
+.document-header > .read-status-panel { margin-top:12px; }
 .document-actions .read-status-panel { flex-basis:100%; }
 .document-detail .paper-inspector {
   position:sticky;

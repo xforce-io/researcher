@@ -548,7 +548,7 @@ it('starts a library deep read and records read state', async () => {
   const detailHtml = await detailDuringRead.text();
   expect(detailHtml).toContain('id="library-read-stages"');
   expect(detailHtml).toContain('data-library-task="');
-  expect(detailHtml).toContain('Fetch source');
+  expect(detailHtml).toContain('获取来源');
 
   const second = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
     method: 'POST',
