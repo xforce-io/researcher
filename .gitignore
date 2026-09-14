@@ -6,3 +6,4 @@ coverage/
 .claude/
 .worktrees/
 .grok/verify-runs/
+.agents/verify-runs/

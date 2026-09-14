@@ -373,3 +373,19 @@ npm run format
 
 Topic-repo integration tests live under `tests/pipeline/` and use real `git`
 in `os.tmpdir()` plus stubbed agent runtimes.
+
+
+The document-topic focus regression runs in headless Chromium as part of `npm test`.
+Prepare it after installing dependencies:
+
+```sh
+npm ci
+npx playwright install --no-shell chromium
+# Linux machines may need: npx playwright install --with-deps --no-shell chromium
+npm test -- --maxWorkers=2 tests/web/document-topic-focus.test.ts
+```
+
+It creates a disposable workspace, a loopback server on a random port, and fresh
+browser contexts. It does not use your running console, browser profile, or LLM.
+All 15 exit paths have both a normal check and an injected focus regression check.
+Missing Chromium fails the suite with installation instructions; it is not a skip.
