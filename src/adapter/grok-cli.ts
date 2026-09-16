@@ -45,10 +45,14 @@ export class GrokCliAdapter implements AgentRuntime {
           stderr: result.stderr ?? '',
         };
       }
+      const diagnostic = [result.stderr, result.stdout]
+        .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+        .join('\n')
+        .trim();
       return failed(
         'GROK_CLI_EXIT',
         `Grok CLI exited with code ${result.exitCode ?? 1}.`,
-        result.stderr ?? '',
+        diagnostic,
       );
     } catch (error) {
       return mapGrokProcessError(error);

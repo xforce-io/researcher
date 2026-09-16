@@ -356,6 +356,25 @@ describe('runLibraryRead', () => {
     })).rejects.toThrow('produced no Library read content');
   });
 
+  it('includes adapter stderr in the thrown deep-read failure (#209 S3)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-stderr-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    writeTextCache('2401.12345', 'CACHED PAPER BODY');
+
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paper_arxiv_2401_12345',
+      adapter: new FailedCliAdapter({
+        output: 'Grok CLI exited with code 1.',
+        modifiedFiles: [],
+        exitCode: 1,
+        stderr: 'Connection refused (os error 61) cli-chat-proxy.grok.com',
+        error: { code: 'GROK_CLI_EXIT', message: 'Grok CLI exited with code 1.' },
+      }),
+    })).rejects.toThrow(/Connection refused \(os error 61\)/);
+  });
+
   it('surfaces adapter error code/message when stderr is empty (#136)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rsw-lib-read-exit-detail-'));
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));

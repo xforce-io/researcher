@@ -462,9 +462,9 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
     ? splitFrontmatter(v.latestReadArtifact.markdown).fm
     : null;
   const rows: string[] = [];
-  const add = (key: string, value: string) => {
+  const add = (key: string, value: string, wide = false) => {
     if (!value) return;
-    rows.push(`<div><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`);
+    rows.push(`<div${wide ? ' class="wide"' : ''}><dt>${escapeHtml(key)}</dt><dd>${value}</dd></div>`);
   };
 
   if (fm?.authors) add('作者', fmValue('authors', fm.authors));
@@ -476,12 +476,12 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
       `<a href="https://arxiv.org/abs/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a>`,
     );
   } else if (v.paper.canonicalId.startsWith('url:')) {
-    add('来源', escapeHtml(v.paper.canonicalId.slice(4)));
+    add('来源', escapeHtml(v.paper.canonicalId.slice(4)), true);
   } else if (v.paper.canonicalId) {
     add('编号', escapeHtml(v.paper.canonicalId));
   }
 
-  if (fm?.source_url) add('来源', fmValue('source_url', fm.source_url));
+  if (fm?.source_url) add('来源', fmValue('source_url', fm.source_url), true);
   if (fm?.pdf_url) add('PDF', fmValue('pdf_url', fm.pdf_url));
 
   add(
@@ -500,6 +500,11 @@ document.addEventListener('submit', function (e) {
   var action = form.getAttribute('data-json-action');
   if (!action) return;
   e.preventDefault();
+  var dataset = form.dataset || (form.dataset = {});
+  if (dataset.saving === '1') return;
+  dataset.saving = '1';
+  var buttons = form.querySelectorAll ? Array.prototype.slice.call(form.querySelectorAll('button')) : [];
+  for (var i = 0; i < buttons.length; i++) buttons[i].disabled = true;
   var method = (form.getAttribute('data-json-method') || 'POST').toUpperCase();
   var payload = {};
   new FormData(form).forEach(function (v, k) {
@@ -514,16 +519,30 @@ document.addEventListener('submit', function (e) {
     opts.headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(payload);
   }
+  function unlock() {
+    dataset.saving = '0';
+    for (var j = 0; j < buttons.length; j++) buttons[j].disabled = false;
+  }
+  function go(url) {
+    var next = new URL(url, location.href);
+    if (next.pathname === location.pathname && next.search === location.search) {
+      if (next.hash) location.hash = next.hash;
+      location.reload();
+      return;
+    }
+    location.href = next.href;
+  }
   fetch(action, opts).then(function (res) {
     if (res.status === 204) { location.reload(); return; }
     if (!res.ok) {
       return res.text().then(function (t) { throw new Error(t || String(res.status)); });
     }
     return res.json().then(function (data) {
-      if (data && data.url) location.href = data.url;
+      if (data && data.url) go(data.url);
       else location.reload();
     });
   }).catch(function (err) {
+    unlock();
     alert(err && err.message ? err.message : 'request failed');
   });
 });
@@ -1202,7 +1221,7 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
         `<textarea name="body" rows="3" required placeholder="支持 Markdown"></textarea>` +
       `</label>` +
       `<div class="paper-note-form-row">` +
-        `<label>类型<select name="kind">${kindOptions}</select></label>` +
+        `<label class="note-kind-label">类型<select name="kind">${kindOptions}</select></label>` +
         `<label class="note-pin-check"><input type="checkbox" name="pinned" value="1"> 置顶</label>` +
         `<button class="primary" type="submit">添加批注</button>` +
       `</div>` +
@@ -1363,9 +1382,8 @@ function enableLibraryRetry() {
     }).then(function (res) {
       if (!res.ok) throw new Error('retry failed');
       return res.json();
-    }).then(function (data) {
-      location.href = (data && data.url) || location.href;
-    }).catch(function () { window.location.reload(); });
+    }).then(function () { window.location.reload(); })
+      .catch(function () { window.location.reload(); });
   }, { once: true });
 }
 
