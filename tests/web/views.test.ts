@@ -1149,6 +1149,12 @@ describe('document detail hierarchy (#207)', () => {
     expect(css).toContain('.read-status-copy .read-error');
     expect(css).toMatch(/\.read-status-copy \.read-error\s*\{[^}]*max-height:\s*4\.8em/);
   });
+
+  it('strips ?edit= after topic-link save instead of reloading the query', () => {
+    const js = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/document-detail.js'), 'utf8');
+    expect(js).toMatch(/sessionStorage\.setItem\(messageKey[\s\S]{0,200}location\.href = location\.pathname/);
+    expect(js).not.toMatch(/sessionStorage\.setItem\(messageKey[\s\S]{0,200}location\.reload\(\)/);
+  });
 });
 
 describe('renderLibraryPaper multi-topic links (#153)', () => {

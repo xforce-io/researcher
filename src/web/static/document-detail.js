@@ -69,7 +69,7 @@ if (dialog && open) {
         throw new Error(reason || String(res.status));
       }
       try { sessionStorage.setItem(messageKey, method === 'DELETE' ? '已解除 topic 关联' : 'topic 关联已保存'); } catch { /* optional feedback */ }
-      location.reload();
+      location.href = location.pathname;
     } catch (error) {
       status.setAttribute('role', 'alert');
       status.className = 'video-error';
