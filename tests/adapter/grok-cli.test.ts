@@ -129,4 +129,17 @@ describe('GrokCliAdapter', () => {
       error: { code: 'GROK_CLI_EXIT' },
     });
   });
+
+  it('keeps stdout when Grok exits non-zero with empty stderr', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'researcher-grok-cli-'));
+    const bin = writeExecutable(dir, "process.stdout.write('Connection refused (os error 61)'); process.exit(1);");
+
+    const result = await invoke(bin, dir);
+
+    expect(result).toMatchObject({
+      exitCode: 1,
+      stderr: 'Connection refused (os error 61)',
+      error: { code: 'GROK_CLI_EXIT' },
+    });
+  });
 });

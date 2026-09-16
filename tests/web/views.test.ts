@@ -1046,6 +1046,115 @@ describe('document detail hierarchy (#207)', () => {
     expect(css).toContain('scroll-margin-top: calc(var(--topbar-h) + 16px)');
     expect(css).not.toMatch(/#annotations[^{]*\{[^}]*scroll-margin-top:\s*18px/);
   });
+
+  it('reloads the current document after a same-path JSON form success', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: {
+        id: 'paper_arxiv_2401_12345',
+        displayTitle: 'Reusable Paper Cards',
+        canonicalId: 'arxiv:2401.12345',
+        sourceLabel: 'arXiv',
+        tags: [],
+        readStatus: 'unread',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-09-16T00:00:00Z',
+        docType: 'blog',
+      },
+      topics: [],
+      reads: [],
+      notes: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(html).toContain('function go(url)');
+    expect(html).toContain('next.pathname === location.pathname && next.search === location.search');
+    expect(html).toContain('location.reload()');
+    expect(html).not.toContain('if (data && data.url) location.href = data.url');
+    expect(html).toContain('class="note-kind-label"');
+  });
+
+  it('gives URL sources a full-width identity row and keeps the kind select shrinkable', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: {
+        id: 'paper_url_deadbeef',
+        displayTitle: 'A Blog',
+        canonicalId: 'url:https://example.com/long-path/post',
+        sourceLabel: 'URL',
+        tags: [],
+        readStatus: 'unread',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-09-16T00:00:00Z',
+        docType: 'blog',
+      },
+      topics: [],
+      reads: [],
+      notes: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(html).toContain('class="wide"');
+    expect(html).toContain('<dt>来源</dt>');
+    expect(html).toContain('https://example.com/long-path/post');
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    expect(css).toContain('.paper-note-form-row select');
+    expect(css).toMatch(/\.paper-note-form-row select\s*\{[^}]*width:\s*auto/);
+    expect(css).toContain('.document-detail .paper-note-form-row select { width:auto; }');
+    expect(css).toContain('.paper-detail-shell.document-detail { grid-template-columns:minmax(0, 1fr) 220px;');
+    expect(css).not.toContain('grid-template-columns:minmax(0, 1fr) minmax(0, 220px)');
+  });
+
+  it('shows deep-read lastError in the failed banner without dropping the retry', () => {
+    const html = renderLibraryPaper({
+      root: '/ws',
+      paper: {
+        id: 'paper_url_deadbeef',
+        displayTitle: 'A Blog',
+        canonicalId: 'url:https://example.com/x',
+        sourceLabel: 'URL',
+        tags: [],
+        readStatus: 'failed',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-09-16T00:00:00Z',
+        docType: 'blog',
+      },
+      topics: [],
+      reads: [{
+        id: 'read_1',
+        paperId: 'paper_url_deadbeef',
+        status: 'failed',
+        lastError: 'library read agent exited 1 [GROK_CLI_EXIT]: Grok CLI exited with code 1. — Connection refused (os error 61)',
+        createdAt: '2026-09-16T00:00:00Z',
+        updatedAt: '2026-09-16T00:00:00Z',
+      }],
+      notes: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(html).toContain('深读失败');
+    expect(html).toContain('Connection refused (os error 61)');
+    expect(html).toContain('重试深读');
+    expect(html).toContain('class="read-error mono"');
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
+    expect(css).toContain('.read-status-copy .read-error');
+    expect(css).toMatch(/\.read-status-copy \.read-error\s*\{[^}]*max-height:\s*4\.8em/);
+  });
+
+  it('strips ?edit= after topic-link save instead of reloading the query', () => {
+    const js = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/document-detail.js'), 'utf8');
+    expect(js).toMatch(/sessionStorage\.setItem\(messageKey[\s\S]{0,200}location\.href = location\.pathname/);
+    expect(js).not.toMatch(/sessionStorage\.setItem\(messageKey[\s\S]{0,200}location\.reload\(\)/);
+  });
 });
 
 describe('renderLibraryPaper multi-topic links (#153)', () => {

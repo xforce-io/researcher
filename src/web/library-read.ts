@@ -265,7 +265,13 @@ export function formatLibraryReadAgentFailure(result: InvokeResult): string {
   if (!code && message === `exit code ${result.exitCode}`) {
     return `library read agent exited ${result.exitCode}`;
   }
-  return `library read agent exited ${result.exitCode}${codePart}: ${message}`;
+  const diagnostic = [result.stderr, result.output]
+    .map((s) => s?.trim() ?? '')
+    .find((s) => s.length > 0 && s !== message);
+  const detail = diagnostic && !message.includes(diagnostic)
+    ? ` — ${diagnostic.slice(0, 400)}`
+    : '';
+  return `library read agent exited ${result.exitCode}${codePart}: ${message}${detail}`;
 }
 
 function readMethodology(file: string): string {
