@@ -32,6 +32,22 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps --no-shell chromium
 
+      # topic-setup / onboard commit via git; GHA images have no user.ident.
+      - name: Git identity for tests that commit
+        run: |
+          git config --global user.email "ci@researcher.test"
+          git config --global user.name "researcher-ci"
+
+      # library-video asserts Analyze is enabled; UI gates on `which ffmpeg` and
+      # `which whisper`. Tests inject a runner and never exec these binaries.
+      - name: Stub analyze runtime tools
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/ffmpeg"
+          printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/whisper"
+          chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/whisper"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - run: npm test
 
       - run: npm run lint
