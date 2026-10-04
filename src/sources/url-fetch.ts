@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execa } from 'execa';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -8,6 +8,14 @@ import { resolveResearcherHome } from '../paths.js';
 import { defaultDocTypeForSource, type DocType } from '../library/doc-type.js';
 import type { SourceRef } from '../library/model.js';
 import { fetchXStatusMaterial, parseXStatusUrl } from './x-status.js';
+import {
+  countBodyStats,
+  extractHtmlArticle,
+  isBodyTooShort,
+  loadUrlExtractThreshold,
+  UrlExtractError,
+  type ExtractionMethod,
+} from './url-extract.js';
 
 const FETCH_TIMEOUT_MS = 60_000;
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -23,6 +31,14 @@ export interface UrlMaterial {
   contentType: string;
   docType: DocType;
   url: string;
+  extractionMethod?: ExtractionMethod;
+  bodyChars?: number;
+  bodyWords?: number;
+}
+
+export interface FetchUrlMaterialOptions {
+  docType?: DocType;
+  forceRefetch?: boolean;
 }
 
 /** Include Node fetch `.cause` (e.g. UND_ERR_CONNECT_TIMEOUT) in a single string. */
@@ -59,7 +75,7 @@ export function githubRepoRawCandidates(url: string): string[] | undefined {
   return out;
 }
 
-export async function fetchUrlMaterial(canonicalId: string, opts?: { docType?: DocType }): Promise<UrlMaterial> {
+export async function fetchUrlMaterial(canonicalId: string, opts?: FetchUrlMaterialOptions): Promise<UrlMaterial> {
   if (!canonicalId.startsWith('url:')) {
     throw new Error(`fetchUrlMaterial: expected url:-prefixed id, got ${canonicalId}`);
   }
@@ -67,13 +83,16 @@ export async function fetchUrlMaterial(canonicalId: string, opts?: { docType?: D
   const source: SourceRef = { kind: 'url', id: canonicalId, url };
   const docType = opts?.docType ?? defaultDocTypeForSource(source);
 
-  const cached = readUrlCache(canonicalId);
-  if (cached) return { ...cached, docType: opts?.docType ?? cached.docType };
+  if (!opts?.forceRefetch) {
+    const cached = readUrlCache(canonicalId);
+    if (cached) return { ...cached, docType: opts?.docType ?? cached.docType };
+  }
 
   if (parseXStatusUrl(url)) {
     const fetched = await fetchXStatusMaterial(url, docType);
-    writeUrlCache(canonicalId, fetched);
-    return fetched;
+    const material = withBodyStats({ ...fetched, extractionMethod: 'plain' });
+    writeUrlCache(canonicalId, material);
+    return material;
   }
 
   const extras = githubRepoRawCandidates(url) ?? [];
@@ -99,7 +118,7 @@ export async function fetchUrlMaterial(canonicalId: string, opts?: { docType?: D
 async function fetchOneUrl(url: string, docType: DocType): Promise<UrlMaterial> {
   const { status, contentType, buf } = await httpGet(url);
   if (status < 200 || status >= 300) {
-    throw new Error(`url fetch failed: HTTP ${status} for ${url}`);
+    throw new UrlExtractError(`url fetch failed: HTTP ${status} for ${url}`, { failureCode: 'fetch_error' });
   }
   if (buf.length > MAX_BYTES) {
     throw new Error(`url fetch too large: ${buf.length} bytes (max ${MAX_BYTES}) for ${url}`);
@@ -109,29 +128,58 @@ async function fetchOneUrl(url: string, docType: DocType): Promise<UrlMaterial> 
   let text = '';
   const looksPdf = contentType.includes('application/pdf') || /\.pdf(\?|$)/i.test(url);
 
+  let extractionMethod: ExtractionMethod = 'plain';
   if (looksPdf) {
     text = await pdfBufferToText(buf);
     title = firstNonEmptyLine(text) || urlPathTitle(url);
+    extractionMethod = 'pdf';
   } else if (contentType.includes('text/plain') || contentType.includes('text/markdown') || /\.(md|txt)(\?|$)/i.test(url)) {
     text = buf.toString('utf8');
     title = firstHeading(text) || urlPathTitle(url);
+    extractionMethod = 'plain';
   } else {
     const html = buf.toString('utf8');
     if (/<html[\s>]/i.test(html) || contentType.includes('html') || /<body[\s>]/i.test(html)) {
-      const extracted = extractHtmlMainText(html);
-      title = extracted.title || urlPathTitle(url);
-      text = extracted.text;
+      try {
+        const extracted = extractHtmlArticle(html, loadUrlExtractThreshold());
+        title = extracted.title || urlPathTitle(url);
+        text = extracted.text;
+        extractionMethod = extracted.extractionMethod;
+      } catch (err) {
+        if (err instanceof UrlExtractError) {
+          throw new UrlExtractError(`${err.message} for ${url}`, {
+            failureCode: err.failureCode,
+            extractedChars: err.extractedChars,
+            extractedWords: err.extractedWords,
+            extractionMethod: err.extractionMethod,
+          });
+        }
+        throw err;
+      }
     } else {
       text = html;
       title = urlPathTitle(url);
+      extractionMethod = 'plain';
     }
   }
 
   if (!text.trim()) {
-    throw new Error(`url fetch produced empty text for ${url}`);
+    throw new UrlExtractError(`url fetch produced empty text for ${url}`, {
+      failureCode: 'empty_text',
+      extractedChars: 0,
+      extractedWords: 0,
+      extractionMethod,
+    });
   }
 
-  return { title, text, contentType: contentType || 'application/octet-stream', docType, url };
+  return withBodyStats({
+    title,
+    text,
+    contentType: contentType || 'application/octet-stream',
+    docType,
+    url,
+    extractionMethod,
+  });
 }
 
 async function httpGet(url: string): Promise<{ status: number; contentType: string; buf: Buffer }> {
@@ -141,7 +189,7 @@ async function httpGet(url: string): Promise<{ status: number; contentType: stri
     try {
       return await curlGet(url);
     } catch {
-      throw new Error(`url fetch failed: ${formatNetworkError(err)} for ${url}`);
+      throw new UrlExtractError(`url fetch failed: ${formatNetworkError(err)} for ${url}`, { failureCode: 'fetch_error' });
     }
   }
 }
@@ -190,53 +238,6 @@ async function curlGet(url: string): Promise<{ status: number; contentType: stri
   }
 }
 
-export function extractHtmlMainText(html: string): { title: string; text: string } {
-  let title = '';
-  const tm = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
-  if (tm) title = decodeEntities(stripTags(tm[1])).replace(/\s+/g, ' ').trim();
-
-  const body = html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ');
-
-  const main =
-    /<article\b[\s\S]*?<\/article>/i.exec(body)?.[0] ??
-    /<main\b[\s\S]*?<\/main>/i.exec(body)?.[0] ??
-    /<body\b[\s\S]*?<\/body>/i.exec(body)?.[0] ??
-    body;
-
-  const text = decodeEntities(
-    main
-      .replace(/<\/(p|div|h[1-6]|li|tr|section|header|footer|article|main|blockquote|pre)[^>]*>/gi, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/?[^>]+>/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim(),
-  );
-
-  return { title, text };
-}
-
-function stripTags(s: string): string {
-  return s.replace(/<\/?[^>]+>/g, '');
-}
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-}
-
 function firstHeading(md: string): string {
   const m = /^#\s+(.+)$/m.exec(md);
   return m ? m[1].trim() : '';
@@ -282,6 +283,23 @@ function urlCacheDir(): string {
   return join(resolveResearcherHome(), 'cache', 'url');
 }
 
+function withBodyStats(material: UrlMaterial): UrlMaterial {
+  const stats = countBodyStats(material.text);
+  return { ...material, bodyChars: stats.chars, bodyWords: stats.words };
+}
+
+function isHtmlContentType(contentType: string | undefined): boolean {
+  return (contentType ?? '').includes('html');
+}
+
+function deleteUrlCache(canonicalId: string): void {
+  const key = urlCacheKey(canonicalId);
+  for (const ext of ['.meta.json', '.txt']) {
+    const p = join(urlCacheDir(), `${key}${ext}`);
+    if (existsSync(p)) unlinkSync(p);
+  }
+}
+
 function readUrlCache(canonicalId: string): UrlMaterial | undefined {
   const key = urlCacheKey(canonicalId);
   const metaPath = join(urlCacheDir(), `${key}.meta.json`);
@@ -290,7 +308,12 @@ function readUrlCache(canonicalId: string): UrlMaterial | undefined {
   try {
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as Omit<UrlMaterial, 'text'>;
     const text = readFileSync(textPath, 'utf8');
-    return { ...meta, text };
+    const material = { ...meta, text };
+    if (isHtmlContentType(material.contentType) && isBodyTooShort(text, loadUrlExtractThreshold())) {
+      deleteUrlCache(canonicalId);
+      return undefined;
+    }
+    return withBodyStats(material);
   } catch {
     return undefined;
   }

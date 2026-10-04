@@ -2,7 +2,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createAgentRuntime } from '../adapter/runtime.js';
 import { LIBRARY_DIR } from '../library/store.js';
-import { loadSourceMaterial } from '../pipeline/read.js';
+import { loadSourceMaterial, type SourceMaterial } from '../pipeline/read.js';
+import {
+  countBodyStats,
+  isBodyTooShort,
+  loadUrlExtractThreshold,
+  UrlExtractError,
+  type ExtractionMethod,
+} from '../sources/url-extract.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { resolveResearcherHome } from '../paths.js';
 import { scaffoldMilkieRuntime } from '../commands/init.js';
@@ -33,6 +40,8 @@ export interface LibraryReadRunnerOptions {
   onEvent?: (ev: RunEvent) => void;
   /** Override heartbeat interval (ms). Production default 10s; tests use a short value. */
   heartbeatMs?: number;
+  pastedText?: string;
+  forceRefetch?: boolean;
 }
 
 export interface LibraryReadTopicContext {
@@ -43,6 +52,9 @@ export interface LibraryReadTopicContext {
 export interface LibraryReadResult {
   artifactPath: string;
   title?: string;
+  extractionMethod?: ExtractionMethod;
+  bodyChars?: number;
+  bodyWords?: number;
 }
 
 export type LibraryReadRunner = (opts: LibraryReadRunnerOptions) => Promise<LibraryReadResult>;
@@ -63,7 +75,9 @@ export async function runLibraryRead(
 
   opts.onEvent?.({ type: 'stage', name: 'fetch-source' });
   opts.onLine?.(`fetch-source: loading ${sourceId} (docType=${docType})`);
-  const material = await loadSourceMaterial(sourceId, { docType, requireText: true });
+  const material = opts.pastedText !== undefined
+    ? pastedSourceMaterial(opts.paper, opts.pastedText, docType)
+    : await loadSourceMaterial(sourceId, { docType, requireText: true, forceRefetch: opts.forceRefetch });
   if (!material.paperText.trim()) {
     throw new Error(`library read: empty source text for ${sourceId}`);
   }
@@ -181,7 +195,47 @@ export async function runLibraryRead(
     material,
     body,
   });
-  return { artifactPath, title: material.meta.title || undefined };
+  return {
+    artifactPath,
+    title: material.meta.title || undefined,
+    extractionMethod: material.extractionMethod,
+    bodyChars: material.bodyChars,
+    bodyWords: material.bodyWords,
+  };
+}
+
+function pastedSourceMaterial(paper: Paper, pastedText: string, docType: DocType): SourceMaterial {
+  const threshold = loadUrlExtractThreshold();
+  const stats = countBodyStats(pastedText);
+  if (!pastedText.trim() || isBodyTooShort(pastedText, threshold)) {
+    throw new UrlExtractError(
+      `paste too short: ${stats.chars} chars, ${stats.words} words`,
+      {
+        failureCode: 'extract_too_short',
+        extractedChars: stats.chars,
+        extractedWords: stats.words,
+        extractionMethod: 'user-pasted',
+      },
+    );
+  }
+  const sourceUrl = paper.canonicalSource.url ?? '';
+  return {
+    meta: {
+      id: paper.canonicalSource.id,
+      title: paper.title ?? '',
+      authors: paper.authors ?? [],
+      abstract: paper.abstract ?? '',
+      abs_url: sourceUrl,
+      pdf_url: '',
+    },
+    paperText: pastedText,
+    slugSeed: paper.title || paper.id,
+    fetchInstruction: '',
+    docType,
+    extractionMethod: 'user-pasted',
+    bodyChars: stats.chars,
+    bodyWords: stats.words,
+  };
 }
 
 function libraryReadRecoveryPrompt(opts: {
@@ -236,6 +290,9 @@ function writeLibraryReadArtifact(opts: {
     'kind: library-read',
     `doc_type: ${JSON.stringify(opts.material.docType)}`,
     `tags: ${JSON.stringify(opts.paper.tags ?? [])}`,
+    ...(opts.material.extractionMethod ? [`extraction_method: ${JSON.stringify(opts.material.extractionMethod)}`] : []),
+    ...(opts.material.bodyChars != null ? [`body_chars: ${opts.material.bodyChars}`] : []),
+    ...(opts.material.bodyWords != null ? [`body_words: ${opts.material.bodyWords}`] : []),
     '---',
     '',
     opts.body,

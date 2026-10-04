@@ -130,6 +130,28 @@ library
     const { runLibraryDelete } = await import('./commands/library.js');
     runLibraryDelete({ paperId, cwd: process.cwd() });
   });
+library
+  .command('read <document-id-or-url>')
+  .description('Deep-read a Library document (URL or document id)')
+  .option('--force', 'rerun even if a completed read exists')
+  .option('--force-refetch', 'skip the URL text cache')
+  .option('--paste-file <path>', 'use UTF-8 file (or - for stdin) as the read body')
+  .action(async (input: string, opts: { force?: boolean; forceRefetch?: boolean; pasteFile?: string }) => {
+    const { runLibraryReadCommand } = await import('./commands/library.js');
+    try {
+      await runLibraryReadCommand({
+        cwd: process.cwd(),
+        input,
+        force: opts.force,
+        forceRefetch: opts.forceRefetch,
+        pasteFile: opts.pasteFile,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`${message}\n`);
+      process.exitCode = (err as { exitCode?: number }).exitCode ?? 1;
+    }
+  });
 
 const papers = program.command('papers').description('Trending papers, lookup, and Library deep-read');
 papers

@@ -1145,9 +1145,102 @@ describe('document detail hierarchy (#207)', () => {
     expect(html).toContain('Connection refused (os error 61)');
     expect(html).toContain('重试深读');
     expect(html).toContain('class="read-error mono"');
+    expect(html).toContain('原文全文');
+    expect(html).toContain('用粘贴全文重新深读');
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
     expect(css).toContain('.read-status-copy .read-error');
     expect(css).toMatch(/\.read-status-copy \.read-error\s*\{[^}]*max-height:\s*4\.8em/);
+  });
+
+  it('renders extract_too_short copy, paste controls, and 正文来源 on paste success', () => {
+    const failed = renderLibraryPaper({
+      root: '/ws',
+      paper: {
+        id: 'paper_url_deadbeef',
+        displayTitle: 'A Blog',
+        canonicalId: 'url:https://example.com/x',
+        sourceLabel: 'URL',
+        tags: [],
+        readStatus: 'failed',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-09-16T00:00:00Z',
+        docType: 'blog',
+      },
+      topics: [],
+      reads: [{
+        id: 'read_1',
+        paperId: 'paper_url_deadbeef',
+        status: 'failed',
+        failureCode: 'extract_too_short',
+        extractedChars: 82,
+        extractedWords: 12,
+        extractionMethod: 'dom-fallback',
+        lastError: 'url extract too short: 82 chars, 12 words',
+        createdAt: '2026-09-16T00:00:00Z',
+        updatedAt: '2026-09-16T00:00:00Z',
+      }],
+      notes: [],
+      latestReadArtifact: null,
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(failed).toContain('抽取正文过短');
+    expect(failed).toContain('82 字');
+    expect(failed).toContain('已回退备用抽取');
+    expect(failed).toContain('用粘贴全文重新深读');
+    expect(failed).toContain('强制重新抓取');
+    expect(failed).toContain('name="forceRefetch"');
+    expect(failed).toContain('运行详情');
+    expect(failed).toContain('read-run-details');
+    expect(failed).toMatch(/read-run-details[\s\S]*url extract too short/);
+
+    const ok = renderLibraryPaper({
+      root: '/ws',
+      paper: {
+        id: 'paper_url_deadbeef',
+        displayTitle: 'A Blog',
+        canonicalId: 'url:https://example.com/x',
+        sourceLabel: 'URL',
+        tags: [],
+        readStatus: 'read',
+        linkedTopicCount: 0,
+        integratedTopicCount: 0,
+        updatedAt: '2026-09-16T00:00:00Z',
+        docType: 'blog',
+      },
+      topics: [],
+      reads: [{
+        id: 'read_2',
+        paperId: 'paper_url_deadbeef',
+        status: 'read',
+        extractionMethod: 'user-pasted',
+        createdAt: '2026-09-16T00:00:00Z',
+        updatedAt: '2026-09-16T00:00:00Z',
+      }],
+      notes: [],
+      latestReadArtifact: {
+        path: 'read.md',
+        markdown: [
+          '---',
+          'title: "A Blog"',
+          'extraction_method: "user-pasted"',
+          'body_chars: 14210',
+          'body_words: 2430',
+          '---',
+          '',
+          '# Body',
+        ].join('\n'),
+      },
+      links: [],
+      integrations: [],
+      topicSuggestions: [],
+    });
+    expect(ok).toContain('正文来源');
+    expect(ok).toContain('用户粘贴');
+    expect(ok).toContain('14,210');
+    expect(ok).not.toContain('原文全文');
   });
 
   it('strips ?edit= after topic-link save instead of reloading the query', () => {

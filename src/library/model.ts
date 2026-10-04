@@ -1,6 +1,8 @@
 import type { DocType, LibraryDocType } from './doc-type.js';
+import type { ExtractionMethod, ReadFailureCode } from '../sources/url-extract.js';
 
 export type { DocType, LibraryDocType } from './doc-type.js';
+export type { ExtractionMethod, ReadFailureCode };
 export type SourceKind = 'arxiv' | 'url';
 
 export interface SourceRef {
@@ -38,6 +40,10 @@ export interface PaperRead {
   mutationId?: string;
   /** Terminal failure reason when status is failed (timeout, API error, orphan reclaim, …). */
   lastError?: string;
+  failureCode?: ReadFailureCode;
+  extractedChars?: number;
+  extractedWords?: number;
+  extractionMethod?: ExtractionMethod;
   createdAt: string;
   updatedAt: string;
 }

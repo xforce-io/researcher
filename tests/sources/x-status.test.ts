@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchUrlMaterial } from '../../src/sources/url-fetch.js';
+import { longParagraphs } from '../helpers/long-prose.js';
 import {
   materialFromFxtwitter,
   materialFromSyndication,
@@ -140,7 +141,7 @@ describe('fetchUrlMaterial X dispatch', () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-x-'));
     const fetchMock = vi.fn(async () =>
       new Response(
-        '<html><head><title>Hi</title></head><body><article><p>page</p></article></body></html>',
+        `<html><head><title>Hi</title></head><body><article>${longParagraphs('page')}</article></body></html>`,
         { status: 200, headers: { 'content-type': 'text/html' } },
       ),
     );

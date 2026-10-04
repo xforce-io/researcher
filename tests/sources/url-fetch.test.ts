@@ -1,37 +1,20 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { extractHtmlMainText, fetchUrlMaterial, formatNetworkError, githubRepoRawCandidates } from '../../src/sources/url-fetch.js';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fetchUrlMaterial, formatNetworkError, githubRepoRawCandidates } from '../../src/sources/url-fetch.js';
+import { UrlExtractError } from '../../src/sources/url-extract.js';
+import { longParagraphs } from '../helpers/long-prose.js';
 
-describe('extractHtmlMainText', () => {
-  it('strips scripts/styles and prefers article body', () => {
-    const html = `
-      <html><head><title>Design Doc: Cache</title>
-      <style>.x{color:red}</style>
-      <script>alert(1)</script></head>
-      <body>
-        <nav>Home</nav>
-        <article>
-          <h1>Cache design</h1>
-          <p>We decided to use LRU.</p>
-          <p>Tradeoff: memory vs hit rate.</p>
-        </article>
-        <footer>©</footer>
-      </body></html>`;
-    const { title, text } = extractHtmlMainText(html);
-    expect(title).toBe('Design Doc: Cache');
-    expect(text).toContain('Cache design');
-    expect(text).toContain('We decided to use LRU.');
-    expect(text).not.toContain('alert(1)');
-    expect(text).not.toContain('color:red');
-  });
+function htmlPage(title: string, body: string): string {
+  return `<html><head><title>${title}</title></head><body>${body}</body></html>`;
+}
 
-  it('decodes basic entities', () => {
-    const { text } = extractHtmlMainText('<html><body><p>A &amp; B &lt; C</p></body></html>');
-    expect(text).toContain('A & B < C');
-  });
-});
+function cacheKey(canonicalId: string): string {
+  return createHash('sha256').update(canonicalId).digest('hex').slice(0, 16);
+}
 
 describe('fetchUrlMaterial', () => {
   afterEach(() => {
@@ -42,7 +25,7 @@ describe('fetchUrlMaterial', () => {
   it('fetches HTML and returns runner-owned text + title', async () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      `<html><head><title>Blog Post</title></head><body><article><p>Hello doc world.</p></article></body></html>`,
+      htmlPage('Blog Post', `<article>${longParagraphs('Hello doc world.')}</article>`),
       { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
     )));
 
@@ -51,12 +34,14 @@ describe('fetchUrlMaterial', () => {
     expect(material.text).toContain('Hello doc world.');
     expect(material.contentType).toMatch(/html/i);
     expect(material.docType).toBe('blog');
+    expect(['readability', 'dom-fallback']).toContain(material.extractionMethod);
+    expect(material.bodyChars).toBeGreaterThanOrEqual(1000);
   });
 
   it('uses cache on second fetch', async () => {
     process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
     const fetchMock = vi.fn(async () => new Response(
-      `<html><head><title>Once</title></head><body><main><p>Cached body</p></main></body></html>`,
+      htmlPage('Once', `<main>${longParagraphs('Cached body')}</main>`),
       { status: 200, headers: { 'content-type': 'text/html' } },
     ));
     vi.stubGlobal('fetch', fetchMock);
@@ -66,6 +51,96 @@ describe('fetchUrlMaterial', () => {
     expect(a.text).toContain('Cached body');
     expect(b.text).toContain('Cached body');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips cache when forceRefetch is set', async () => {
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    const fetchMock = vi.fn(async () => new Response(
+      htmlPage('Again', `<main>${longParagraphs('Fresh body')}</main>`),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchUrlMaterial('url:https://example.com/x');
+    await fetchUrlMaterial('url:https://example.com/x', { forceRefetch: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('self-heals a short HTML cache hit', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/poison';
+    const key = cacheKey(id);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Poison',
+      contentType: 'text/html',
+      docType: 'blog',
+      url: 'https://example.com/poison',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), '82 byte teaser');
+    const fetchMock = vi.fn(async () => new Response(
+      htmlPage('Healed', `<article>${longParagraphs('Healed body')}</article>`),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toContain('Healed body');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toContain('Healed body');
+  });
+
+  it('deletes only the short cache key and leaves sibling files', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/poison-only';
+    const otherId = 'url:https://example.com/neighbor';
+    const key = cacheKey(id);
+    const otherKey = cacheKey(otherId);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Poison',
+      contentType: 'text/html',
+      docType: 'blog',
+      url: 'https://example.com/poison-only',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), '82 byte teaser');
+    writeFileSync(join(dir, `${otherKey}.meta.json`), JSON.stringify({
+      title: 'Keep',
+      contentType: 'text/html',
+      docType: 'blog',
+      url: 'https://example.com/neighbor',
+    }));
+    writeFileSync(join(dir, `${otherKey}.txt`), 'neighbor cache body that must remain');
+    writeFileSync(join(dir, 'notes.txt'), 'not a cache key');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      htmlPage('Healed', `<article>${longParagraphs('Healed only-key')}</article>`),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    )));
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toContain('Healed only-key');
+    expect(readFileSync(join(dir, `${otherKey}.txt`), 'utf8')).toBe('neighbor cache body that must remain');
+    expect(readFileSync(join(dir, `${otherKey}.meta.json`), 'utf8')).toContain('Keep');
+    expect(readFileSync(join(dir, 'notes.txt'), 'utf8')).toBe('not a cache key');
+    expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toContain('Healed only-key');
+  });
+
+  it('does not write cache when HTML extract is too short', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      htmlPage('Short', '<article><p>tiny</p></article>'),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    )));
+    await expect(fetchUrlMaterial('url:https://example.com/short')).rejects.toBeInstanceOf(UrlExtractError);
+    const dir = join(home, 'cache', 'url');
+    expect(existsSync(dir) ? readFileSync : () => '').toBeTruthy();
+    if (existsSync(dir)) {
+      expect(readFileSync).toBeTypeOf('function');
+      const files = (await import('node:fs')).readdirSync(dir);
+      expect(files.filter((f) => f.endsWith('.txt'))).toEqual([]);
+    }
   });
 
   it('throws a clear error on HTTP failure', async () => {
@@ -105,6 +180,7 @@ describe('fetchUrlMaterial', () => {
     const material = await fetchUrlMaterial('url:https://github.com/acme/paper');
     expect(material.text).toContain('Spatiotemporal Composability');
     expect(material.text).toContain('Abstract');
+    expect(material.extractionMethod).toBe('plain');
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('raw.githubusercontent.com'))).toBe(true);
   });
 });

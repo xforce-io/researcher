@@ -2,7 +2,8 @@
 
 | 文件 | 用户能看见什么 | 对上的验收 |
 |---|---|---|
-| [document-detail.md](./document-detail.md) | 四类详情阅读层级、操作主次、批注锚点、深读运行态与长文旁注 | #209 S1–S3（批注提交可见、类型/右栏布局、失败原因可读）；#207 S1–S5；#205 S1（关联面板退出自动回归）；#203 S1–S4；#194 标题校验与 #200 首屏可见保全 |
+| [document-detail.md](./document-detail.md) | 四类详情阅读层级、操作主次、批注锚点、深读运行态与长文旁注 | #209 S1–S3（批注提交可见、类型/右栏布局、失败原因可读）；#207 S1–S5；#205 S1（关联面板退出自动回归）；#203 S1–S4；#194 标题校验与 #200 首屏可见保全；#212 S3（过短失败中文原因/字数/粘贴区） |
+| [url-extract-reread.md](./url-extract-reread.md) | URL 深读抽取、过短失败、粘贴全文重新深读、缓存自愈 | #212 S1–S4 |
 | [library-video-analyze.md](./library-video-analyze.md) | Library 添加本地视频、详情播放、Analyze、台词搜索/点句 | #191 S1–S5；#193 S1–S2（进行中只认活任务、过期记录收口）；#200 S1（Topic 面板过高时播放器与台词仍可见） |
 | [library-video-title.md](./library-video-title.md) | 视频详情改显示标题并保存 | #194 S1–S2 |
 | [document-topic-link.md](./document-topic-link.md) | 笔记与视频详情关联 topic、Topic 页列出、Run 集成或阻断 | #197 S1–S6 |

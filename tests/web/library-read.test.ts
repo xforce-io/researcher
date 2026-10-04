@@ -571,3 +571,41 @@ describe('defaultLibraryReadRunner', () => {
     ))).toBe(true);
   });
 });
+
+describe('runLibraryRead paste path', () => {
+  it('writes user-pasted frontmatter and does not call fetch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-paste-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    const adapter = new StubAdapter();
+    const pasted = `${'word '.repeat(200)}blank slate paste body`;
+    const result = await runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paste_ok',
+      adapter,
+      pastedText: pasted,
+    });
+    const body = readFileSync(join(root, result.artifactPath), 'utf8');
+    expect(body).toContain('extraction_method: "user-pasted"');
+    expect(adapter.lastPrompt).toContain('blank slate paste body');
+    expect(result.extractionMethod).toBe('user-pasted');
+  });
+
+  it('throws before the model when pasted text is too short', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rsw-lib-paste-short-'));
+    process.env.RESEARCHER_HOME = mkdtempSync(join(tmpdir(), 'r-home-'));
+    const adapter = new StubAdapter();
+    await expect(runLibraryRead({
+      workspaceRoot: root,
+      paper: sampleArxivPaper(),
+      readId: 'read_paste_short',
+      adapter,
+      pastedText: 'too short',
+    })).rejects.toThrow(/paste too short/);
+    expect(adapter.lastPrompt).toBe('');
+    expect(existsSync(join(
+      root,
+      '.researcher-workspace/library/documents/paper_arxiv_2401_12345/reads/read_paste_short.md',
+    ))).toBe(false);
+  });
+});

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execaSync } from 'execa';
-import { runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList, runLibraryUnlink } from '../../src/commands/library.js';
+import { runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList, runLibraryReadCommand, runLibraryUnlink } from '../../src/commands/library.js';
 import { PaperLibrary } from '../../src/library/store.js';
 
 describe('researcher library commands', () => {
@@ -42,6 +42,48 @@ describe('researcher library commands', () => {
     expect(out.join('')).toContain('url:https://example.com/paper');
     expect(out.join('')).toMatch(/paper_url_[a-f0-9]{16}/);
     expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(true);
+  });
+
+  it('runs a library read from --paste-file when the paste passes the threshold', async () => {
+    const added = runLibraryAdd({ cwd: root, input: 'https://example.com/paste-ok', write: () => {} });
+    const paste = join(root, 'full.txt');
+    writeFileSync(paste, `${'word '.repeat(200)}cli paste body`);
+    let seen: string | undefined;
+    await runLibraryReadCommand({
+      cwd: root,
+      input: added.id,
+      pasteFile: paste,
+      write: () => {},
+      writeErr: () => {},
+      runner: async (opts) => {
+        seen = opts.pastedText;
+        const artifactPath = `.researcher-workspace/library/documents/${added.id}/reads/${opts.readId}.md`;
+        mkdirSync(dirname(join(root, artifactPath)), { recursive: true });
+        writeFileSync(join(root, artifactPath), '# paste\n');
+        return { artifactPath, extractionMethod: 'user-pasted', bodyChars: 1200, bodyWords: 200 };
+      },
+    });
+    expect(seen).toContain('cli paste body');
+    const read = new PaperLibrary(root).listReads(added.id)[0];
+    expect(read.status).toBe('read');
+    expect(read.extractionMethod).toBe('user-pasted');
+  });
+
+  it('rejects a short --paste-file without writing a read artifact', async () => {
+    const added = runLibraryAdd({ cwd: root, input: 'https://example.com/paste', write: () => {} });
+    const paste = join(root, 'short.txt');
+    writeFileSync(paste, 'too short');
+    const err = await runLibraryReadCommand({
+      cwd: root,
+      input: added.id,
+      pasteFile: paste,
+      write: () => {},
+      writeErr: () => {},
+      runner: async () => ({ artifactPath: 'should-not-run.md' }),
+    }).then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err)).toMatch(/paste too short/);
+    expect(new PaperLibrary(root).listReads(added.id)).toEqual([]);
   });
 
   it('records topic integration without mutating topic artifacts', () => {

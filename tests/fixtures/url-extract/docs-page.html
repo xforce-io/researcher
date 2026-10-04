@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><title>API Overview — researcher docs</title></head>
+<body>
+<header><nav><a href="/docs">Docs</a><a href="/api">API</a></nav></header>
+<main>
+  <h1>API Overview</h1>
+  <p>This page describes the Library reads endpoint used by the web console. POST accepts force, mutationId, forceRefetch, and optional pastedText. A paste that fails the body threshold returns 422 paste_too_short and does not create a reading row. A fetch that yields HTML below the threshold fails closed: no artifact, no cache write, status failed.</p>
+  <p>GET returns optional failureCode, extractedChars, extractedWords, and extractionMethod. Older records omit those fields and the page shows a generic failure plus retry. The identity table may add 正文来源 when extraction_method is user-pasted. The badge 已回退备用抽取 appears only for the DOM fallback path. These sentences exist so a docs-shaped main passes the default English thresholds without grabbing the whole body including the site footer.</p>
+  <p>Clients must send JSON and a mutationId for replay. Busy documents return 409. Completed reads reuse the last artifact unless force or pastedText is present. force without forceRefetch still refetches. The runner skips HTTP entirely when pastedText is accepted. Repeat: endpoint payload threshold cache artifact mutation replay force refetch paste fallback readability density article main body extraction.</p>
+  <p>Operational notes: isolate serve, temporary RESEARCHER_HOME, Node 23.11.0. Smoke scripts must run after npm ci and build in a clean clone with a temp cache directory. Repeat vocabulary: API overview docs endpoint payload threshold cache artifact mutation replay force refetch paste fallback readability density article main body extraction runner isolate serve cache directory.</p>
+</main>
+<footer><a href="/legal">Legal</a> <a href="/status">Status</a></footer>
+</body>
+</html>

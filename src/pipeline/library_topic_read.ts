@@ -7,6 +7,7 @@ import { cuesIntegrationBody, integrationSourceState } from './integration_sourc
 import { nextNoteNumber } from '../state/note_index.js';
 import { DEFAULT_FM, serializeNote } from '../state/zone.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from '../web/library-read.js';
+import { readFailureFields } from '../sources/url-extract.js';
 import { libraryReadEmbedBody } from '../markdown/frontmatter.js';
 import type { RunContext } from './context.js';
 
@@ -191,10 +192,18 @@ async function ensureLibraryRead(opts: {
     if (result.title && !opts.paper.title) {
       opts.lib.upsertPaper({ ...opts.paper, title: result.title });
     }
-    return opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'read', artifactPath: result.artifactPath });
+    return opts.lib.upsertRead({
+      id: readId,
+      paperId: opts.paper.id,
+      status: 'read',
+      artifactPath: result.artifactPath,
+      extractionMethod: result.extractionMethod,
+      extractedChars: result.bodyChars,
+      extractedWords: result.bodyWords,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'failed', lastError: message });
+    opts.lib.upsertRead({ id: readId, paperId: opts.paper.id, status: 'failed', lastError: message, ...readFailureFields(err) });
     throw err;
   }
 }
