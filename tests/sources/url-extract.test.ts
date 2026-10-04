@@ -6,8 +6,6 @@ import {
   countBodyStats,
   extractDomFallback,
   extractHtmlArticle,
-  isBodyTooShort,
-  previewReadability,
   UrlExtractError,
 } from '../../src/sources/url-extract.js';
 import { extractHtmlMainText } from '../helpers/legacy-html-extract.js';
@@ -28,21 +26,23 @@ describe('countBodyStats', () => {
 });
 
 describe('every.to fixture path', () => {
-  it('extracts real prose and records the path that actually ran', () => {
+  it('extracts real prose via readability and keeps fallback off the rec card', () => {
     const html = loadFixture('everyto-codex-graded.html');
     const result = extractHtmlArticle(html);
     const stats = countBodyStats(result.text);
-    expect(['readability', 'dom-fallback']).toContain(result.extractionMethod);
+    // Actual path on this saved page: Readability, not the DOM fallback.
+    expect(result.extractionMethod).toBe('readability');
     expect(stats.chars).toBeGreaterThanOrEqual(1000);
     expect(result.text).toMatch(/blank slate/i);
     expect(result.text).toMatch(/Eight Levels/i);
     const legacy = extractHtmlMainText(html);
     expect(legacy.text).toMatch(/Vibe Check|post-preview|Related Essays/i);
     expect(legacy.text.length).toBeLessThan(stats.chars);
-    if (result.extractionMethod === 'dom-fallback') {
-      expect(result.text).not.toBe(legacy.text);
-      expect(result.text).not.toMatch(/^Vibe Check: GPT-5\.6 Sol/);
-    }
+    const fallback = extractDomFallback(html);
+    expect(fallback.text).toMatch(/blank slate/i);
+    expect(fallback.text).toMatch(/Eight Levels/i);
+    expect(fallback.text).not.toBe(legacy.text);
+    expect(fallback.text).not.toMatch(/^Vibe Check: GPT-5\.6 Sol/);
   });
 });
 
@@ -70,23 +70,6 @@ describe('regression fixtures', () => {
 });
 
 describe('Knox fallback path', () => {
-  it('uses dom-fallback when Readability misses the threshold and the deep node passes', () => {
-    const html = `<!doctype html><html><head><title>Teaser</title></head><body>
-      <article>
-        <p>This is a short teaser, with commas, periods, and enough class to look like an article to Readability.</p>
-        <p>Second teaser paragraph, also with punctuation, still short of the body threshold.</p>
-      </article>
-      <div role="main">${longParagraphs('DOM_FALLBACK_WIN unique marker')}</div>
-    </body></html>`;
-    expect(isBodyTooShort(previewReadability(html).text)).toBe(true);
-    const fallback = extractDomFallback(html);
-    expect(fallback.text).toContain('DOM_FALLBACK_WIN');
-    expect(isBodyTooShort(fallback.text)).toBe(false);
-    const result = extractHtmlArticle(html);
-    expect(result.extractionMethod).toBe('dom-fallback');
-    expect(result.text).toContain('DOM_FALLBACK_WIN');
-  });
-
   it('fails closed when both paths miss the threshold', () => {
     const html = `<!doctype html><html><head><title>Tiny</title></head>
       <body><article><p>too short</p></article><main><p>also short</p></main></body></html>`;
@@ -109,6 +92,26 @@ describe('Knox fallback path', () => {
     const fallback = extractDomFallback(html);
     expect(fallback.text).toContain('DEEP_ARTICLE_MARKER');
     expect(fallback.text).not.toContain('SHALLOW_MAIN');
+  });
+
+  it('picks the longer sibling when article and main share a depth', () => {
+    const html = `<!doctype html><html><head><title>Siblings</title></head><body>
+      <main>${longParagraphs('SIBLING_MAIN unique')}</main>
+      <article>${longParagraphs('SIBLING_ARTICLE unique', 8)}</article>
+    </body></html>`;
+    const fallback = extractDomFallback(html);
+    expect(fallback.text).toContain('SIBLING_ARTICLE');
+    expect(fallback.text).not.toContain('SIBLING_MAIN');
+  });
+
+  it('does not score body against a passing article', () => {
+    const html = `<!doctype html><html><head><title>Body trap</title></head><body>
+      <article>${longParagraphs('ONLY_ARTICLE unique')}</article>
+      ${longParagraphs('BODY_NOISE unique', 8)}
+    </body></html>`;
+    const fallback = extractDomFallback(html);
+    expect(fallback.text).toContain('ONLY_ARTICLE');
+    expect(fallback.text).not.toContain('BODY_NOISE');
   });
 
   it('drops high-density rec cards without class/id keyword matching', () => {

@@ -24,14 +24,14 @@ const distExtract = join(root, 'dist/sources/url-extract.js');
 const distFetch = join(root, 'dist/sources/url-fetch.js');
 const fixture = join(root, 'tests/fixtures/url-extract/everyto-codex-graded.html');
 
-const { extractHtmlArticle, UrlExtractError, countBodyStats } = await import(pathToFileURL(distExtract).href);
+const { extractHtmlArticle, extractDomFallback, UrlExtractError, countBodyStats } = await import(pathToFileURL(distExtract).href);
 const { fetchUrlMaterial } = await import(pathToFileURL(distFetch).href);
 
 const html = readFileSync(fixture, 'utf8');
 const extracted = extractHtmlArticle(html);
 const stats = countBodyStats(extracted.text);
-if (!['readability', 'dom-fallback'].includes(extracted.extractionMethod)) {
-  throw new Error(`unexpected extractionMethod: ${extracted.extractionMethod}`);
+if (extracted.extractionMethod !== 'readability') {
+  throw new Error(`every.to fixture expected readability, got ${extracted.extractionMethod}`);
 }
 if (stats.chars < 1000) {
   throw new Error(`every.to fixture too short: ${stats.chars} chars via ${extracted.extractionMethod}`);
@@ -39,7 +39,11 @@ if (stats.chars < 1000) {
 if (!/blank slate/i.test(extracted.text) || !/Eight Levels/i.test(extracted.text)) {
   throw new Error('every.to fixture missed expected prose');
 }
-if (extracted.extractionMethod === 'dom-fallback' && /^Vibe Check: GPT-5\.6 Sol/.test(extracted.text)) {
+const fallback = extractDomFallback(html);
+if (!/blank slate/i.test(fallback.text) || !/Eight Levels/i.test(fallback.text)) {
+  throw new Error('dom-fallback missed expected prose');
+}
+if (/^Vibe Check: GPT-5\.6 Sol/.test(fallback.text)) {
   throw new Error('dom-fallback selected the related-essay rec card');
 }
 

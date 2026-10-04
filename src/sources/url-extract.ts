@@ -174,6 +174,21 @@ function tryReadability(html: string): { title: string; text: string } {
   }
 }
 
+interface DomElement {
+  querySelectorAll(sel: string): Iterable<DomElement>;
+  querySelector(sel: string): DomElement | null;
+  cloneNode(deep: boolean): DomElement;
+  textContent: string | null;
+  parentElement: DomElement | null;
+  isConnected: boolean;
+  remove(): void;
+}
+
+interface DomDocument {
+  querySelectorAll(sel: string): Iterable<DomElement>;
+  querySelector(sel: string): DomElement | null;
+}
+
 interface Candidate {
   text: string;
   depth: number;
@@ -219,11 +234,11 @@ function compareCandidates(a: Candidate, b: Candidate): number {
   return 0;
 }
 
-function collectCandidates(document: Document, selectors: string[]): Candidate[] {
+function collectCandidates(document: DomDocument, selectors: string[]): Candidate[] {
   const out: Candidate[] = [];
   for (const sel of selectors) {
     for (const node of document.querySelectorAll(sel)) {
-      const clone = node.cloneNode(true) as Element;
+      const clone = node.cloneNode(true);
       stripChrome(clone);
       const text = normalizeExtractedText(clone.textContent ?? '');
       if (!text) continue;
@@ -237,22 +252,22 @@ function collectCandidates(document: Document, selectors: string[]): Candidate[]
   return out;
 }
 
-function stripChrome(root: Element): void {
+function stripChrome(root: DomElement): void {
   for (const junk of [...root.querySelectorAll('nav, aside, footer, header, [role="navigation"], [role="complementary"]')]) {
     junk.remove();
   }
   const dense = [...root.querySelectorAll('article, section, div')].reverse();
   for (const el of dense) {
     if (el === root || !el.isConnected) continue;
-    if (el.querySelectorAll('a').length >= 2 && linkDensityOf(el) > MAX_LINK_DENSITY) {
+    if ([...el.querySelectorAll('a')].length >= 2 && linkDensityOf(el) > MAX_LINK_DENSITY) {
       el.remove();
     }
   }
 }
 
-function elementDepth(node: Element): number {
+function elementDepth(node: DomElement): number {
   let depth = 0;
-  let cur: Element | null = node;
+  let cur: DomElement | null = node;
   while (cur.parentElement) {
     depth += 1;
     cur = cur.parentElement;
@@ -260,7 +275,7 @@ function elementDepth(node: Element): number {
   return depth;
 }
 
-function linkDensityOf(root: Element): number {
+function linkDensityOf(root: DomElement): number {
   const textChars = countBodyStats(root.textContent ?? '').chars;
   if (textChars === 0) return 1;
   let linkChars = 0;

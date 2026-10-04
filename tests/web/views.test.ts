@@ -1193,7 +1193,8 @@ describe('document detail hierarchy (#207)', () => {
     expect(failed).toContain('强制重新抓取');
     expect(failed).toContain('name="forceRefetch"');
     expect(failed).toContain('运行详情');
-    expect(failed).not.toContain('class="read-error mono">url extract too short');
+    expect(failed).toContain('read-run-details');
+    expect(failed).toMatch(/read-run-details[\s\S]*url extract too short/);
 
     const ok = renderLibraryPaper({
       root: '/ws',

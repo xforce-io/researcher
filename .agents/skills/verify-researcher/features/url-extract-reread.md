@@ -15,6 +15,6 @@
 
 ## 自动回归
 
-`npm test -- tests/sources/url-extract.test.ts tests/sources/url-fetch.test.ts tests/web/views.test.ts tests/web/server.test.ts tests/web/library-read.test.ts`
+`npm test -- tests/sources/url-extract.test.ts tests/sources/url-extract-fallback-path.test.ts tests/sources/url-fetch.test.ts tests/web/url-extract-runner.test.ts tests/web/views.test.ts tests/web/server.test.ts tests/web/library-read.test.ts`
 
 独立 clone 冒烟：`npm ci && npm run build && node scripts/smoke-212-url-extract.mjs --cache-dir "$TMP"`。Node 目标 v23.11.0。

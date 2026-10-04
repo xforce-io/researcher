@@ -237,7 +237,6 @@ export function parseTags(raw: string | undefined): string[] {
 const defaultWriteErr = (s: string) => process.stderr.write(s);
 
 export async function runLibraryReadCommand(opts: LibraryReadCliOptions): Promise<void> {
-  const write = opts.write ?? defaultWrite;
   const writeErr = opts.writeErr ?? defaultWriteErr;
   const lib = new PaperLibrary(opts.cwd);
   const existingDoc = lib.getDocument(opts.input) ?? lib.getPaper(opts.input);

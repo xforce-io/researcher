@@ -489,7 +489,7 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
   if (fm?.source_url) add('来源', fmValue('source_url', fm.source_url), true);
   if (fm?.pdf_url) add('PDF', fmValue('pdf_url', fm.pdf_url));
 
-  const method = typeof fm?.extraction_method === 'string' ? fm.extraction_method : '';
+  const method = typeof fm?.extraction_method === 'string' ? unquoteFm(fm.extraction_method) : '';
   if (method === 'user-pasted') {
     add('正文来源', '<span class="source-origin">用户粘贴</span>');
   }

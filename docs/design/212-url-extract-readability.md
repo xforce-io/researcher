@@ -473,16 +473,16 @@ CLI：`researcher library read <document-id-or-url> [--force] [--force-refetch] 
 
 | 文件 | 断言 |
 |---|---|
-| `everyto-codex-graded.html` | 必须断言**实际路径** `readability` 或 `dom-fallback`。正文 ≥ 1000 字，含 `blank slate` 与 `Eight Levels`。若走回退，回退不得等于第一篇 `<article class="post-preview">` 推荐卡。 |
+| `everyto-codex-graded.html` | 断言**实际路径**为 `readability`（本夹具实测）。正文 ≥ 1000 字，含 `blank slate` 与 `Eight Levels`。另对同一夹具跑 `extractDomFallback`：回退也不得等于第一篇 `<article class="post-preview">` 推荐卡。 |
 | `blog-article.html` | title 含 `Cache design`；≥ 1000 字 |
 | `github-readme.html` | title 含 `Spatiotemporal`；≥ 1000 字 |
 | `docs-page.html` | title 含 `API Overview`；≥ 1000 字 |
 
 合成页（可写在测试里）：
 
-1. Readability 不过门槛、DOM 回退过门槛 → 写读记，`extractor=dom-fallback`。
+1. Readability 不过门槛、DOM 回退过门槛 → 写读记，`extractor=dom-fallback`。`tests/sources/url-extract-fallback-path.test.ts` 与 `tests/web/url-extract-runner.test.ts` stub `Readability.parse()` 为短正文（真实 Readability 只要页面里有过门槛语义节点几乎总会赢，无法稳定构造「主路径短、回退长」）；回退选节点与写读记仍走生产代码。
 2. 两条都不过 → 失败态，不写读记产物、不写 cache。
-3. 同时有 `article` 与 `main` → 选中节点符合 L2.2 最深规则。
+3. 同时有 `article` 与 `main` → 选中节点符合 L2.2：嵌套取更深；同深度取更长文本。另断言：有过门槛的 `article` 时不得改选更长的 `body`。
 
 功能文件：`.agents/skills/verify-researcher/features/url-extract-reread.md`（S1–S4 用户入口）。`document-detail.md` 增 #212 S3 行：过短失败中文原因/字数/粘贴区；进行中粘贴 disabled；成功「正文来源」与「已回退备用抽取」。
 

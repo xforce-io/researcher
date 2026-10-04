@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+
+vi.mock('@mozilla/readability', () => ({
+  Readability: class {
+    parse() {
+      return { title: 'Teaser', textContent: 'Short teaser, with commas. Still under the threshold.' };
+    }
+  },
+}));
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runLibraryRead } from '../../src/web/library-read.js';
@@ -94,6 +102,7 @@ describe('library read extract fallback (#212 Knox)', () => {
     });
     expect(result.extractionMethod).toBe('dom-fallback');
     expect(existsSync(join(root, result.artifactPath))).toBe(true);
+    expect(readFileSync(join(root, result.artifactPath), 'utf8')).toContain('extraction_method: "dom-fallback"');
     expect(adapter.lastPrompt).toContain('DOM_FALLBACK_WIN');
   });
 
