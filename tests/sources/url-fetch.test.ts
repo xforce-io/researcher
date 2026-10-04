@@ -90,6 +90,42 @@ describe('fetchUrlMaterial', () => {
     expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toContain('Healed body');
   });
 
+  it('deletes only the short cache key and leaves sibling files', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/poison-only';
+    const otherId = 'url:https://example.com/neighbor';
+    const key = cacheKey(id);
+    const otherKey = cacheKey(otherId);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Poison',
+      contentType: 'text/html',
+      docType: 'blog',
+      url: 'https://example.com/poison-only',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), '82 byte teaser');
+    writeFileSync(join(dir, `${otherKey}.meta.json`), JSON.stringify({
+      title: 'Keep',
+      contentType: 'text/html',
+      docType: 'blog',
+      url: 'https://example.com/neighbor',
+    }));
+    writeFileSync(join(dir, `${otherKey}.txt`), 'neighbor cache body that must remain');
+    writeFileSync(join(dir, 'notes.txt'), 'not a cache key');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      htmlPage('Healed', `<article>${longParagraphs('Healed only-key')}</article>`),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    )));
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toContain('Healed only-key');
+    expect(readFileSync(join(dir, `${otherKey}.txt`), 'utf8')).toBe('neighbor cache body that must remain');
+    expect(readFileSync(join(dir, `${otherKey}.meta.json`), 'utf8')).toContain('Keep');
+    expect(readFileSync(join(dir, 'notes.txt'), 'utf8')).toBe('not a cache key');
+    expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toContain('Healed only-key');
+  });
+
   it('does not write cache when HTML extract is too short', async () => {
     const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
     process.env.RESEARCHER_HOME = home;

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { startServer } from '../../src/web/server.js';
 import { TaskRegistry } from '../../src/web/tasks.js';
 import { PaperLibrary } from '../../src/library/store.js';
-import type { LibraryReadTopicContext } from '../../src/web/library-read.js';
+import type { LibraryReadRunnerOptions, LibraryReadTopicContext } from '../../src/web/library-read.js';
 import type { PapersItem } from '../../src/sources/papers-radar.js';
 
 let root: string;
@@ -13,6 +13,7 @@ let server: { port: number; close: () => Promise<void> };
 let base: string;
 let releaseLibraryRead: (() => void) | undefined;
 let libraryReadCalls = 0;
+let lastLibraryReadOpts: LibraryReadRunnerOptions | undefined;
 let trendingResult: PapersItem[] | Error = [];
 const libraryReadTopicContexts: (LibraryReadTopicContext | undefined)[] = [];
 
@@ -96,8 +97,10 @@ beforeAll(async () => {
       if (trendingResult instanceof Error) throw trendingResult;
       return trendingResult;
     },
-    libraryReadRunner: async ({ onLine, topicContext, paper, readId }) => {
+    libraryReadRunner: async (opts) => {
+      const { onLine, topicContext, paper, readId } = opts;
       libraryReadCalls++;
+      lastLibraryReadOpts = opts;
       libraryReadTopicContexts.push(topicContext);
       onLine?.(`mock library read ${readId}`);
       await new Promise<void>((resolve) => { releaseLibraryRead = resolve; });
@@ -923,7 +926,51 @@ describe('POST /reads pastedText (#212)', () => {
     });
     expect(res.status).toBe(202);
     await waitFor(() => libraryReadCalls === before + 1);
+    expect(lastLibraryReadOpts?.pastedText).toContain('pasted full text');
+    expect(lastLibraryReadOpts?.forceRefetch).toBe(false);
     releaseLibraryRead?.();
     await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'));
+  });
+
+  it('keeps the legacy POST /reads JSON shape when pastedText is omitted', async () => {
+    const reuse = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(reuse.status).toBe(200);
+    const reuseBody = await reuse.json() as Record<string, unknown>;
+    expect(Object.keys(reuseBody).sort()).toEqual(['readId', 'url']);
+    expect(reuseBody).not.toHaveProperty('error');
+    expect(reuseBody).not.toHaveProperty('chars');
+
+    releaseLibraryRead = undefined;
+    const start = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true, mutationId: 'legacy-shape' }),
+    });
+    expect(start.status).toBe(202);
+    const startBody = await start.json() as Record<string, unknown>;
+    expect(Object.keys(startBody).sort()).toEqual(['readId', 'url']);
+    expect(startBody).not.toHaveProperty('error');
+    expect(lastLibraryReadOpts?.forceRefetch).toBe(true);
+    expect(lastLibraryReadOpts?.pastedText).toBeUndefined();
+    releaseLibraryRead?.();
+    await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'));
+  });
+
+  it('GET /reads keeps the legacy fields when extract extras are absent', async () => {
+    const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads');
+    expect(res.status).toBe(200);
+    const rows = await res.json() as Record<string, unknown>[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toEqual(expect.objectContaining({
+      id: expect.any(String),
+      documentId: 'paper_arxiv_2401_12345',
+      status: expect.stringMatching(/read|failed|reading/),
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    }));
   });
 });

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /**
  * Standalone smoke for #212. After `npm ci && npm run build` in a clean clone:
- *   RESEARCHER_HOME=/tmp/r-home node scripts/smoke-212-url-extract.mjs
  *   node scripts/smoke-212-url-extract.mjs --cache-dir /tmp/r-home
+ *   node scripts/smoke-212-url-extract.mjs --cache-dir /tmp/r-home http://127.0.0.1:PORT/post
+ *
+ * Default URL is a local server that serves the saved every.to fixture.
+ * It is NOT live https://every.to/...
  */
 import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -12,12 +15,26 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const cacheFlag = process.argv.indexOf('--cache-dir');
+
+function parseArgs(argv) {
+  const positional = [];
+  let cacheDir;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--cache-dir') {
+      cacheDir = resolve(argv[i + 1] ?? '');
+      i += 1;
+      continue;
+    }
+    if (!arg.startsWith('-')) positional.push(arg);
+  }
+  return { cacheDir, url: positional[0] };
+}
+
+const { cacheDir: cacheFlag, url: requestedUrl } = parseArgs(process.argv.slice(2));
 const envHome = process.env.RESEARCHER_HOME;
-const cacheDir = cacheFlag >= 0
-  ? resolve(process.argv[cacheFlag + 1] ?? '')
-  : (envHome || mkdtempSync(join(tmpdir(), 'researcher-smoke-212-')));
-const createdCache = cacheFlag < 0 && !envHome;
+const cacheDir = cacheFlag || envHome || mkdtempSync(join(tmpdir(), 'researcher-smoke-212-'));
+const createdCache = !cacheFlag && !envHome;
 process.env.RESEARCHER_HOME = cacheDir;
 
 const distExtract = join(root, 'dist/sources/url-extract.js');
@@ -55,24 +72,30 @@ try {
 }
 if (!shortFailed) throw new Error('expected extract_too_short on a tiny page');
 
-const page = `<!doctype html><html><head><title>Smoke</title></head><body><article>${extracted.text}</article></body></html>`;
-const server = createServer((req, res) => {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(page);
-});
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const { port } = server.address();
-const url = `http://127.0.0.1:${port}/post`;
+let usedUrl = requestedUrl;
+let server;
+if (!usedUrl) {
+  server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  usedUrl = `http://127.0.0.1:${port}/`;
+}
+
 try {
-  const first = await fetchUrlMaterial(`url:${url}`);
-  const second = await fetchUrlMaterial(`url:${url}`);
+  const first = await fetchUrlMaterial(`url:${usedUrl}`);
+  const second = await fetchUrlMaterial(`url:${usedUrl}`);
   if (first.text.length < 1000 || second.text.length < 1000) {
     throw new Error('fetchUrlMaterial smoke extract too short');
   }
-  const third = await fetchUrlMaterial(`url:${url}`, { forceRefetch: true });
+  const third = await fetchUrlMaterial(`url:${usedUrl}`, { forceRefetch: true });
   if (third.text.length < 1000) throw new Error('forceRefetch smoke extract too short');
 } finally {
-  await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  if (server) {
+    await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  }
   if (createdCache) {
     rmSync(cacheDir, { recursive: true, force: true });
   }
@@ -83,5 +106,7 @@ process.stdout.write([
   `extractionMethod ${extracted.extractionMethod}`,
   `chars ${stats.chars} words ${stats.words}`,
   `cacheDir ${cacheDir}`,
+  `url ${usedUrl}`,
+  `defaultUrl ${requestedUrl ? 'cli' : 'local-fixture (not live every.to)'}`,
   'ok',
 ].join('\n') + '\n');

@@ -110,7 +110,7 @@ export function extractHtmlArticle(
     };
   }
   const fallback = extractDomFallback(html, threshold);
-  if (fallback.text.trim() && !isBodyTooShort(fallback.text, threshold)) {
+  if (fallback.accepted) {
     return {
       title: fallback.title || pageTitle,
       text: fallback.text,
@@ -208,24 +208,24 @@ interface Candidate {
 export function extractDomFallback(
   html: string,
   threshold: UrlExtractThreshold = defaultUrlExtractThreshold(),
-): { title: string; text: string } {
+): { title: string; text: string; accepted: boolean } {
   const { document } = parseHTML(html);
   const title = (document.querySelector('title')?.textContent ?? '').replace(/\s+/g, ' ').trim();
   const semantic = collectCandidates(document, ['article', 'main', '[role="main"]']);
   const passingSemantic = semantic.filter((c) => c.linkDensity <= MAX_LINK_DENSITY && !isBodyTooShort(c.text, threshold));
   if (passingSemantic.length > 0) {
     passingSemantic.sort(compareCandidates);
-    return { title, text: passingSemantic[0].text };
+    return { title, text: passingSemantic[0].text, accepted: true };
   }
   const body = collectCandidates(document, ['body']);
   const passingBody = body.filter((c) => c.linkDensity <= MAX_LINK_DENSITY && !isBodyTooShort(c.text, threshold));
   if (passingBody.length > 0) {
-    return { title, text: passingBody[0].text };
+    return { title, text: passingBody[0].text, accepted: true };
   }
   const reportable = [...semantic, ...body].filter((c) => c.linkDensity <= MAX_LINK_DENSITY);
   const pool = reportable.length > 0 ? reportable : [...semantic, ...body];
   pool.sort(compareCandidates);
-  return { title, text: pool[0]?.text ?? '' };
+  return { title, text: pool[0]?.text ?? '', accepted: false };
 }
 
 function compareCandidates(a: Candidate, b: Candidate): number {

@@ -456,7 +456,7 @@ CLI：`researcher library read <document-id-or-url> [--force] [--force-refetch] 
 - 候选只收 `article`、`main`、`[role=main]`。**不要**把 `body` 和它们放进同一池按文本最长打分——`body` 包含 article/main，几乎永远赢，等于整页。
 - 每个候选先剥 chrome，再算链接密度 = 链接文字码点数 / 可见文字码点数。`linkDensity > 0.5` 的候选丢掉。
 - 在剩余且过门槛的节点里取**最深**（`elementDepth`）；同深度取更长文本，再同则文档序。
-- **仅当**没有过门槛的语义候选时，才用剥过 chrome 的 `body`。body 也不和 article/main 比长度。
+- **仅当**没有过门槛的语义候选时，才用剥过 chrome 的 `body`。body 也不和 article/main 比长度。body 也必须过门槛 **且** `linkDensity ≤ 0.5`，否则 `accepted=false`，整页抽取失败（不把过密/过短 body 当成功正文）。
 - 页面同时有 `article` 和 `main`：套这条规则。嵌套时更深的赢；兄弟节点同深度则更长文本赢。夹具必须断言选中节点符合本条。
 
 **去推荐卡只用结构信号**：

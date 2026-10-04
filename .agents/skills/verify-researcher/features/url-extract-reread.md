@@ -17,4 +17,4 @@
 
 `npm test -- tests/sources/url-extract.test.ts tests/sources/url-extract-fallback-path.test.ts tests/sources/url-fetch.test.ts tests/web/url-extract-runner.test.ts tests/web/views.test.ts tests/web/server.test.ts tests/web/library-read.test.ts`
 
-独立 clone 冒烟：`npm ci && npm run build && node scripts/smoke-212-url-extract.mjs --cache-dir "$TMP"`。Node 目标 v23.11.0。
+独立 clone 冒烟：`npm ci && npm run build && node scripts/smoke-212-url-extract.mjs --cache-dir "$TMP"`。可选第三参是 URL；省略时默认对本机夹具 HTTP 服务取 every.to 保存页，不是 live `https://every.to/...`。Node 目标 v23.11.0。
