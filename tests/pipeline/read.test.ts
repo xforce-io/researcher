@@ -8,6 +8,7 @@ import { runMethodologyInstall } from '../../src/commands/methodology.js';
 import { bootstrap } from '../../src/pipeline/bootstrap.js';
 import { read } from '../../src/pipeline/read.js';
 import { writeTextCache } from '../../src/sources/cache.js';
+import { longParagraphs } from '../helpers/long-prose.js';
 import { newRunId, RunDir } from '../../src/state/runs.js';
 import type { AgentRuntime, InvokeOptions, InvokeResult } from '../../src/adapter/interface.js';
 
@@ -105,7 +106,7 @@ describe('read stage', () => {
 
   it('runner-fetches URL text and uses title for the note slug', async () => {
     const fetchMock = vi.fn(async () => new Response(
-      `<html><head><title>Autodata Blog</title></head><body><article><p>URL body for read stage.</p></article></body></html>`,
+      `<html><head><title>Autodata Blog</title></head><body><article>${longParagraphs('URL body for read stage.')}</article></body></html>`,
       { status: 200, headers: { 'content-type': 'text/html' } },
     ));
     vi.stubGlobal('fetch', fetchMock);

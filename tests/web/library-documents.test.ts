@@ -161,11 +161,17 @@ describe('library documents HTTP/CLI (S1, S5)', () => {
 
   it('honors a cancelled submit before the JSON form handler sends a request', () => {
     const html = renderNoteReader({ id: 'doc_test', title: '', body: 'test', updatedAt: '' });
-    const script = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g)).at(-1)![1];
+    const script = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g))
+      .map((m) => m[1])
+      .find((s) => s.includes('data-json-method'));
+    if (!script) throw new Error('json form script missing');
     let submit!: (event: unknown) => void;
     let requests = 0;
     runInNewContext(script, {
-      document: { addEventListener: (_: string, listener: typeof submit) => { submit = listener; } },
+      document: {
+        addEventListener: (_: string, listener: typeof submit) => { submit = listener; },
+        querySelectorAll: () => [],
+      },
       FormData: class { forEach() {} },
       fetch: () => { requests++; return Promise.resolve({ status: 204 }); },
       location: { reload() {} },
