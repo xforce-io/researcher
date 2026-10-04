@@ -1,0 +1,95 @@
+/* L1 #212 mockup-only: paste card + failure metrics. Production CSS lands in app.css later. */
+/* Headless Linux Chrome needs an explicit CJK face; app.css --sans is Latin-first. */
+:root {
+  --sans: "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Droid Sans Fallback", -apple-system, system-ui, sans-serif;
+  --mono: "WenQuanYi Micro Hei Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+body, button, input, textarea, select, .nav-link, .secondary, .primary {
+  font-family: "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif !important;
+}
+.mono, pre, .read-path, .root {
+  font-family: "WenQuanYi Micro Hei Mono", ui-monospace, monospace !important;
+}
+.read-status-panel.is-failure,
+.read-status-panel.is-progress-with-paste {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.read-status-panel .read-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.extract-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 8px 0 0;
+  font: 600 12px/1.3 var(--sans);
+  color: var(--ink);
+}
+.extract-metrics span {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.paste-reread {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(194, 123, 44, 0.25);
+}
+.paste-reread label {
+  display: grid;
+  gap: 6px;
+  font: 650 12px/1.3 var(--sans);
+  color: var(--ink-soft);
+}
+.paste-reread textarea {
+  min-height: 120px;
+  resize: vertical;
+  font: 14px/1.45 var(--sans);
+}
+.paste-reread .field-error {
+  margin: 0;
+  color: #9a3f2f;
+  font: 600 12px/1.4 var(--sans);
+}
+.paste-reread.is-disabled,
+.paste-reread.is-disabled textarea {
+  opacity: 0.62;
+}
+.source-origin {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font: 650 11px var(--sans);
+}
+.wireframe-tag {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-faint);
+  font: 600 11px var(--mono);
+}
+.paper-note-empty { list-style: none; padding: 0; }
+.reader.paper-doc { padding: 16px 18px 24px; }
+.reader.paper-doc h2 { font-size: 20px; }
+.reader.paper-doc p { color: var(--ink); }
+.status-badge.failed { color: #9a3f2f; }
+.status-badge.read { color: var(--accent-ink); }
+.status-badge.reading { color: var(--accent-ink); }
