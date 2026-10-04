@@ -1,8 +1,12 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { defaultDocTypeForSource, isNoteDocType, isVideoDocType, parseLibraryDocType, type DocType } from '../library/doc-type.js';
-import { displayTitle, PaperLibrary } from '../library/store.js';
+import { displayTitle, newReadId, PaperLibrary } from '../library/store.js';
 import { migrateLibrary } from '../library/migrate-v2.js';
 import type { LibraryStatusFilter, TopicIntegration } from '../library/model.js';
+import { defaultLibraryReadRunner, type LibraryReadRunner } from '../web/library-read.js';
+import { countBodyStats, isBodyTooShort, loadUrlExtractThreshold, readFailureFields } from '../sources/url-extract.js';
 
 export interface LibraryAddOptions {
   cwd: string;
@@ -58,6 +62,17 @@ export interface LibraryDeleteOptions {
   cwd: string;
   paperId: string;
   write?: (s: string) => void;
+}
+
+export interface LibraryReadCliOptions {
+  cwd: string;
+  input: string;
+  force?: boolean;
+  forceRefetch?: boolean;
+  pasteFile?: string;
+  write?: (s: string) => void;
+  writeErr?: (s: string) => void;
+  runner?: LibraryReadRunner;
 }
 
 export interface LibraryUnlinkOptions {
@@ -217,4 +232,83 @@ export function runLibraryDelete(opts: LibraryDeleteOptions): void {
 export function parseTags(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw.split(',').map((t) => t.trim()).filter(Boolean).sort();
+}
+
+const defaultWriteErr = (s: string) => process.stderr.write(s);
+
+export async function runLibraryReadCommand(opts: LibraryReadCliOptions): Promise<void> {
+  const write = opts.write ?? defaultWrite;
+  const writeErr = opts.writeErr ?? defaultWriteErr;
+  const lib = new PaperLibrary(opts.cwd);
+  const existingDoc = lib.getDocument(opts.input) ?? lib.getPaper(opts.input);
+  const paper = existingDoc
+    ? lib.getPaper(existingDoc.id)
+    : (() => {
+        const added = runLibraryAdd({ cwd: opts.cwd, input: opts.input, write: () => {} });
+        return new PaperLibrary(opts.cwd).getPaper(added.id);
+      })();
+  if (!paper) throw new Error(`unknown document: ${opts.input}`);
+
+  let pastedText: string | undefined;
+  if (opts.pasteFile) {
+    pastedText = opts.pasteFile === '-'
+      ? readFileSync(0, 'utf8')
+      : readFileSync(opts.pasteFile, 'utf8');
+    const threshold = loadUrlExtractThreshold();
+    const stats = countBodyStats(pastedText);
+    if (isBodyTooShort(pastedText, threshold)) {
+      writeErr(`paste too short: ${stats.chars} chars, ${stats.words} words\n`);
+      throw Object.assign(new Error(`paste too short: ${stats.chars} chars, ${stats.words} words`), { exitCode: 1 });
+    }
+  }
+
+  const completed = lib.listReads(paper.id).find(
+    (r) => r.status === 'read' && r.artifactPath && existsSync(join(opts.cwd, r.artifactPath)),
+  );
+  if (completed?.artifactPath && !opts.force && pastedText === undefined) {
+    writeErr(`library-read: ${completed.artifactPath} (reuse)\n`);
+    return;
+  }
+
+  const inFlight = lib.listReads(paper.id).find((r) => r.status === 'reading');
+  if (inFlight) {
+    lib.upsertRead({
+      ...inFlight,
+      status: 'failed',
+      lastError: 'library read: reclaimed stale reading (no live CLI task)',
+    });
+    writeErr(`library-read: reclaimed stale reading ${inFlight.id}\n`);
+  }
+
+  const readId = newReadId();
+  lib.upsertRead({ id: readId, paperId: paper.id, status: 'reading', lastError: undefined });
+  const runner = opts.runner ?? defaultLibraryReadRunner;
+  try {
+    const result = await runner({
+      workspaceRoot: opts.cwd,
+      paper,
+      readId,
+      pastedText,
+      forceRefetch: pastedText === undefined && (opts.forceRefetch === true || opts.force === true),
+      onLine: (line) => writeErr(`${line}\n`),
+    });
+    if (result.title && !paper.title) {
+      lib.upsertPaper({ ...paper, title: result.title });
+    }
+    lib.upsertRead({
+      id: readId,
+      paperId: paper.id,
+      status: 'read',
+      artifactPath: result.artifactPath,
+      lastError: undefined,
+      extractionMethod: result.extractionMethod,
+      extractedChars: result.bodyChars,
+      extractedWords: result.bodyWords,
+    });
+    writeErr(`library-read: ${result.artifactPath}\n`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    lib.upsertRead({ id: readId, paperId: paper.id, status: 'failed', lastError: message, ...readFailureFields(err) });
+    throw err;
+  }
 }

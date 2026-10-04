@@ -10,6 +10,12 @@ import { safeDocPath, safePaperPath } from './safe-path.js';
 import { TaskRegistry } from './tasks.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from './library-read.js';
 import {
+  countBodyStats,
+  isBodyTooShort,
+  loadUrlExtractThreshold,
+  readFailureFields,
+} from '../sources/url-extract.js';
+import {
   applyTopicSetup,
   generateTopicSetup,
   type TopicSetupForm,
@@ -766,10 +772,33 @@ async function handleReads(
     return;
   }
   if (rest === 'reads' && req.method === 'POST') {
-    const payload = await readJsonBody<{ force?: boolean; mutationId?: string }>(req, res);
+    const payload = await readJsonBody<{
+      force?: boolean;
+      mutationId?: string;
+      forceRefetch?: boolean;
+      pastedText?: string;
+    }>(req, res);
     if (!payload) return;
     const force = payload.force === true;
     const mutationId = typeof payload.mutationId === 'string' ? payload.mutationId : undefined;
+    const pastedText = typeof payload.pastedText === 'string' ? payload.pastedText : undefined;
+    const hasPaste = pastedText !== undefined;
+    if (hasPaste) {
+      const threshold = loadUrlExtractThreshold();
+      const stats = countBodyStats(pastedText);
+      if (isBodyTooShort(pastedText, threshold)) {
+        sendJson(res, 422, {
+          error: 'paste_too_short',
+          chars: stats.chars,
+          words: stats.words,
+          minChars: threshold.minChars,
+          minWords: threshold.minWords,
+          message: `粘贴内容过短（${stats.chars} 字 / ${stats.words} 词）。请贴全文后再试，门槛是 ${threshold.minChars} 字或 ${threshold.minWords} 词。`,
+        });
+        return;
+      }
+    }
+    const forceRefetch = hasPaste ? false : (payload.forceRefetch === true || force);
     if (mutationId) {
       const prior = lib.listReads(documentId).find((r) => r.mutationId === mutationId);
       if (prior) {
@@ -777,7 +806,7 @@ async function handleReads(
         return;
       }
     }
-    if (!force && hasCompletedRead(lib, root, documentId)) {
+    if (!force && !hasPaste && hasCompletedRead(lib, root, documentId)) {
       const last = lib.listReads(documentId).filter((r) => r.status === 'read').at(-1);
       sendJson(res, 200, { readId: last?.id, url: documentUrl(documentId) });
       return;
@@ -798,6 +827,8 @@ async function handleReads(
           readId,
           onLine,
           onEvent,
+          pastedText: hasPaste ? pastedText : undefined,
+          forceRefetch,
         });
         if (result.title && !paper.title) {
           lib.upsertPaper({ ...paper, title: result.title });
@@ -809,12 +840,22 @@ async function handleReads(
           artifactPath: result.artifactPath,
           lastError: undefined,
           mutationId,
+          extractionMethod: result.extractionMethod,
+          extractedChars: result.bodyChars,
+          extractedWords: result.bodyWords,
         });
         return 0;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         onLine(message);
-        lib.upsertRead({ id: readId, paperId: documentId, status: 'failed', lastError: message, mutationId });
+        lib.upsertRead({
+          id: readId,
+          paperId: documentId,
+          status: 'failed',
+          lastError: message,
+          mutationId,
+          ...readFailureFields(err),
+        });
         return 1;
       }
     }, readId);
@@ -874,7 +915,20 @@ async function handleReads(
   sendJsonErr(res, 404, 'not_found', 'unknown read resource');
 }
 
-function readJson(read: { id: string; paperId: string; status: string; createdAt: string; updatedAt: string; artifactPath?: string; lastError?: string; mutationId?: string }) {
+function readJson(read: {
+  id: string;
+  paperId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  artifactPath?: string;
+  lastError?: string;
+  mutationId?: string;
+  failureCode?: string;
+  extractedChars?: number;
+  extractedWords?: number;
+  extractionMethod?: string;
+}) {
   return {
     id: read.id,
     documentId: read.paperId,
@@ -884,6 +938,10 @@ function readJson(read: { id: string; paperId: string; status: string; createdAt
     artifactPath: read.artifactPath,
     lastError: read.lastError,
     mutationId: read.mutationId,
+    failureCode: read.failureCode,
+    extractedChars: read.extractedChars,
+    extractedWords: read.extractedWords,
+    extractionMethod: read.extractionMethod,
   };
 }
 

@@ -5,6 +5,8 @@ import { execa } from 'execa';
 import { fetchArxivMetadata, type ArxivMetadata } from '../sources/arxiv.js';
 import { urlPathSlug } from '../sources/url.js';
 import { fetchUrlMaterial } from '../sources/url-fetch.js';
+import type { ExtractionMethod } from '../sources/url-extract.js';
+import { countBodyStats } from '../sources/url-extract.js';
 import { readTextCache, writeTextCache } from '../sources/cache.js';
 import { loadPromptTemplate, renderTemplate } from '../prompts/load.js';
 import { nextNoteNumber, listNotes } from '../state/note_index.js';
@@ -21,12 +23,16 @@ export interface SourceMaterial {
   slugSeed: string;             // text fed into slugify() for the note filename
   fetchInstruction: string;     // empty when runner already filled paperText
   docType: DocType;
+  extractionMethod?: ExtractionMethod;
+  bodyChars?: number;
+  bodyWords?: number;
 }
 
 export interface LoadSourceOptions {
   docType?: DocType;
   /** When true, URL sources must yield non-empty text (library deep-read). */
   requireText?: boolean;
+  forceRefetch?: boolean;
 }
 
 export interface ReadOptions {
@@ -112,6 +118,9 @@ async function readArxivSource(canonicalId: string, opts: LoadSourceOptions): Pr
     slugSeed: meta.title,
     fetchInstruction: '',
     docType: opts.docType ?? 'paper',
+    extractionMethod: 'pdf',
+    bodyChars: countBodyStats(paperText).chars,
+    bodyWords: countBodyStats(paperText).words,
   };
 }
 
@@ -119,7 +128,11 @@ async function readUrlSource(canonicalId: string, opts: LoadSourceOptions): Prom
   const bareUrl = canonicalId.replace(/^url:/, '');
   const inferred = opts.docType ?? defaultDocTypeForSource({ kind: 'url', id: canonicalId, url: bareUrl });
   try {
-    const fetched = await fetchUrlMaterial(canonicalId, { docType: inferred });
+    const fetched = await fetchUrlMaterial(canonicalId, {
+      docType: inferred,
+      forceRefetch: opts.forceRefetch,
+    });
+    const stats = countBodyStats(fetched.text);
     const meta: ArxivMetadata = {
       id: canonicalId,
       title: fetched.title,
@@ -134,6 +147,9 @@ async function readUrlSource(canonicalId: string, opts: LoadSourceOptions): Prom
       slugSeed: fetched.title || urlPathSlug(canonicalId),
       fetchInstruction: '',
       docType: fetched.docType,
+      extractionMethod: fetched.extractionMethod,
+      bodyChars: fetched.bodyChars ?? stats.chars,
+      bodyWords: fetched.bodyWords ?? stats.words,
     };
   } catch (err) {
     if (opts.requireText) throw err;

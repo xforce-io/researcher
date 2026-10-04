@@ -32,4 +32,10 @@ describe('loadGlobalConfig', () => {
       runtime: 'grok-cli',
     });
   });
+  it('defaults urlExtract thresholds and reads overrides', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'r-glob-'));
+    expect(loadGlobalConfig(join(dir, 'config.yaml')).urlExtract).toEqual({ minChars: 1000, minWords: 150 });
+    writeFileSync(join(dir, 'config.yaml'), 'urlExtract:\n  minChars: 800\n  minWords: 120\n');
+    expect(loadGlobalConfig(join(dir, 'config.yaml')).urlExtract).toEqual({ minChars: 800, minWords: 120 });
+  });
 });

@@ -487,6 +487,10 @@ export class PaperLibrary {
       mutationId: read.mutationId,
       lastError: read.lastError,
       artifactPath: read.artifactPath,
+      failureCode: read.failureCode,
+      extractedChars: read.extractedChars,
+      extractedWords: read.extractedWords,
+      extractionMethod: read.extractionMethod,
     }, null, 2)}\n`);
     return read;
   }
@@ -513,6 +517,10 @@ export class PaperLibrary {
             mutationId?: string;
             lastError?: string;
             artifactPath?: string;
+            failureCode?: PaperRead['failureCode'];
+            extractedChars?: number;
+            extractedWords?: number;
+            extractionMethod?: PaperRead['extractionMethod'];
           };
           reads.push({
             id: raw.id,
@@ -523,6 +531,10 @@ export class PaperLibrary {
             mutationId: raw.mutationId,
             lastError: raw.lastError,
             artifactPath: raw.artifactPath,
+            failureCode: raw.failureCode,
+            extractedChars: raw.extractedChars,
+            extractedWords: raw.extractedWords,
+            extractionMethod: raw.extractionMethod,
           });
         } catch {
           /* skip corrupt read records */

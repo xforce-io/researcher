@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><title>Cache design notes</title></head>
+<body>
+<nav><a href="/">Home</a><a href="/blog">Blog</a></nav>
+<article>
+  <h1>Cache design</h1>
+  <p>We decided to use LRU for the library URL text cache because the working set is small and eviction is predictable. The first argument is operational: a researcher machine keeps a handful of fetched HTML bodies, not a CDN edge. The second argument is correctness: an immutable paper PDF can live forever, but a blog URL is not a snapshot, so the cache must never treat a short teaser as success.</p>
+  <p>Tradeoff: memory versus hit rate. We accept a larger on-disk file than a title-only card because the runner feeds the model the extracted body. A card of eighty bytes looks non-empty and used to be written as a completed read. That is the defect this fixture guards. The remaining sentences exist so the default character and word thresholds both pass on a normal article-shaped page without relying on the whole document body.</p>
+  <p>Implementation notes follow the same discipline. Readability is the primary extractor. A structural DOM fallback may run when Readability misses the threshold. Neither path may select the first article by regular expression. Link density drops recommendation rails. The deepest passing semantic node wins when article and main both exist. This paragraph keeps repeating the design vocabulary so token counts stay honest: cache, eviction, threshold, artifact, runner, extraction, readability, fallback, density, article, main, body.</p>
+  <p>Final reminder for the golden: title contains Cache design, body stays above one thousand characters and one hundred fifty words, and the footer copyright line must not dominate the extract. Repeat: cache design LRU eviction threshold artifact runner extraction readability fallback density article main body evidence tradeoff memory latency replay consistency argument.</p>
+</article>
+<footer>© example</footer>
+</body>
+</html>

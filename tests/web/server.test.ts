@@ -895,3 +895,35 @@ describe('library deep-read failure + orphan reclaim (#78)', () => {
     }
   });
 });
+
+describe('POST /reads pastedText (#212)', () => {
+  it('returns 422 paste_too_short without starting a read', async () => {
+    const before = libraryReadCalls;
+    const readsBefore = new PaperLibrary(root).listReads('paper_arxiv_2401_12345').length;
+    const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true, pastedText: 'too short' }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json() as { error: string; chars: number };
+    expect(body.error).toBe('paste_too_short');
+    expect(body.chars).toBeGreaterThan(0);
+    expect(libraryReadCalls).toBe(before);
+    expect(new PaperLibrary(root).listReads('paper_arxiv_2401_12345')).toHaveLength(readsBefore);
+  });
+
+  it('accepts a long paste and starts a read', async () => {
+    releaseLibraryRead = undefined;
+    const before = libraryReadCalls;
+    const res = await fetch(base + '/library/documents/paper_arxiv_2401_12345/reads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: true, pastedText: `${'word '.repeat(200)}pasted full text` }),
+    });
+    expect(res.status).toBe(202);
+    await waitFor(() => libraryReadCalls === before + 1);
+    releaseLibraryRead?.();
+    await waitFor(() => new PaperLibrary(root).listReads('paper_arxiv_2401_12345').some((r) => r.status === 'read'));
+  });
+});

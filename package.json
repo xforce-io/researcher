@@ -16,16 +16,19 @@
     "build": "tsc -p . && mkdir -p dist/web/static && cp src/web/static/* dist/web/static/",
     "dev": "tsc -p . --watch",
     "test": "vitest run",
+    "smoke:212": "node scripts/smoke-212-url-extract.mjs",
     "test:watch": "vitest",
     "lint": "eslint src tests",
     "format": "prettier --write src tests"
   },
   "dependencies": {
     "@freemanxu/milkie": "^0.1.0",
+    "@mozilla/readability": "^0.6.0",
     "commander": "^14.0.3",
     "execa": "^9.6.1",
     "js-yaml": "^4.1.1",
     "katex": "^0.17.0",
+    "linkedom": "^0.18.13",
     "marked": "^14.1.4",
     "simple-git": "^3.36.0",
     "zod": "^4.3.6"

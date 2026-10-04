@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execaSync } from 'execa';
-import { runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList, runLibraryUnlink } from '../../src/commands/library.js';
+import { runLibraryAdd, runLibraryIntegrate, runLibraryLink, runLibraryList, runLibraryReadCommand, runLibraryUnlink } from '../../src/commands/library.js';
 import { PaperLibrary } from '../../src/library/store.js';
 
 describe('researcher library commands', () => {
@@ -42,6 +42,23 @@ describe('researcher library commands', () => {
     expect(out.join('')).toContain('url:https://example.com/paper');
     expect(out.join('')).toMatch(/paper_url_[a-f0-9]{16}/);
     expect(existsSync(join(root, '.researcher-workspace/library/schema.json'))).toBe(true);
+  });
+
+  it('rejects a short --paste-file without writing a read artifact', async () => {
+    const added = runLibraryAdd({ cwd: root, input: 'https://example.com/paste', write: () => {} });
+    const paste = join(root, 'short.txt');
+    writeFileSync(paste, 'too short');
+    const err = await runLibraryReadCommand({
+      cwd: root,
+      input: added.id,
+      pasteFile: paste,
+      write: () => {},
+      writeErr: () => {},
+      runner: async () => ({ artifactPath: 'should-not-run.md' }),
+    }).then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err)).toMatch(/paste too short/);
+    expect(new PaperLibrary(root).listReads(added.id)).toEqual([]);
   });
 
   it('records topic integration without mutating topic artifacts', () => {

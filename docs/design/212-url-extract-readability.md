@@ -1,9 +1,11 @@
 # L1：URL 抽取可靠化与粘贴全文重新深读
 
 - Issue：[#212](https://github.com/xforce-io/researcher/issues/212)
-- 层级：**L1**
-- 状态：**Draft**（未 Approved。peng 审过之前不得开发。）
+- 层级：**L1**（下文 L2 为同一路径的实现边界）
+- 状态：**Approved**
 - 日期：2026-10-04
+- 批准：peng 2026-10-04 22:53 Asia/Shanghai，D1–D7 按推荐；身份表「来源·用户粘贴」改为「正文来源」
+- Knox：生产路径禁止正则抽取。Readability 不过门槛则 linkedom DOM 启发式回退。徽标文案「已回退备用抽取」（L2 注明，无需再问 peng）
 - 分支：`bugfix/212-url-extract-readability`
 - 现有机制：[212-url-extract-how.md](212-url-extract-how.md)
 - 线框：[wireframes/](212-url-extract-readability/wireframes/)
@@ -19,7 +21,7 @@
 | F 粘贴过短校验 | [05-paste-too-short.png](212-url-extract-readability/wireframes/05-paste-too-short.png) |
 | G 粘贴成功 | [06-paste-success.png](212-url-extract-readability/wireframes/06-paste-success.png) |
 
-Issue 是验收依据。本文是提交给 peng 的 L1 提案。不得把本文标成 Approved。
+Issue 是验收依据。L1 已 Approved。L2 只补实现边界，不改已批契约；Knox 的 DOM 回退与四条选节点/测试规则见文末 L2。
 
 ## 1 背景
 
@@ -366,7 +368,7 @@ L1 批准后、写代码前，用同一路径出 L2（可仍叫本文件，状�
 - `url-extract-reread.md` 逐步用户入口（与 S1–S4 逐条）
 - `document-detail.md` 要改的具体 Drive 行
 
-未批 L1 前不写 L2 正文、不改 `src/`。
+L1 已批，L2 见下文。
 
 ## 14 关联
 
@@ -377,3 +379,113 @@ L1 批准后、写代码前，用同一路径出 L2（可仍叫本文件，状�
 - #209 失败原因可读
 - #186 后一次失败不覆盖上次产物
 - `docs/superpowers/specs/2026-05-04-add-url-source-design.md`（早期 URL 设计：当时打算让 agent 自己抓；现状已是 runner 抓取）
+
+# L2：实现边界
+
+- 层级：**L2**
+- 状态：随 L1 Approved 一并落地（peng 已批契约；Knox 四条选节点/测试规则写入本文）
+- 徽标文案改动（Knox，无需再问 peng）：失败条与身份表「抽取」行写 **已回退备用抽取**，不用「已回退旧抽取」。
+
+## L2.1 字段级接口
+
+```ts
+type HtmlExtractionMethod = 'readability' | 'dom-fallback';
+type ExtractionMethod = HtmlExtractionMethod | 'pdf' | 'plain' | 'user-pasted';
+type ReadFailureCode = 'extract_too_short' | 'empty_text' | 'fetch_error' | 'agent_error';
+
+interface UrlExtractThreshold { minChars: number; minWords: number } // default 1000 / 150
+
+interface UrlMaterial {
+  title: string; text: string; contentType: string; docType: DocType; url: string;
+  extractionMethod?: ExtractionMethod; bodyChars?: number; bodyWords?: number;
+}
+
+interface SourceMaterial {
+  meta: ArxivMetadata; paperText: string; slugSeed: string; fetchInstruction: string; docType: DocType;
+  extractionMethod?: ExtractionMethod; bodyChars?: number; bodyWords?: number;
+}
+
+interface PaperRead {
+  // existing fields …
+  failureCode?: ReadFailureCode;
+  extractedChars?: number;
+  extractedWords?: number;
+  extractionMethod?: ExtractionMethod;
+}
+
+// POST /library/documents/:id/reads
+interface ReadsPostBody {
+  force?: boolean;
+  mutationId?: string;
+  forceRefetch?: boolean;   // missing + force:true ⇒ treat as true
+  pastedText?: string;      // present + too short ⇒ 422, no reading row
+}
+
+interface LibraryReadRunnerOptions {
+  workspaceRoot: string; paper: Paper; readId: string;
+  pastedText?: string; forceRefetch?: boolean;
+  // existing onLine / onEvent / topicContext …
+}
+```
+
+产物 frontmatter 新增：`extraction_method`、`body_chars`、`body_words`。读记 JSON 同步这些字段。旧记录缺字段时页面不编造字数。
+
+配置：`~/.researcher/config.yaml` → `urlExtract.minChars` / `urlExtract.minWords`。缺省 1000 / 150。只影响本机 runner。
+
+`fetchUrlMaterial(id, { docType?, forceRefetch? })`。`forceRefetch` 为真则不读 cache。HTML 过短/空不写 cache。命中 HTML cache 若低于**当前**门槛则删 key 当 miss。
+
+错误：`UrlExtractError`（`failureCode` + 可选长度/方式）。HTTP/网络 → `fetch_error`。模型失败 → `agent_error`。粘贴过短 CLI：`paste too short: N chars, M words`，非 0 退出。
+
+Web 422：`{ error: "paste_too_short", chars, words, minChars, minWords, message }`，不写 reading。页面内联，不用 `alert`。
+
+CLI：`researcher library read <document-id-or-url> [--force] [--force-refetch] [--paste-file <path>|-]`。URL 且文档不存在则先 `library add`。stdout 静默，stderr 一行产物路径。
+
+## L2.2 抽取顺序与选节点（Knox）
+
+顺序（HTML only；PDF / plain / X 不走门槛）：
+
+1. linkedom `parseHTML` → `Readability.parse()`。`parse() === null` 或抛错 ⇒ 空 text，不算过门槛。
+2. Readability 正文非空且 **字 ≥ minChars 且 词 ≥ minWords** ⇒ `extractionMethod=readability`。
+3. 否则 DOM 回退。回退过门槛 ⇒ `dom-fallback`。
+4. 两条都不过 ⇒ throw，不写读记产物、不写 URL cache。
+
+**禁止**：生产路径正则取第一个 `<article>` / `<main>` / `<body>`。旧 `extractHtmlMainText` 已移出 `src/`，仅测试 helper 可对照。
+
+**选节点规则（方案 b + 链接密度上限）**：
+
+- 候选只收 `article`、`main`、`[role=main]`。**不要**把 `body` 和它们放进同一池按文本最长打分——`body` 包含 article/main，几乎永远赢，等于整页。
+- 每个候选先剥 chrome，再算链接密度 = 链接文字码点数 / 可见文字码点数。`linkDensity > 0.5` 的候选丢掉。
+- 在剩余且过门槛的节点里取**最深**（`elementDepth`）；同深度取更长文本，再同则文档序。
+- **仅当**没有过门槛的语义候选时，才用剥过 chrome 的 `body`。body 也不和 article/main 比长度。
+- 页面同时有 `article` 和 `main`：套这条规则。嵌套时更深的赢；兄弟节点同深度则更长文本赢。夹具必须断言选中节点符合本条。
+
+**去推荐卡只用结构信号**：
+
+- 标签：`nav` / `aside` / `footer` / `header` / `[role=navigation]` / `[role=complementary]`。
+- 再删子孙 `article|section|div` 中「至少 2 个 `<a>` 且 linkDensity > 0.5」的容器（由深到浅），避免付费墙/相关阅读块污染 body。
+- **禁止**按 class/id 名关键词匹配（如 `/recommend|related|post-preview/`）。
+
+中文词数：空白切 token；含汉字的 token 按汉字个数计词，让中文页能过 150 词。门槛仍是票面「字 < 1000 **或** 词 < 150」。
+
+## L2.3 夹具与 golden
+
+目录：`tests/fixtures/url-extract/`。缺夹具则单测失败，不 skip。
+
+| 文件 | 断言 |
+|---|---|
+| `everyto-codex-graded.html` | 必须断言**实际路径** `readability` 或 `dom-fallback`。正文 ≥ 1000 字，含 `blank slate` 与 `Eight Levels`。若走回退，回退不得等于第一篇 `<article class="post-preview">` 推荐卡。 |
+| `blog-article.html` | title 含 `Cache design`；≥ 1000 字 |
+| `github-readme.html` | title 含 `Spatiotemporal`；≥ 1000 字 |
+| `docs-page.html` | title 含 `API Overview`；≥ 1000 字 |
+
+合成页（可写在测试里）：
+
+1. Readability 不过门槛、DOM 回退过门槛 → 写读记，`extractor=dom-fallback`。
+2. 两条都不过 → 失败态，不写读记产物、不写 cache。
+3. 同时有 `article` 与 `main` → 选中节点符合 L2.2 最深规则。
+
+功能文件：`.agents/skills/verify-researcher/features/url-extract-reread.md`（S1–S4 用户入口）。`document-detail.md` 增 #212 S3 行：过短失败中文原因/字数/粘贴区；进行中粘贴 disabled；成功「正文来源」与「已回退备用抽取」。
+
+冒烟：`scripts/smoke-212-url-extract.mjs`。独立 clone 里 `npm ci && npm run build` 后可跑。`--cache-dir` 或 `RESEARCHER_HOME` 指向临时缓存。目标 Node：**v23.11.0**（Mac :4500 同版本）。
+
+依赖：`@mozilla/readability` ^0.6.0 Apache-2.0；`linkedom` ^0.18.13 ISC。进 lockfile。

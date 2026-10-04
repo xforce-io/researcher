@@ -9,6 +9,11 @@ import {
 } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
+import type { PaperRead } from '../library/model.js';
+import {
+  loadUrlExtractThreshold,
+  type ExtractionMethod,
+} from '../sources/url-extract.js';
 import {
   compactLibraryReadIdentityFm,
   isLibraryReadFrontmatter,
@@ -484,12 +489,44 @@ function renderPaperIdentityMeta(v: LibraryPaperDetailView): string {
   if (fm?.source_url) add('来源', fmValue('source_url', fm.source_url), true);
   if (fm?.pdf_url) add('PDF', fmValue('pdf_url', fm.pdf_url));
 
+  const method = typeof fm?.extraction_method === 'string' ? fm.extraction_method : '';
+  if (method === 'user-pasted') {
+    add('正文来源', '<span class="source-origin">用户粘贴</span>');
+  }
+  const extractLabel = formatExtractLabel(method as ExtractionMethod | '', fm);
+  if (extractLabel) add('抽取', extractLabel);
+
   add(
     '标签',
     v.paper.tags.length ? renderTagChips(v.paper.tags) : '<span class="muted">无</span>',
   );
 
   return rows.length ? `<dl class="fm paper-identity-fm">${rows.join('')}</dl>` : '';
+}
+
+function formatCount(n: number): string {
+  return n.toLocaleString('zh-CN');
+}
+
+function extractionMethodLabel(method: string): string {
+  if (method === 'readability') return 'Readability';
+  if (method === 'dom-fallback') return '已回退备用抽取';
+  if (method === 'pdf') return 'PDF';
+  if (method === 'plain') return '纯文本';
+  if (method === 'user-pasted') return '用户粘贴';
+  return '';
+}
+
+function formatExtractLabel(method: string, fm: Record<string, unknown> | null | undefined): string {
+  const label = extractionMethodLabel(method);
+  const chars = typeof fm?.body_chars === 'number' ? fm.body_chars : Number(fm?.body_chars);
+  const words = typeof fm?.body_words === 'number' ? fm.body_words : Number(fm?.body_words);
+  const bits: string[] = [];
+  if (label) bits.push(label);
+  if (Number.isFinite(chars) && Number.isFinite(words)) {
+    bits.push(`正文 ${formatCount(chars)} 字 / ${formatCount(words)} 词`);
+  }
+  return bits.join(' · ');
 }
 
 const JSON_FORM_JS = `
@@ -508,7 +545,7 @@ document.addEventListener('submit', function (e) {
   var method = (form.getAttribute('data-json-method') || 'POST').toUpperCase();
   var payload = {};
   new FormData(form).forEach(function (v, k) {
-    if (k === 'force' || k === 'pinned') payload[k] = v === '1' || v === 'true' || v === 'on';
+    if (k === 'force' || k === 'pinned' || k === 'forceRefetch') payload[k] = v === '1' || v === 'true' || v === 'on';
     else payload[k] = v;
   });
   if ((method === 'POST') && /\\/reads$/.test(action) && !payload.mutationId) {
@@ -534,6 +571,20 @@ document.addEventListener('submit', function (e) {
   }
   fetch(action, opts).then(function (res) {
     if (res.status === 204) { location.reload(); return; }
+    if (res.status === 422) {
+      return res.json().then(function (data) {
+        unlock();
+        if (data && data.error === 'paste_too_short') {
+          var errEl = form.querySelector && form.querySelector('[data-paste-error]');
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = data.message || ('粘贴内容过短（' + data.chars + ' 字 / ' + data.words + ' 词）。');
+            return;
+          }
+        }
+        throw new Error((data && (data.message || data.error)) || String(res.status));
+      });
+    }
     if (!res.ok) {
       return res.text().then(function (t) { throw new Error(t || String(res.status)); });
     }
@@ -548,12 +599,56 @@ document.addEventListener('submit', function (e) {
 });
 `;
 
+const PASTE_REREAD_JS = `
+(function () {
+  function countBodyStats(text) {
+    var trimmed = String(text || '').replace(/^\\s+|\\s+$/g, '');
+    var chars = Array.from(trimmed).length;
+    if (!trimmed) return { chars: 0, words: 0 };
+    var words = 0;
+    trimmed.split(/\\s+/).forEach(function (token) {
+      if (!token) return;
+      var han = token.match(/\\p{Script=Han}/gu);
+      words += han && han.length ? han.length : 1;
+    });
+    return { chars: chars, words: words };
+  }
+  function bindPaste(form) {
+    var ta = form.querySelector('textarea[name="pastedText"]');
+    var btn = form.querySelector('[data-paste-submit]');
+    var err = form.querySelector('[data-paste-error]');
+    if (!ta || !btn) return;
+    var minChars = Number(form.getAttribute('data-min-chars') || 1000);
+    var minWords = Number(form.getAttribute('data-min-words') || 150);
+    function refresh() {
+      var stats = countBodyStats(ta.value);
+      var short = stats.chars < minChars || stats.words < minWords;
+      btn.disabled = short || form.hasAttribute('data-disabled');
+      if (!err) return;
+      if (ta.value && short) {
+        err.hidden = false;
+        err.textContent = '粘贴内容过短（' + stats.chars + ' 字 / ' + stats.words + ' 词）。请贴全文后再试，门槛是 ' + minChars + ' 字或 ' + minWords + ' 词。';
+      } else if (err.getAttribute('data-keep') !== '1') {
+        err.hidden = true;
+        err.textContent = '';
+      }
+    }
+    ta.addEventListener('input', function () {
+      if (err) err.removeAttribute('data-keep');
+      refresh();
+    });
+    refresh();
+  }
+  document.querySelectorAll('form[data-paste-reread]').forEach(bindPaste);
+})();
+`;
+
 function page(title: string, body: string, opts?: { htmlClass?: string }): string {
   const hc = opts?.htmlClass ? ` class="${escapeHtml(opts.htmlClass)}"` : '';
   return `<!doctype html><html lang="${body.includes('document-detail') || body.includes('note-editor') ? 'zh-CN' : 'en'}"${hc}><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css"></head>` +
-    `<body${hc}>${body}<script>${JSON_FORM_JS}</script></body></html>`;
+    `<body${hc}>${body}<script>${JSON_FORM_JS}</script><script>${PASTE_REREAD_JS}</script></body></html>`;
 }
 
 function topbar(root: string, active: 'workspace' | 'library' | 'topics' | 'topic' = 'workspace'): string {
@@ -974,20 +1069,54 @@ const LIBRARY_READ_STAGE_LABELS: Record<string, string> = {
   'record-read': '写入 Library 状态',
 };
 
-function renderDeepReadForm(paperId: string, label: string, force = false): string {
+function renderDeepReadForm(paperId: string, label: string, force = false, buttonClass = 'primary'): string {
   const action = `/library/documents/${encodeURIComponent(paperId)}/reads`;
   return `<form class="deep-read-form" action="${escapeHtml(action)}" method="post" data-json-action="${escapeHtml(action)}">` +
     `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
-    (force ? '<input type="hidden" name="force" value="1">' : '') +
-    `<button class="primary" type="submit">${escapeHtml(label)}</button>` +
+    (force ? '<input type="hidden" name="force" value="1"><input type="hidden" name="forceRefetch" value="1">' : '') +
+    `<button class="${buttonClass}" type="submit">${escapeHtml(label)}</button>` +
   `</form>`;
+}
+
+function renderPasteRereadForm(paperId: string, disabled = false): string {
+  const threshold = loadUrlExtractThreshold();
+  const action = `/library/documents/${encodeURIComponent(paperId)}/reads`;
+  return `<form class="paste-reread${disabled ? ' is-disabled' : ''}" action="${escapeHtml(action)}" method="post"` +
+    ` data-json-action="${escapeHtml(action)}" data-paste-reread` +
+    ` data-min-chars="${threshold.minChars}" data-min-words="${threshold.minWords}"` +
+    `${disabled ? ' data-disabled="1"' : ''}>` +
+    `<input type="hidden" name="paperId" value="${escapeHtml(paperId)}">` +
+    `<input type="hidden" name="force" value="1">` +
+    `<label>原文全文` +
+      `<textarea name="pastedText" rows="6" placeholder="把原文全文粘贴到这里"${disabled ? ' disabled' : ''}></textarea>` +
+    `</label>` +
+    `<p class="field-error" data-paste-error hidden></p>` +
+    `<div class="read-actions">` +
+      `<button class="primary" type="submit" data-paste-submit disabled>用粘贴全文重新深读</button>` +
+    `</div>` +
+    (disabled ? '<p class="muted">深读进行中，完成前不能再次提交。</p>' : '') +
+  `</form>`;
+}
+
+function classifyFetchFailure(lastError: string): string {
+  if (/timeout|TIMEOUT|UND_ERR_CONNECT_TIMEOUT/i.test(lastError)) return '网络超时';
+  if (/\b403\b/.test(lastError)) return 'HTTP 403';
+  if (/\b404\b/.test(lastError)) return 'HTTP 404';
+  if (/ECONNREFUSED|ENOTFOUND|ECONNRESET|unable to connect|Connect Timeout/i.test(lastError)) return '无法连接';
+  return '抓取失败';
+}
+
+function renderRunDetails(lastError?: string): string {
+  if (!lastError) return '';
+  return `<details class="read-run-details"><summary>运行详情</summary>` +
+    `<p class="read-error mono">${escapeHtml(lastError)}</p></details>`;
 }
 
 function renderDeepReadAction(
   paperId: string,
   status: LibraryPaperSummary['readStatus'],
   activeRead: ActiveTaskView | null = null,
-  lastError?: string,
+  latest?: PaperRead,
 ): string {
   if (status === 'reading') {
     if (!activeRead) {
@@ -1001,26 +1130,67 @@ function renderDeepReadAction(
     const stages = Object.entries(LIBRARY_READ_STAGE_LABELS).map(([name, label], i) =>
       `<li class="${i === 0 ? 'active' : 'pending'}" data-stage="${escapeHtml(name)}"><span class="mk">${i === 0 ? '↻' : '·'}</span>${escapeHtml(label)}</li>`
     ).join('');
-    return `<div class="read-status-panel" role="status" aria-live="polite">` +
+    return `<div class="read-status-panel is-progress-with-paste" role="status" aria-live="polite">` +
       `<div class="read-status-copy"><span class="pulse-dot"></span><div><b id="library-read-heading">深读中</b>` +
       `<p id="library-read-status"${attrs}>正在提取内容并生成深读产物。</p></div></div>` +
       `<button id="library-read-retry" class="primary" type="button" hidden>重试深读</button>` +
       `<details class="read-run-details"><summary>运行详情</summary>` +
       `<ol id="library-read-stages" class="run-stages library-read-stages">${stages}</ol>` +
       `<pre id="library-read-log" class="library-read-log"></pre></details>` +
+      renderPasteRereadForm(paperId, true) +
     `</div>`;
   }
   if (status === 'failed') {
-    const err = lastError
-      ? `<p class="read-error mono">${escapeHtml(lastError)}</p>`
-      : `<p>上次深读失败，可重试。</p>`;
-    return `<div class="read-status-panel stale" role="status">` +
-      `<div class="read-status-copy"><span class="stale-dot"></span><div><b>深读失败</b>${err}</div></div>` +
-      renderDeepReadForm(paperId, '重试深读', true) +
-    `</div>`;
+    return renderFailedDeepRead(paperId, latest);
   }
   const isRerun = status === 'read';
   return renderDeepReadForm(paperId, isRerun ? '重新深读' : '深读', isRerun);
+}
+
+function renderFailedDeepRead(paperId: string, latest?: PaperRead): string {
+  const threshold = loadUrlExtractThreshold();
+  const lastError = latest?.lastError;
+  const code = latest?.failureCode;
+  let reason: string;
+  let showLastErrorInline = false;
+  if (code === 'extract_too_short') {
+    const chars = latest?.extractedChars ?? 0;
+    const words = latest?.extractedWords ?? 0;
+    reason = `抽取正文过短，可能是付费墙或页面结构干扰。只得到 ${formatCount(chars)} 字 / ${formatCount(words)} 词（门槛 ${formatCount(threshold.minChars)} 字或 ${formatCount(threshold.minWords)} 词）。`;
+  } else if (code === 'empty_text') {
+    reason = '抽取正文为空。';
+  } else if (code === 'fetch_error') {
+    reason = `抓取失败。${classifyFetchFailure(lastError ?? '')}。`;
+  } else if (lastError) {
+    reason = '上次深读失败，可重试。';
+    showLastErrorInline = true;
+  } else {
+    reason = '上次深读失败，可重试。';
+  }
+  const hint = `<p>可从原文复制全文，粘贴后重新深读。</p>`;
+  const metrics = code === 'extract_too_short'
+    ? `<div class="extract-metrics">` +
+        `<span>${formatCount(latest?.extractedChars ?? 0)} 字</span>` +
+        `<span>${formatCount(latest?.extractedWords ?? 0)} 词</span>` +
+        (latest?.extractionMethod === 'dom-fallback' ? '<span>已回退备用抽取</span>' : '') +
+      `</div>`
+    : '';
+  const inlineErr = showLastErrorInline && lastError
+    ? `<p class="read-error mono">${escapeHtml(lastError)}</p>`
+    : '';
+  const refetchLabel = code === 'extract_too_short' ? '强制重新抓取' : '重试深读';
+  return `<div class="read-status-panel stale is-failure" role="status">` +
+    `<div class="read-status-copy"><span class="stale-dot"></span><div>` +
+      `<b>深读失败</b>` +
+      `<p>${escapeHtml(reason)}</p>` +
+      hint +
+      metrics +
+      inlineErr +
+    `</div></div>` +
+    renderRunDetails(showLastErrorInline ? undefined : lastError) +
+    renderPasteRereadForm(paperId) +
+    `<div class="read-actions">${renderDeepReadForm(paperId, refetchLabel, true, 'secondary')}</div>` +
+  `</div>`;
 }
 
 /** Panel view for a paper detail: the panel itself never reads paper fields. */
@@ -1255,9 +1425,9 @@ export function renderLibraryPaper(
       readBody +
     `</section>`;
   const panel = panelOf(v, editTopic);
-  const latestReadError = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.lastError;
+  const latestRead = [...v.reads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const readingOrFailed = v.paper.readStatus === 'reading' || v.paper.readStatus === 'failed';
-  const deepRead = renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestReadError);
+  const deepRead = renderDeepReadAction(v.paper.id, v.paper.readStatus, activeRead, latestRead);
   const body = topbar('', 'library') +
     `<main class="paper-detail-shell document-detail">` +
       `<section class="paper-detail-main">` +
@@ -1378,7 +1548,7 @@ function enableLibraryRetry() {
     fetch('/library/documents/' + encodeURIComponent(paperId) + '/reads', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ force: true, mutationId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) }),
+      body: JSON.stringify({ force: true, forceRefetch: true, mutationId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) }),
     }).then(function (res) {
       if (!res.ok) throw new Error('retry failed');
       return res.json();

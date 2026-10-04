@@ -131,12 +131,16 @@ export async function runPapersRead(opts: {
       status: 'read',
       artifactPath: result.artifactPath,
       lastError: undefined,
+      extractionMethod: result.extractionMethod,
+      extractedChars: result.bodyChars,
+      extractedWords: result.bodyWords,
     });
     writeErr(`library-read: ${result.artifactPath}\n`);
     write(readFileSync(join(workspaceRoot, result.artifactPath), 'utf8'));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    lib.upsertRead({ id: readId, paperId: paper.id, status: 'failed', lastError: message });
+    const { readFailureFields } = await import('../sources/url-extract.js');
+    lib.upsertRead({ id: readId, paperId: paper.id, status: 'failed', lastError: message, ...readFailureFields(err) });
     throw err;
   }
 }
