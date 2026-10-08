@@ -288,8 +288,15 @@ function withBodyStats(material: UrlMaterial): UrlMaterial {
   return { ...material, bodyChars: stats.chars, bodyWords: stats.words };
 }
 
-function isHtmlContentType(contentType: string | undefined): boolean {
-  return (contentType ?? '').includes('html');
+/** Successful non-html artifacts may be short; they must not be discarded for length. */
+function isTypedNonHtmlArtifact(material: Pick<UrlMaterial, 'contentType' | 'extractionMethod'>): boolean {
+  const method = material.extractionMethod;
+  if (method === 'pdf' || method === 'plain' || method === 'user-pasted') return true;
+  if (method === 'readability' || method === 'dom-fallback') return false;
+  const contentType = (material.contentType ?? '').toLowerCase();
+  return contentType.includes('application/pdf')
+    || contentType.includes('text/plain')
+    || contentType.includes('text/markdown');
 }
 
 function deleteUrlCache(canonicalId: string): void {
@@ -309,7 +316,7 @@ function readUrlCache(canonicalId: string): UrlMaterial | undefined {
     const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as Omit<UrlMaterial, 'text'>;
     const text = readFileSync(textPath, 'utf8');
     const material = { ...meta, text };
-    if (isHtmlContentType(material.contentType) && isBodyTooShort(text, loadUrlExtractThreshold())) {
+    if (isBodyTooShort(text, loadUrlExtractThreshold()) && !isTypedNonHtmlArtifact(material)) {
       deleteUrlCache(canonicalId);
       return undefined;
     }
