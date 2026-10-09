@@ -2,12 +2,13 @@
 
 - Issue：[#216](https://github.com/xforce-io/researcher/issues/216)
 - 层级：**L1**
-- 状态：**Draft**
+- 状态：**Approved**
 - 日期：2026-10-08
+- 批准：peng 2026-10-09 ~14:55 Asia/Shanghai（via Jenny · Staff）；§4 类型化非 html 豁免按设计原文
 - 分支：`bugfix/216-cache-contenttype-selfheal`
 - 现有机制：[212-url-extract-readability.md](212-url-extract-readability.md) §4.4 S4；[212-url-extract-how.md](212-url-extract-how.md)
 
-Issue 是验收依据。本文是 Draft，未 Approved。L2 不需要（见 §13）。
+Issue 是验收依据。L1 已 Approved。L2 不需要（见 §13）。
 
 ## 1 背景
 
