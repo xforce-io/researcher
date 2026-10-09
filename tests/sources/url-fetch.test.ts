@@ -65,6 +65,78 @@ describe('fetchUrlMaterial', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('self-heals a short cache hit whose contentType is not html', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/octet-poison';
+    const key = cacheKey(id);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Poison',
+      contentType: 'application/octet-stream',
+      docType: 'blog',
+      url: 'https://example.com/octet-poison',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), '82 byte teaser');
+    const fetchMock = vi.fn(async () => new Response(
+      htmlPage('Healed', `<article>${longParagraphs('Healed octet body')}</article>`),
+      { status: 200, headers: { 'content-type': 'text/html' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toContain('Healed octet body');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toContain('Healed octet body');
+  });
+
+  it('keeps a short successful pdf cache hit', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/short.pdf';
+    const key = cacheKey(id);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Abstract',
+      contentType: 'application/pdf',
+      docType: 'paper',
+      url: 'https://example.com/short.pdf',
+      extractionMethod: 'pdf',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), 'one page abstract');
+    const fetchMock = vi.fn(async () => new Response('should not fetch', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toBe('one page abstract');
+    expect(material.extractionMethod).toBe('pdf');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readFileSync(join(dir, `${key}.txt`), 'utf8')).toBe('one page abstract');
+  });
+
+  it('keeps a short successful plain-text cache hit', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
+    process.env.RESEARCHER_HOME = home;
+    const id = 'url:https://example.com/note.txt';
+    const key = cacheKey(id);
+    const dir = join(home, 'cache', 'url');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${key}.meta.json`), JSON.stringify({
+      title: 'Note',
+      contentType: 'text/plain',
+      docType: 'blog',
+      url: 'https://example.com/note.txt',
+      extractionMethod: 'plain',
+    }));
+    writeFileSync(join(dir, `${key}.txt`), 'short readme');
+    const fetchMock = vi.fn(async () => new Response('should not fetch', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const material = await fetchUrlMaterial(id);
+    expect(material.text).toBe('short readme');
+    expect(material.extractionMethod).toBe('plain');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('self-heals a short HTML cache hit', async () => {
     const home = mkdtempSync(join(tmpdir(), 'r-home-url-'));
     process.env.RESEARCHER_HOME = home;
