@@ -47,6 +47,21 @@ describe('countBodyStats', () => {
   });
 });
 
+const EVERYTO_SUBTITLE =
+  'Five prompts that took me from one-off chats to delegating whole projects to teams of agents';
+const EVERYTO_DATE = 'Oct 2, 2026';
+const EVERYTO_UPDATED = 'Updated Oct 4, 2026';
+const EVERYTO_NEWSLETTER = 'Was this newsletter forwarded to you? Sign up to get it in your inbox.';
+
+function assertNoLeadInAtStart(text: string): void {
+  const start = text.slice(0, 240);
+  expect(start).not.toContain(EVERYTO_SUBTITLE);
+  expect(start).not.toContain(EVERYTO_DATE);
+  expect(start).not.toContain(EVERYTO_UPDATED);
+  expect(start).not.toMatch(/newsletter forwarded/i);
+  expect(start).not.toMatch(/Sign up to get it in your inbox/i);
+}
+
 describe('every.to fixture path', () => {
   it('extracts real prose via readability and keeps fallback off the rec card', () => {
     const html = loadFixture('everyto-codex-graded.html');
@@ -56,10 +71,38 @@ describe('every.to fixture path', () => {
     expect(stats.chars).toBeGreaterThanOrEqual(1000);
     expect(result.text).toMatch(/blank slate/i);
     expect(result.text).toMatch(/Eight Levels/i);
+    assertNoLeadInAtStart(result.text);
     const fallback = extractDomFallback(html);
     expect(fallback.text).toMatch(/blank slate/i);
     expect(fallback.text).toMatch(/Eight Levels/i);
     expect(fallback.text).not.toMatch(/^Vibe Check: GPT-5\.6 Sol/);
+  });
+
+  it('does not start extracted body with subtitle, date, or newsletter chrome', () => {
+    const html = loadFixture('everyto-codex-graded.html');
+    const result = extractHtmlArticle(html);
+    assertNoLeadInAtStart(result.text);
+    expect(result.text).toMatch(/^For most of my working life/i);
+    expect(result.text).toMatch(/blank slate/i);
+    expect(result.text).toMatch(/Eight Levels/i);
+    expect(result.extractionMethod).toBe('readability');
+    expect(countBodyStats(result.text).chars).toBeGreaterThanOrEqual(1000);
+    expect(countBodyStats(result.text).words).toBeGreaterThanOrEqual(150);
+    expect(extractDomFallback(html).text).not.toMatch(
+      /^(?:Five prompts that took me|Oct 2, 2026|Updated Oct 4, 2026|Was this newsletter forwarded)/,
+    );
+  });
+
+  it('does not strip a mid-body newsletter line or an in-sentence date', () => {
+    const html = `<!doctype html><html><head><title>Mid</title></head><body><article>
+      <p>${longProse('I arrived on Oct 2, 2026 to find a blank slate waiting.')}</p>
+      <p>Was this newsletter forwarded to you? Sign up to get it in your inbox.</p>
+      <p>${longProse('Eight Levels still appear after the chrome.')}</p>
+    </article></body></html>`;
+    const result = extractHtmlArticle(html);
+    expect(result.text).toMatch(/^I arrived on Oct 2, 2026/i);
+    expect(result.text).toContain(EVERYTO_NEWSLETTER);
+    expect(result.text).toMatch(/Eight Levels/i);
   });
 
   it('legacy first-article regex grabs the rec card and would fail the prose assertions', () => {

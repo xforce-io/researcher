@@ -285,10 +285,87 @@ function linkDensityOf(root: DomElement): number {
   return linkChars / textChars;
 }
 
+const MONTH_TOKEN =
+  'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+
+const DATE_LINE = new RegExp(
+  `^(?:Updated\\s+)?(?:${MONTH_TOKEN})\\s+\\d{1,2},\\s+\\d{4}(?:\\s*[·•]\\s*\\d+\\s*min(?:ute)?s?\\s*read)?`,
+  'i',
+);
+
+const NEWSLETTER_LINE =
+  /^Was this newsletter forwarded to you\??\.?\s*|^Sign up to get (?:it|this) in your inbox\.?\s*/i;
+
+const DATE_ANYWHERE = new RegExp(
+  `(?:Updated\\s+)?(?:${MONTH_TOKEN})\\s+\\d{1,2},\\s+\\d{4}(?:\\s*[·•]\\s*\\d+\\s*min(?:ute)?s?\\s*read)?`,
+  'gi',
+);
+
+const NEWSLETTER_ANYWHERE = /Was this newsletter forwarded to you\?|Sign up to get (?:it|this) in your inbox/i;
+
+function isSentenceContinuation(text: string): boolean {
+  return /^\s+[a-z]/.test(text);
+}
+
+/** Drop subtitle / date / newsletter chrome only at the start of extracted body text. */
+function stripLeadInChrome(text: string): string {
+  let remaining = text;
+  for (let step = 0; step < 16; step += 1) {
+    remaining = remaining.replace(/^[\s·•|,]+/, '');
+    if (!remaining) break;
+
+    const dateMatch = remaining.match(DATE_LINE);
+    if (dateMatch && !isSentenceContinuation(remaining.slice(dateMatch[0].length))) {
+      remaining = remaining.slice(dateMatch[0].length);
+      continue;
+    }
+
+    const newsletterMatch = remaining.match(NEWSLETTER_LINE);
+    if (newsletterMatch) {
+      remaining = remaining.slice(newsletterMatch[0].length);
+      continue;
+    }
+
+    const chromeIdx = indexOfLeadInChrome(remaining);
+    if (chromeIdx > 0) {
+      const prefix = remaining.slice(0, chromeIdx);
+      if (prefix.length <= 300 && !/[.!?。]/.test(prefix)) {
+        remaining = remaining.slice(chromeIdx);
+        continue;
+      }
+    }
+    break;
+  }
+  return remaining.trim();
+}
+
+function indexOfLeadInChrome(text: string): number {
+  const found = [indexOfDateLine(text), indexOfNewsletterLine(text)].filter((i) => i >= 0);
+  return found.length === 0 ? -1 : Math.min(...found);
+}
+
+function indexOfDateLine(text: string): number {
+  DATE_ANYWHERE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DATE_ANYWHERE.exec(text))) {
+    if (!isSentenceContinuation(text.slice(match.index + match[0].length))) {
+      return match.index;
+    }
+  }
+  return -1;
+}
+
+function indexOfNewsletterLine(text: string): number {
+  const match = text.match(NEWSLETTER_ANYWHERE);
+  return match?.index ?? -1;
+}
+
 function normalizeExtractedText(text: string): string {
-  return text
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
+  return stripLeadInChrome(
+    text
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim(),
+  );
 }
