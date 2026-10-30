@@ -1472,7 +1472,7 @@ function renderDocumentNotes(
     const pinLabel = n.pinned ? '取消置顶' : '置顶';
     const att = n.attachment;
     const missing = att ? missingIds.has(n.id) : false;
-    const download = att && !missing
+    const download = att
       ? `<a class="secondary note-action-btn" href="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}/file" data-annotation-file data-filename="${escapeHtml(att.filename)}">下载</a>`
       : '';
     const body = att

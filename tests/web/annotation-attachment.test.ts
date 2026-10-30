@@ -127,6 +127,10 @@ describe('annotation attachments HTTP/CLI', () => {
     const missing = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file`);
     expect(missing.status).toBe(409);
     expect(await missing.json()).toEqual(expect.objectContaining({ code: 'attachment_missing' }));
+    const missingPage = await (await fetch(`${base}/library/documents/${noteId}`)).text();
+    expect(missingPage).toContain('>下载</a>');
+    expect(missingPage).toContain('data-annotation-file');
+    expect(missingPage).toMatch(/data-file-missing role="alert">文件缺失/);
   });
 
   it('CLI attach then show lists filename bytes sha256 and path', () => {

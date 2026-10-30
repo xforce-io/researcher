@@ -1027,6 +1027,34 @@ describe('document detail hierarchy (#207)', () => {
     expect(html).toContain('尚无文档批注，可添加文本或附件。');
   });
 
+  it('keeps 下载 on missing attachments so the user can retry the file GET (#224 S2.A2)', () => {
+    const html = renderNoteReader(
+      { id: 'doc_note', title: 'My note', body: 'hello', updatedAt: '2026-09-14T00:00:00Z' },
+      undefined,
+      [{
+        id: 'note_att',
+        paperId: 'doc_note',
+        body: 'caption',
+        kind: 'note',
+        pinned: false,
+        attachment: {
+          filename: 'clip.pdf',
+          storedName: 'clip.pdf',
+          contentType: 'application/pdf',
+          bytes: 12,
+          sha256: 'abc',
+        },
+        createdAt: '2026-09-14T00:00:00Z',
+        updatedAt: '2026-09-14T00:00:00Z',
+      }],
+      ['note_att'],
+    );
+    expect(html).toContain('data-annotation-file');
+    expect(html).toContain('>下载</a>');
+    expect(html).toMatch(/data-file-missing role="alert">文件缺失/);
+    expect(html).not.toMatch(/data-file-missing[^>]* hidden/);
+  });
+
   it('keeps video analyze as the only filled primary in the header actions', () => {
     const html = renderVideoReader({
       id: 'doc_video',
