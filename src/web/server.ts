@@ -26,12 +26,13 @@ import { resolveWorkspaceManifestPath } from '../workspace/manifest.js';
 import { createWorkspaceTopic } from '../workspace/create-topic.js';
 import { parseTags, runLibraryAdd, runLibraryDelete, runLibraryLink, runLibraryUnlink } from '../commands/library.js';
 import { isSafeLibraryId, PaperLibrary, newAnalysisId, newDocumentId, newReadId } from '../library/store.js';
+import type { PaperNote } from '../library/model.js';
 import { isNoteDocType, isVideoDocType, parseDocType } from '../library/doc-type.js';
 import { classifyAnalysis } from '../library/video.js';
 import { attachChineseCues, defaultTranslateToZh, type CueTranslator } from '../library/video-translate.js';
 import { analyzeRuntime, defaultVideoAnalyzeRunner, type VideoAnalyzeRunner } from '../library/video-analyze.js';
 import { VideoAnalysisLiveSet } from './video-analysis-live.js';
-import { readMultipartVideo } from './multipart.js';
+import { readMultipartAttachment, readMultipartVideo } from './multipart.js';
 import { normalizePaperInput } from '../library/identity.js';
 import { acquireSharedLease } from '../library/maintenance.js';
 import type { Stage } from '../state/runs.js';
@@ -543,13 +544,17 @@ async function handleDocumentResource(
     // Any docType can carry topic links (#197); the panel is document-level.
     const editTopicParam = url.searchParams.get('edit')?.trim() || undefined;
     if (doc.docType === 'note') {
+      const notes = lib.listNotes(documentId);
       send(res, 200, 'text/html; charset=utf-8', renderNoteReader(
         doc,
         loadTopicLinkPanel(root, documentId, editTopicParam) ?? undefined,
+        notes,
+        missingAttachmentIds(lib, notes),
       ));
       return true;
     }
     if (isVideoDocType(doc.docType)) {
+      const notes = lib.listNotes(documentId);
       send(res, 200, 'text/html; charset=utf-8', renderVideoReader({
         panel: loadTopicLinkPanel(root, documentId, editTopicParam) ?? undefined,
         id: doc.id,
@@ -558,9 +563,11 @@ async function handleDocumentResource(
         revision: doc.revision,
         root,
         mediaExists: lib.videoMediaExists(doc),
-        runtimeMissing: analyzeRuntime().missing,
+        runtimeMissing: videoAnalyzeRunner ? [] : analyzeRuntime().missing,
         latest: lib.latestVideoAnalysis(documentId),
         product: lib.currentCues(documentId),
+        notes,
+        missingAttachmentIds: missingAttachmentIds(lib, notes),
       }));
       return true;
     }
@@ -668,7 +675,7 @@ async function handleDocumentResource(
     return true;
   }
   if (rest === 'annotations' || rest.startsWith('annotations/')) {
-    await handleAnnotations(req, res, { lib, doc, documentId, rest });
+    await handleAnnotations(req, res, { root, lib, doc, documentId, rest });
     return true;
   }
   if (rest === 'links' || rest.startsWith('links/')) {
@@ -945,28 +952,49 @@ function readJson(read: {
   };
 }
 
+function annotationApiJson(n: PaperNote): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: n.id,
+    documentId: n.paperId,
+    body: n.body,
+    kind: n.kind,
+    pinned: n.pinned,
+    createdAt: n.createdAt,
+    updatedAt: n.updatedAt,
+  };
+  if (n.attachment) {
+    row.attachment = {
+      filename: n.attachment.filename,
+      contentType: n.attachment.contentType,
+      bytes: n.attachment.bytes,
+      sha256: n.attachment.sha256,
+    };
+  }
+  return row;
+}
+
+function missingAttachmentIds(lib: PaperLibrary, notes: PaperNote[]): string[] {
+  return notes.filter((n) => n.attachment && !lib.attachmentExists(n)).map((n) => n.id);
+}
+
+function contentDisposition(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
 async function handleAnnotations(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: { lib: PaperLibrary; doc: ReturnType<PaperLibrary['getDocument']>; documentId: string; rest: string },
+  ctx: { root: string; lib: PaperLibrary; doc: ReturnType<PaperLibrary['getDocument']>; documentId: string; rest: string },
 ): Promise<void> {
-  const { lib, doc, documentId, rest } = ctx;
+  const { root, lib, doc, documentId, rest } = ctx;
   if (!doc) {
     sendJsonErr(res, 404, 'not_found', 'unknown document');
     return;
   }
-  if (noteActionBlocked(res, doc.docType)) return;
 
   if (rest === 'annotations' && req.method === 'GET') {
-    sendJson(res, 200, lib.listNotes(documentId).map((n) => ({
-      id: n.id,
-      documentId: n.paperId,
-      body: n.body,
-      kind: n.kind,
-      pinned: n.pinned,
-      createdAt: n.createdAt,
-      updatedAt: n.updatedAt,
-    })));
+    sendJson(res, 200, lib.listNotes(documentId).map(annotationApiJson));
     return;
   }
   if (rest === 'annotations' && req.method === 'POST') {
@@ -990,6 +1018,36 @@ async function handleAnnotations(
     } catch (err) {
       sendJsonErr(res, 400, 'save_failed', err instanceof Error ? err.message : String(err));
     }
+    return;
+  }
+  if (rest === 'annotations/attachments' && req.method === 'POST') {
+    await handleAttachAnnotation(req, res, root, lib, documentId);
+    return;
+  }
+  const fileMatch = rest.match(/^annotations\/([^/]+)\/file$/);
+  if (fileMatch && req.method === 'GET') {
+    const annotationId = decodeURIComponent(fileMatch[1]);
+    const existing = lib.getNote(annotationId);
+    if (!existing || existing.paperId !== documentId) {
+      sendJsonErr(res, 404, 'not_found', 'unknown annotation');
+      return;
+    }
+    if (!existing.attachment) {
+      sendJsonErr(res, 404, 'not_found', 'unknown annotation');
+      return;
+    }
+    const path = lib.attachmentPath(existing);
+    if (!path || !lib.attachmentExists(existing)) {
+      sendJsonErr(res, 409, 'attachment_missing', 'attachment file is missing');
+      return;
+    }
+    const body = readFileSync(path);
+    res.writeHead(200, {
+      'content-type': existing.attachment.contentType,
+      'content-disposition': contentDisposition(existing.attachment.filename),
+      'content-length': String(body.length),
+    });
+    res.end(body);
     return;
   }
   const ann = rest.match(/^annotations\/([^/]+)$/);
@@ -1023,6 +1081,61 @@ async function handleAnnotations(
     return;
   }
   sendJsonErr(res, 404, 'not_found', 'unknown annotation action');
+}
+
+async function handleAttachAnnotation(
+  req: IncomingMessage,
+  res: ServerResponse,
+  root: string,
+  lib: PaperLibrary,
+  documentId: string,
+): Promise<void> {
+  if (!assertWriteAccess(req, res, { json: false })) return;
+  const ct = String(req.headers['content-type'] ?? '').toLowerCase();
+  if (ct.includes('application/json')) {
+    sendJsonErr(res, 415, 'unsupported_media_type', 'Content-Type must be multipart/form-data');
+    return;
+  }
+  const tmpDir = join(root, '.researcher-workspace', 'tmp');
+  let upload: Awaited<ReturnType<typeof readMultipartAttachment>> | undefined;
+  try {
+    upload = await readMultipartAttachment(req, tmpDir);
+  } catch (err) {
+    const status = (err as { status?: number }).status ?? 400;
+    const code = (err as { code?: string }).code
+      ?? (status === 413 ? 'payload_too_large' : status === 415 ? 'unsupported_media_type' : 'invalid_fields');
+    sendJsonErr(res, status, code, err instanceof Error ? err.message : String(err));
+    return;
+  }
+  if (!upload.mutationId) {
+    try { unlinkSync(upload.filePath); } catch { /* tmp */ }
+    sendJsonErr(res, 400, 'invalid_fields', 'mutationId is required');
+    return;
+  }
+  try {
+    const kind = parsePaperNoteKind(upload.kind || 'note');
+    const note = lib.attachNote({
+      documentId,
+      sourcePath: upload.filePath,
+      filename: upload.filename,
+      contentType: upload.contentType,
+      bytes: upload.bytes,
+      caption: upload.caption,
+      kind,
+      pinned: upload.pinned,
+      mutationId: upload.mutationId,
+    });
+    sendJson(res, 201, { id: note.id, url: `${documentUrl(documentId)}#annotations` });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const tagged = err as { status?: number; code?: string };
+    const status = tagged.status ?? (/unknown note kind/.test(message) ? 400 : 500);
+    const code = tagged.code
+      ?? (status === 413 ? 'payload_too_large' : status === 409 ? 'mutation_conflict' : status === 400 ? 'invalid_fields' : 'save_failed');
+    sendJsonErr(res, status, code, message);
+  } finally {
+    try { unlinkSync(upload.filePath); } catch { /* tmp */ }
+  }
 }
 
 async function handleLinks(

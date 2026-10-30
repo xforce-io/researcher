@@ -1011,7 +1011,7 @@ describe('renderLibrary', () => {
 });
 
 describe('document detail hierarchy (#207)', () => {
-  it('gives notes a primary edit action without an annotation jump', () => {
+  it('gives notes a primary edit action and a secondary annotation jump', () => {
     const html = renderNoteReader({
       id: 'doc_note',
       title: 'My note',
@@ -1020,8 +1020,11 @@ describe('document detail hierarchy (#207)', () => {
     });
     expect(html).toContain('>自主笔记<');
     expect(html).toMatch(/class="primary"[^>]*href="\/library\/documents\/doc_note\/edit"/);
-    expect(html).not.toContain('href="#annotations"');
-    expect(html).not.toContain('id="annotations"');
+    expect(html).toMatch(/class="secondary paper-jump-notes"[^>]*href="#annotations"/);
+    expect(html).not.toMatch(/class="primary paper-jump-notes"/);
+    expect(html).toContain('id="annotations"');
+    expect(html).toContain('添加附件');
+    expect(html).toContain('尚无文档批注，可添加文本或附件。');
   });
 
   it('keeps video analyze as the only filled primary in the header actions', () => {
@@ -1035,7 +1038,12 @@ describe('document detail hierarchy (#207)', () => {
     expect(html).toContain('>视频<');
     expect(html).toContain('id="analyze-btn"');
     expect(html).toMatch(/class="primary" id="analyze-btn"/);
-    expect(html).not.toContain('href="#annotations"');
+    expect(html).toMatch(/class="secondary paper-jump-notes"[^>]*href="#annotations"/);
+    expect(html).not.toMatch(/class="primary paper-jump-notes"/);
+    expect(html).toContain('id="annotations"');
+    expect(html).toContain('class="video-screen"');
+    expect(html.indexOf('class="video-workbench"')).toBeLessThan(html.indexOf('id="annotations"'));
+    expect(html.indexOf('class="video-workbench"')).toBeLessThan(html.indexOf('添加附件'));
   });
 
   it('offsets in-page jumps by more than the sticky topbar', () => {
@@ -1106,7 +1114,7 @@ describe('document detail hierarchy (#207)', () => {
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/web/static/app.css'), 'utf8');
     expect(css).toContain('.paper-note-form-row select');
     expect(css).toMatch(/\.paper-note-form-row select\s*\{[^}]*width:\s*auto/);
-    expect(css).toContain('.document-detail .paper-note-form-row select { width:auto; }');
+    expect(css).toMatch(/\.document-detail \.paper-note-form-row select\s*\{[^}]*width:\s*auto/);
     expect(css).toContain('.paper-detail-shell.document-detail { grid-template-columns:minmax(0, 1fr) 220px;');
     expect(css).not.toContain('grid-template-columns:minmax(0, 1fr) minmax(0, 220px)');
   });

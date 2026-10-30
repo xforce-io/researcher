@@ -151,6 +151,7 @@ export interface LibraryPaperDetailView {
   topics: LibraryTopicRef[];
   reads: PaperRead[];
   notes: PaperNote[];
+  missingAttachmentIds?: string[];
   latestReadArtifact: { path: string; markdown: string } | null;
   links: PaperSurfaceLink[];
   integrations: TopicIntegration[];
@@ -499,6 +500,7 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
   if (!paper) return null;
   const reads = lib.listReads(paperId);
   const notes = lib.listNotes(paperId);
+  const missingAttachmentIds = notes.filter((n) => n.attachment && !lib.attachmentExists(n)).map((n) => n.id);
   const topics = libraryTopics(root);
   const artifact = latestReadArtifact(root, reads);
   const topicSuggestions = computeTopicSuggestions({
@@ -514,6 +516,7 @@ export function loadLibraryPaper(root: string, paperId: string): LibraryPaperDet
     topics,
     reads,
     notes,
+    missingAttachmentIds,
     latestReadArtifact: artifact,
     links: lib.listLinks(paperId),
     integrations: lib.listIntegrations(paperId),

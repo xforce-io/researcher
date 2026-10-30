@@ -131,6 +131,29 @@ library
     runLibraryDelete({ paperId, cwd: process.cwd() });
   });
 library
+  .command('comment')
+  .description('Document annotations')
+  .command('attach <document-id> <file>')
+  .description('Attach a local file as a document annotation')
+  .option('--caption <text>', 'optional caption')
+  .option('--kind <kind>', 'note | clarification | caveat | idea | question')
+  .action(async (documentId: string, file: string, opts: { caption?: string; kind?: string }) => {
+    const { runLibraryCommentAttach } = await import('./commands/library.js');
+    try {
+      runLibraryCommentAttach({
+        cwd: process.cwd(),
+        documentId,
+        file,
+        caption: opts.caption,
+        kind: opts.kind,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`${message}\n`);
+      process.exitCode = (err as { exitCode?: number }).exitCode ?? 1;
+    }
+  });
+library
   .command('read <document-id-or-url>')
   .description('Deep-read a Library document (URL or document id)')
   .option('--force', 'rerun even if a completed read exists')

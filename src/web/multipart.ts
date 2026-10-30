@@ -3,6 +3,7 @@ import type { IncomingMessage } from 'node:http';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { VIDEO_MAX_BYTES } from '../library/video.js';
+import { ATTACHMENT_MAX_BYTES } from '../library/attachment.js';
 
 export async function readMultipartVideo(
   req: IncomingMessage,
@@ -41,6 +42,60 @@ export async function readMultipartVideo(
   };
 }
 
+export async function readMultipartAttachment(
+  req: IncomingMessage,
+  tmpDir: string,
+): Promise<{
+  filePath: string;
+  filename: string;
+  contentType: string;
+  bytes: number;
+  mutationId: string;
+  caption: string;
+  kind: string;
+  pinned: boolean;
+}> {
+  const ct = String(req.headers['content-type'] ?? '');
+  if (!/multipart\/form-data/i.test(ct)) {
+    throw Object.assign(new Error('Content-Type must be multipart/form-data'), {
+      status: 415,
+      code: 'unsupported_media_type',
+    });
+  }
+  const len = Number(req.headers['content-length'] ?? 0);
+  if (Number.isFinite(len) && len > ATTACHMENT_MAX_BYTES + 1024 * 1024) {
+    throw Object.assign(new Error('attachment exceeds 25 MiB'), { status: 413, code: 'payload_too_large' });
+  }
+  mkdirSync(tmpDir, { recursive: true });
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buf.length;
+    if (size > ATTACHMENT_MAX_BYTES + 1024 * 1024) {
+      throw Object.assign(new Error('attachment exceeds 25 MiB'), { status: 413, code: 'payload_too_large' });
+    }
+    chunks.push(buf);
+  }
+  const parsed = parseMultipart(Buffer.concat(chunks), ct, tmpDir);
+  const captionField = parsed.fields.caption;
+  const bodyField = parsed.fields.body;
+  if (captionField !== undefined && bodyField !== undefined && captionField !== bodyField) {
+    throw Object.assign(new Error('caption and body must match'), { status: 400, code: 'invalid_fields' });
+  }
+  const pinnedRaw = (parsed.fields.pinned ?? '').toLowerCase();
+  return {
+    filePath: parsed.filePath,
+    filename: parsed.filename,
+    contentType: parsed.contentType,
+    bytes: parsed.bytes,
+    mutationId: parsed.mutationId,
+    caption: captionField ?? bodyField ?? '',
+    kind: parsed.fields.kind ?? '',
+    pinned: pinnedRaw === '1' || pinnedRaw === 'true' || pinnedRaw === 'on',
+  };
+}
+
 function parseMultipart(raw: Buffer, contentType: string, tmpDir: string) {
   const bm = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   if (!bm) throw Object.assign(new Error('multipart boundary missing'), { status: 400 });
@@ -50,6 +105,7 @@ function parseMultipart(raw: Buffer, contentType: string, tmpDir: string) {
   let fileType = 'application/octet-stream';
   let fileBuf: Buffer | undefined;
   let mutationId = '';
+  const fields: Record<string, string> = {};
   for (const part of parts) {
     const splitAt = indexOfDoubleCrlf(part);
     if (splitAt < 0) continue;
@@ -68,12 +124,16 @@ function parseMultipart(raw: Buffer, contentType: string, tmpDir: string) {
     } else if (name === 'file' && !fileBuf) {
       fileBuf = body;
       if (pct) fileType = pct;
+    } else if (name) {
+      fields[name] = body.toString('utf8');
     }
   }
-  if (!fileBuf || !fileBuf.length) throw Object.assign(new Error('file is required'), { status: 400 });
+  if (!fileBuf || !fileBuf.length) {
+    throw Object.assign(new Error('file is required'), { status: 400, code: 'invalid_fields' });
+  }
   const filePath = join(tmpDir, `upload-${randomUUID()}`);
   writeFileSync(filePath, fileBuf);
-  return { filePath, filename, contentType: fileType, bytes: fileBuf.length, mutationId };
+  return { filePath, filename, contentType: fileType, bytes: fileBuf.length, mutationId, fields };
 }
 
 function splitParts(raw: Buffer, boundary: string): Buffer[] {
