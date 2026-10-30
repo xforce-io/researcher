@@ -1,13 +1,14 @@
 # Library 附件类型文档批注
 
 - Issue：[#224](https://github.com/xforce-io/researcher/issues/224)
-- 状态：**Draft**（待 peng Approve）
+- 状态：**Approved**
 - 版本：`v0.1-draft`
 - 日期：2026-10-30 Asia/Shanghai
+- 批准：peng via Jenny · Staff，2026-10-30 ~23:25 Asia/Shanghai。Approve L1；按 Draft 继续 L2→dev→Knox→merge。说明文字选填；附件可用于任意 `docType`（含 video/note）；类型与 25MiB 按 Draft。合入后 Palantir URL 入库 + Episode PDF 挂接不在本 agent 范围。
 - 分支：`feat/224-library-attachment-comment`
-- 产品确认来源：待 Jenny→peng 对本 L1 的 Approve；触发授权：peng 经 Jenny ~23:02 Asia/Shanghai 要求端到端交付「文件类型 comment / 附件 comment」并完成 Palantir PDF 入库 + Episode PDF 挂接
+- 产品确认来源：peng via Jenny · Staff 对本文 Draft 的 Approve（上条）；触发授权：peng 经 Jenny ~23:02 Asia/Shanghai 要求端到端交付「文件类型 comment / 附件 comment」并完成 Palantir PDF 入库 + Episode PDF 挂接（后两项留待合入后由后续 agent 执行）
 
-Issue 是粗粒度验收；本文件是产品行为事实源。L1: **write**（新增用户可见能力）。L2: 待本 L1 Approve 后再写。
+Issue 是粗粒度验收；本文件是产品行为事实源。L1: **reuse**（Approved）。L2: **write**（[technical.md](./technical.md) Draft `v0.1-draft`）。
 
 ## 1. 背景与目标
 
@@ -121,9 +122,9 @@ sequenceDiagram
 - 类型与 25MiB 上限如上，避免无界上传
 - Web + CLI 双入口
 
-**开放（不阻塞 Approve，若 peng 有偏好可改）**
+**开放（Approve 已按 Draft 默认确认，不改范围）**
 
-- O1：说明文字是否必填？默认**选填**
-- O2：是否允许对 `docType=video` / `note` 添加附件批注？默认**允许**（任何文档）
+- O1：说明文字是否必填？默认**选填**（已确认）
+- O2：是否允许对 `docType=video` / `note` 添加附件批注？默认**允许**（任何文档）（已确认）
 
 无影响主路径的未决项留给 L2 的：磁盘目录命名、mutationId 幂等、sync 排除清单措辞。
