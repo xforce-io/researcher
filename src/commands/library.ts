@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { identifiersForSource, normalizePaperInput, paperIdForSource } from '../library/identity.js';
 import { defaultDocTypeForSource, isNoteDocType, isVideoDocType, parseLibraryDocType, type DocType } from '../library/doc-type.js';
 import { displayTitle, newReadId, PaperLibrary } from '../library/store.js';
+import type { PaperNote } from '../library/model.js';
 import { migrateLibrary } from '../library/migrate-v2.js';
 import type { LibraryStatusFilter, TopicIntegration } from '../library/model.js';
 import { defaultLibraryReadRunner, type LibraryReadRunner } from '../web/library-read.js';
@@ -82,6 +83,15 @@ export interface LibraryUnlinkOptions {
   write?: (s: string) => void;
 }
 
+export interface LibraryCommentAttachOptions {
+  cwd: string;
+  documentId: string;
+  file: string;
+  caption?: string;
+  kind?: string;
+  write?: (s: string) => void;
+}
+
 const defaultWrite = (s: string) => process.stdout.write(s);
 export function runLibraryAdd(opts: LibraryAddOptions): { id: string } {
   const write = opts.write ?? defaultWrite;
@@ -144,13 +154,39 @@ export function runLibraryList(opts: LibraryListOptions): void {
   }
 }
 
+function annotationShowJson(lib: PaperLibrary, n: PaperNote): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: n.id,
+    documentId: n.paperId,
+    body: n.body,
+    kind: n.kind,
+    pinned: n.pinned,
+    createdAt: n.createdAt,
+    updatedAt: n.updatedAt,
+  };
+  if (n.attachment) {
+    const path = lib.attachmentPath(n);
+    const missing = !lib.attachmentExists(n);
+    row.attachment = {
+      filename: n.attachment.filename,
+      contentType: n.attachment.contentType,
+      bytes: n.attachment.bytes,
+      sha256: n.attachment.sha256,
+    };
+    if (missing) row.missing = true;
+    else if (path) row.path = path;
+  }
+  return row;
+}
+
 export function runLibraryShow(opts: LibraryShowOptions): void {
   const write = opts.write ?? defaultWrite;
   const lib = new PaperLibrary(opts.cwd);
   const doc = lib.getDocument(opts.documentId);
   if (!doc) throw new Error(`unknown document id: ${opts.documentId}`);
+  const notes = lib.listNotes(doc.id);
   if (opts.json) {
-    write(`${JSON.stringify(doc)}\n`);
+    write(`${JSON.stringify({ ...doc, annotations: notes.map((n) => annotationShowJson(lib, n)) })}\n`);
     return;
   }
   write(`${doc.id}\t${doc.docType}\t${displayTitle(doc)}\n`);
@@ -162,6 +198,40 @@ export function runLibraryShow(opts: LibraryShowOptions): void {
       for (const c of product.cues) write(`${c.start}\t${c.end}\t${c.text}\n`);
     }
   }
+  for (const n of notes) {
+    if (n.attachment) {
+      const path = lib.attachmentPath(n);
+      const missing = !lib.attachmentExists(n);
+      write(`${n.id}\tattachment\t${n.attachment.filename}\t${n.attachment.bytes}\t${n.attachment.sha256}\t${missing ? 'missing' : path}\n`);
+    } else {
+      write(`${n.id}\t${n.kind}\t${n.body.replace(/\s+/g, ' ')}\n`);
+    }
+  }
+}
+
+const PAPER_NOTE_KINDS = new Set(['note', 'clarification', 'caveat', 'idea', 'question']);
+
+export function runLibraryCommentAttach(opts: LibraryCommentAttachOptions): { id: string; path: string } {
+  const write = opts.write ?? defaultWrite;
+  if (!existsSync(opts.file)) throw new Error(`file not found: ${opts.file}`);
+  const st = statSync(opts.file);
+  if (!st.isFile()) throw new Error(`not a file: ${opts.file}`);
+  const kindRaw = (opts.kind ?? 'note').trim() || 'note';
+  if (!PAPER_NOTE_KINDS.has(kindRaw)) throw new Error(`unknown note kind: ${kindRaw}`);
+  const lib = new PaperLibrary(opts.cwd);
+  const note = lib.attachNote({
+    documentId: opts.documentId,
+    sourcePath: opts.file,
+    filename: opts.file.replace(/\\/g, '/').split('/').pop() || opts.file,
+    contentType: 'application/octet-stream',
+    bytes: st.size,
+    caption: opts.caption,
+    kind: kindRaw as PaperNote['kind'],
+  });
+  const path = lib.attachmentPath(note);
+  if (!path) throw new Error('attachment path missing after save');
+  write(`${note.id}\t${note.attachment?.filename ?? ''}\t${path}\n`);
+  return { id: note.id, path };
 }
 
 export function runLibraryMigrate(opts: LibraryMigrateCliOptions): number {

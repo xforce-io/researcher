@@ -380,6 +380,8 @@ function seedLibrary(root: string): void {
   writeFileSync(join(paper, 'reads/read_paper_arxiv_2401_00001.md'), '# Essence\n');
   writeFileSync(join(paper, 'reads/read_paper_arxiv_2401_00001.json'), '{"id":"read_paper_arxiv_2401_00001","documentId":"paper_arxiv_2401_00001","status":"read"}\n');
   writeFileSync(join(paper, 'assets/paper.pdf'), '%PDF-fake\n');
+  mkdirSync(join(paper, 'attachments/note_att1'), { recursive: true });
+  writeFileSync(join(paper, 'attachments/note_att1/clip.pdf'), '%PDF-sync');
 }
 
 function libraryTracked(root: string): string[] {
@@ -420,6 +422,7 @@ describe('workspace sync --library', () => {
       ]),
     );
     expect(tracked.join('\n')).not.toMatch(/\.pdf|_extracted/i);
+    expect(tracked.join('\n')).not.toMatch(/attachments\//);
 
     const again = await runWorkspaceSync({ cwd: root, library: true });
     expect(again.library?.status).toBe('no-op');

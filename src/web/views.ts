@@ -9,7 +9,7 @@ import {
 } from './library-read-sections.js';
 import { sanitizeHtml } from './sanitize-html.js';
 import type { Zone } from '../state/zone.js';
-import type { PaperRead } from '../library/model.js';
+import type { PaperNote, PaperRead } from '../library/model.js';
 import {
   loadUrlExtractThreshold,
   type ExtractionMethod,
@@ -530,10 +530,92 @@ function formatExtractLabel(method: string, fm: Record<string, unknown> | null |
 }
 
 const JSON_FORM_JS = `
+document.addEventListener('click', function (e) {
+  var t = e.target;
+  if (t && t.nodeType === 3) t = t.parentElement;
+  var a = t && t.closest && t.closest('[data-annotation-file]');
+  if (!a) return;
+  e.preventDefault();
+  var item = a.closest && a.closest('.paper-note');
+  var errEl = item && item.querySelector && item.querySelector('[data-file-missing]');
+  fetch(a.href).then(function (res) {
+    if (res.status === 409 || (res.headers.get('content-type') || '').indexOf('application/json') === 0) {
+      return res.json().then(function (data) {
+        if (data && data.code === 'attachment_missing') {
+          if (errEl) { errEl.hidden = false; errEl.textContent = '文件缺失'; }
+          else alert('文件缺失');
+          return;
+        }
+        throw new Error((data && data.message) || String(res.status));
+      });
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    return res.blob().then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = a.getAttribute('data-filename') || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    });
+  }).catch(function (err) {
+    if (errEl) { errEl.hidden = false; errEl.textContent = err && err.message ? err.message : '下载失败'; }
+    else alert(err && err.message ? err.message : '下载失败');
+  });
+});
 document.addEventListener('submit', function (e) {
-  if (e.defaultPrevented) return;
   var form = e.target;
   if (!form || !form.getAttribute) return;
+  var attachAction = form.getAttribute('data-attach-action');
+  if (attachAction && /\\/annotations\\/attachments$/.test(attachAction)) {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    var attachDataset = form.dataset || (form.dataset = {});
+    if (attachDataset.saving === '1') return;
+    attachDataset.saving = '1';
+    var attachButtons = form.querySelectorAll ? Array.prototype.slice.call(form.querySelectorAll('button')) : [];
+    for (var ai = 0; ai < attachButtons.length; ai++) attachButtons[ai].disabled = true;
+    var status = form.querySelector && form.querySelector('[data-attach-error]');
+    var fd = new FormData(form);
+    if (!fd.get('mutationId')) {
+      fd.set('mutationId', (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()));
+    }
+    function unlockAttach() {
+      attachDataset.saving = '0';
+      for (var aj = 0; aj < attachButtons.length; aj++) attachButtons[aj].disabled = false;
+    }
+    function attachMessage(code, fallback) {
+      if (code === 'unsupported_type') return '不支持的附件类型';
+      if (code === 'payload_too_large') return '文件超过 25 MiB';
+      if (code === 'invalid_fields') return '附件无效';
+      if (code === 'mutation_conflict') return '重复提交冲突';
+      return fallback || '添加附件失败';
+    }
+    fetch(attachAction, { method: 'POST', body: fd }).then(function (res) {
+      return res.text().then(function (t) {
+        var data = {};
+        try { data = t ? JSON.parse(t) : {}; } catch (err) { data = { message: t }; }
+        if (!res.ok) {
+          var msg = attachMessage(data.code, data.message || t || String(res.status));
+          if (status) { status.hidden = false; status.textContent = msg; }
+          else alert(msg);
+          unlockAttach();
+          return;
+        }
+        var next = new URL((data && data.url) || location.href, location.href);
+        if (next.hash) location.hash = next.hash;
+        location.reload();
+      });
+    }).catch(function (err) {
+      if (status) { status.hidden = false; status.textContent = err && err.message ? err.message : '添加附件失败'; }
+      else alert(err && err.message ? err.message : '添加附件失败');
+      unlockAttach();
+    });
+    return;
+  }
+  if (e.defaultPrevented) return;
   var action = form.getAttribute('data-json-action');
   if (!action) return;
   e.preventDefault();
@@ -928,6 +1010,8 @@ export function renderVideoReader(opts: {
   latest?: { status: string; lastError?: string };
   product?: { cues: Array<{ id: number; start: number; end: number; text: string; zh?: string }>; noSpeech: boolean };
   panel?: TopicLinkPanelView;
+  notes?: PaperNote[];
+  missingAttachmentIds?: string[];
 }): string {
   const heading = opts.title || '未命名视频';
   const revision = opts.revision ?? 1;
@@ -968,10 +1052,12 @@ export function renderVideoReader(opts: {
   const analyzeDisabled = !opts.mediaExists || analyzing || opts.runtimeMissing.length > 0;
   const body = topbar('', 'library') +
     `<main class="video-reader document-detail" data-video-id="${escapeHtml(opts.id)}">` +
+      `<div class="video-screen">` +
       `<div class="video-head">` +
         renderDocumentHeader({ title: heading, type: '视频', updatedAt: opts.updatedAt,
           status: analyzing ? '分析中' : failed ? '分析失败' : opts.product ? '已分析' : '未分析', panel: opts.panel,
-          actions: `<button type="button" class="secondary" id="edit-title" aria-expanded="false">编辑标题</button>` +
+          actions: notesJumpLink(opts.id, (opts.notes ?? []).length) +
+            `<button type="button" class="secondary" id="edit-title" aria-expanded="false">编辑标题</button>` +
             `<button type="button" class="primary" id="analyze-btn"${analyzeDisabled ? ' disabled' : ''}>${analyzing ? '分析中…' : '视频分析'}</button>` }) +
         `<form class="video-title-form" data-revision="${revision}" hidden>` +
           `<label>标题<input id="video-title" name="title" value="${escapeHtml(opts.title)}" placeholder="未命名视频"></label>` +
@@ -995,6 +1081,8 @@ export function renderVideoReader(opts: {
           `<div class="cues" id="cues" data-cue-list="true">${cuePanel}</div>` +
         `</section>` +
       `</div>` +
+      `</div>` +
+      renderDocumentNotes(opts.id, opts.notes ?? [], new Set(opts.missingAttachmentIds ?? [])) +
     `</main><script>window.__CUES=${cuesJson};window.__MEDIA=${opts.mediaExists ? 'true' : 'false'};</script>` +
     `<script type="module" src="/static/video-workbench.js"></script>` + DOCUMENT_SCRIPT;
   return page(`${heading} · researcher`, body, { htmlClass: 'video-shell' });
@@ -1003,14 +1091,19 @@ export function renderVideoReader(opts: {
 export function renderNoteReader(
   doc: { id: string; title: string; body: string; updatedAt: string },
   panel?: TopicLinkPanelView,
+  notes: PaperNote[] = [],
+  missingAttachmentIds: string[] = [],
 ): string {
   const heading = doc.title || '未命名自主笔记';
   const body = topbar('', 'library') +
     `<main class="note-reader document-detail">` +
       renderDocumentHeader({ title: heading, type: '自主笔记', updatedAt: doc.updatedAt, status: '已保存', panel,
-        actions: `<a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">编辑笔记</a>` }) +
+        actions: notesJumpLink(doc.id, notes.length) +
+          `<a class="primary" href="/library/documents/${encodeURIComponent(doc.id)}/edit">编辑笔记</a>` }) +
       renderDocumentTopics(panel) +
-      `<div class="note-body">${markedHtml(doc.body)}</div></main>` + DOCUMENT_SCRIPT;
+      `<div class="note-body">${markedHtml(doc.body)}</div>` +
+      renderDocumentNotes(doc.id, notes, new Set(missingAttachmentIds)) +
+    `</main>` + DOCUMENT_SCRIPT;
   return page(`${heading} · researcher`, body);
 }
 
@@ -1355,25 +1448,56 @@ function basename(path: string): string {
 
 const PAPER_NOTE_KINDS = ['note', 'clarification', 'caveat', 'idea', 'question'] as const;
 
-function renderPaperNotes(v: LibraryPaperDetailView): string {
+function formatAttachmentBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function notesJumpLink(documentId: string, count: number): string {
+  return `<a class="secondary paper-jump-notes" href="#annotations">` +
+    `文档批注${count > 0 ? ` · ${count}` : ''}` +
+  `</a>`;
+}
+
+function renderDocumentNotes(
+  documentId: string,
+  notes: PaperNote[],
+  missingIds: ReadonlySet<string> = new Set(),
+): string {
   const kindOptions = PAPER_NOTE_KINDS.map((k) =>
     `<option value="${k}"${k === 'note' ? ' selected' : ''}>${escapeHtml(annotationKindLabel(k))}</option>`,
   ).join('');
-  const items = v.notes.map((n) => {
+  const items = notes.map((n) => {
     const pinLabel = n.pinned ? '取消置顶' : '置顶';
-    return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}">` +
+    const att = n.attachment;
+    const missing = att ? missingIds.has(n.id) : false;
+    const download = att
+      ? `<a class="secondary note-action-btn" href="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}/file" data-annotation-file data-filename="${escapeHtml(att.filename)}">下载</a>`
+      : '';
+    const body = att
+      ? `<div class="paper-note-attachment">` +
+          `<span class="note-kind">附件</span>` +
+          `<span class="paper-note-filename">${escapeHtml(att.filename)}</span>` +
+          `<span class="muted">${escapeHtml(formatAttachmentBytes(att.bytes))}</span>` +
+        `</div>` +
+        (n.body ? `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` : '') +
+        `<p class="paper-attach-missing video-error" data-file-missing role="alert"${missing ? '' : ' hidden'}>文件缺失</p>`
+      : `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>`;
+    return `<li class="paper-note${n.pinned ? ' is-pinned' : ''}${att ? ' has-attachment' : ''}">` +
       `<div class="paper-note-head">` +
         `<span class="note-kind">${escapeHtml(annotationKindLabel(n.kind))}</span>` +
         `${n.pinned ? '<span class="note-pin-badge">已置顶</span>' : ''}` +
         `<span class="note-time mono" title="${escapeHtml(n.updatedAt)}">${escapeHtml(fmtShortDate(n.updatedAt))}</span>` +
       `</div>` +
-      `<div class="paper-note-body">${renderNoteMarkdown(n.body)}</div>` +
+      body +
       `<div class="paper-note-actions">` +
-        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="PATCH">` +
+        download +
+        `<form action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" data-json-method="PATCH">` +
           `<input type="hidden" name="pinned" value="${n.pinned ? '0' : '1'}">` +
           `<button class="secondary note-action-btn" type="submit">${pinLabel}</button>` +
         `</form>` +
-        `<form action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations/${encodeURIComponent(n.id)}" data-json-method="DELETE" onsubmit="return confirm('删除这条文档批注？');">` +
+        `<form action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" data-json-method="DELETE" onsubmit="return confirm('删除这条文档批注？');">` +
           `<button class="danger note-action-btn" type="submit">删除</button>` +
         `</form>` +
       `</div>` +
@@ -1385,8 +1509,8 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
       `<h2>文档批注</h2>` +
       `<span class="muted">记录你的思考，重新深读后仍保留</span>` +
     `</div>` +
-    `<form class="paper-note-form" action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations" method="post" data-json-action="/library/documents/${encodeURIComponent(v.paper.id)}/annotations">` +
-      `<input type="hidden" name="paperId" value="${escapeHtml(v.paper.id)}">` +
+    `<form class="paper-note-form" action="/library/documents/${encodeURIComponent(documentId)}/annotations" method="post" data-json-action="/library/documents/${encodeURIComponent(documentId)}/annotations">` +
+      `<input type="hidden" name="paperId" value="${escapeHtml(documentId)}">` +
       `<label class="note-body-label">新增批注` +
         `<textarea name="body" rows="3" required placeholder="支持 Markdown"></textarea>` +
       `</label>` +
@@ -1396,7 +1520,19 @@ function renderPaperNotes(v: LibraryPaperDetailView): string {
         `<button class="primary" type="submit">添加批注</button>` +
       `</div>` +
     `</form>` +
-    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">尚无文档批注，记录值得记住的内容。</li>'}</ul>` +
+    `<form class="paper-attach-form" action="/library/documents/${encodeURIComponent(documentId)}/annotations/attachments" method="post" data-attach-action="/library/documents/${encodeURIComponent(documentId)}/annotations/attachments">` +
+      `<label class="note-body-label">添加附件` +
+        `<input type="file" name="file" required accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp,application/pdf,text/plain,text/markdown,image/png,image/jpeg,image/webp">` +
+      `</label>` +
+      `<label class="note-body-label">说明（选填）` +
+        `<input type="text" name="caption" placeholder="可选短说明">` +
+      `</label>` +
+      `<p class="paper-attach-error video-error" data-attach-error role="alert" hidden></p>` +
+      `<div class="paper-note-form-row">` +
+        `<button class="secondary" type="submit">添加附件</button>` +
+      `</div>` +
+    `</form>` +
+    `<ul class="paper-note-list">${items || '<li class="muted paper-note-empty">尚无文档批注，可添加文本或附件。</li>'}</ul>` +
   `</section>`;
 }
 
@@ -1405,11 +1541,7 @@ export function renderLibraryPaper(
   activeRead: ActiveTaskView | null = null,
   editTopic?: string,
 ): string {
-  const noteCount = v.notes.length;
-  const notesJump =
-    `<a class="secondary paper-jump-notes" href="#annotations">` +
-      `文档批注${noteCount > 0 ? ` · ${noteCount}` : ''}` +
-    `</a>`;
+  const notesJump = notesJumpLink(v.paper.id, v.notes.length);
   const identity = renderPaperIdentityMeta(v);
   const readBody = v.latestReadArtifact
     ? renderLibraryReadBody(v.latestReadArtifact.markdown, v.paper.displayTitle)
@@ -1437,7 +1569,7 @@ export function renderLibraryPaper(
           banner: readingOrFailed ? deepRead : '' }) +
         renderDocumentTopics(panel) +
         readSurface +
-        renderPaperNotes(v) +
+        renderDocumentNotes(v.paper.id, v.notes, new Set(v.missingAttachmentIds ?? [])) +
       `</section>` +
       `<aside class="paper-inspector">${renderPaperInspector(v, editTopic)}</aside>` +
     `</main>` +

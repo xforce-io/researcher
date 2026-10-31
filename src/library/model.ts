@@ -51,12 +51,30 @@ export interface PaperRead {
 /** Human attention layer on a Library paper (not the machine deep-read artifact). */
 export type PaperNoteKind = 'note' | 'clarification' | 'caveat' | 'idea' | 'question';
 
+export type AnnotationContentType =
+  | 'application/pdf'
+  | 'text/plain'
+  | 'text/markdown'
+  | 'image/png'
+  | 'image/jpeg'
+  | 'image/webp';
+
+export interface AnnotationAttachment {
+  filename: string;
+  storedName: string;
+  contentType: AnnotationContentType;
+  bytes: number;
+  sha256: string;
+}
+
 export interface PaperNote {
   id: string;
   paperId: string;
   body: string;
   kind: PaperNoteKind;
   pinned: boolean;
+  attachment?: AnnotationAttachment;
+  mutationId?: string;
   createdAt: string;
   updatedAt: string;
 }

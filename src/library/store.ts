@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -13,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { dump, load } from 'js-yaml';
 import { randomUUID } from 'node:crypto';
 import type {
+  AnnotationAttachment,
   LibraryDocument,
   LibraryStatusFilter,
   Paper,
@@ -24,6 +26,7 @@ import type {
 import type { LibraryDocType } from './doc-type.js';
 import { isNoteDocType, isVideoDocType, parseLibraryDocType, supportsDeepRead } from './doc-type.js';
 import { acceptVideoUpload, sha256FileSync, titleFromFilename } from './video.js';
+import { acceptAttachmentUpload, safeStoredName } from './attachment.js';
 import type { VideoAnalysis, VideoCue } from './model.js';
 import { maintenanceStage, readMaintenanceStage, withDomainWriteLock } from './maintenance.js';
 
@@ -69,6 +72,10 @@ export function newReadId(): string {
 
 export function newAnalysisId(): string {
   return `analysis_${randomUUID()}`;
+}
+
+export function newNoteId(): string {
+  return `note_${randomUUID()}`;
 }
 
 export function isSafeLibraryId(id: string): boolean {
@@ -550,16 +557,100 @@ export class PaperLibrary {
     const existing = this.listNotes().find((n) => n.id === input.id);
     const now = this.clock.now();
     const body = input.body.trim();
-    if (!body) throw new Error('note body is required');
+    const attachment = input.attachment ?? existing?.attachment;
+    if (!attachment && !body) throw new Error('note body is required');
     const note: PaperNote = {
       ...input,
       body,
+      attachment,
+      mutationId: input.mutationId ?? existing?.mutationId,
       pinned: input.pinned ?? existing?.pinned ?? false,
       createdAt: existing?.createdAt ?? input.createdAt ?? now,
       updatedAt: now,
     };
     writeJsonlUpsert(this.path('annotations.jsonl'), annotationRecord(note), (n) => n.id);
     return note;
+  }
+
+  attachNote(input: {
+    documentId: string;
+    sourcePath: string;
+    filename: string;
+    contentType: string;
+    bytes: number;
+    caption?: string;
+    kind?: PaperNote['kind'];
+    pinned?: boolean;
+    mutationId?: string;
+  }): PaperNote {
+    this.ensureV2();
+    const doc = this.getDocument(input.documentId);
+    if (!doc) throw Object.assign(new Error(`unknown document: ${input.documentId}`), { status: 404, code: 'not_found' });
+    const accepted = acceptAttachmentUpload({
+      filename: input.filename,
+      contentType: input.contentType,
+      bytes: input.bytes,
+    });
+    if (!accepted.ok) {
+      throw Object.assign(new Error(accepted.message), { status: accepted.status, code: accepted.code });
+    }
+    const caption = (input.caption ?? '').trim();
+    const mutationId = input.mutationId?.trim() || `mut_${randomUUID()}`;
+    const storedName = safeStoredName(accepted.filename, accepted.ext);
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const sha256 = sha256FileSync(input.sourcePath);
+      const prior = this.listNotes(input.documentId).find((n) => n.mutationId === mutationId);
+      if (prior) {
+        const same = prior.attachment
+          && prior.attachment.sha256 === sha256
+          && prior.attachment.bytes === input.bytes
+          && prior.attachment.filename === accepted.filename
+          && prior.body === caption;
+        if (same) return prior;
+        throw Object.assign(new Error('mutationId conflict'), { status: 409, code: 'mutation_conflict' });
+      }
+      const id = newNoteId();
+      const destDir = join(this.rootDir, 'documents', input.documentId, 'attachments', id);
+      mkdirSync(destDir, { recursive: true });
+      const dest = join(destDir, storedName);
+      try {
+        copyFileSync(input.sourcePath, dest);
+        if (lstatSync(dest).isSymbolicLink()) {
+          throw Object.assign(new Error('attachment must not be a symlink'), { status: 400, code: 'invalid_fields' });
+        }
+        const bytes = statSync(dest).size;
+        const attachment: AnnotationAttachment = {
+          filename: accepted.filename,
+          storedName,
+          contentType: accepted.contentType,
+          bytes,
+          sha256: sha256FileSync(dest),
+        };
+        const note = this.upsertNote({
+          id,
+          paperId: input.documentId,
+          body: caption,
+          kind: input.kind ?? 'note',
+          pinned: input.pinned ?? false,
+          attachment,
+          mutationId,
+        });
+        return note;
+      } catch (err) {
+        rmSync(destDir, { recursive: true, force: true });
+        throw err;
+      }
+    });
+  }
+
+  attachmentPath(note: PaperNote): string | undefined {
+    if (!note.attachment) return undefined;
+    return join(this.rootDir, 'documents', note.paperId, 'attachments', note.id, note.attachment.storedName);
+  }
+
+  attachmentExists(note: PaperNote): boolean {
+    const path = this.attachmentPath(note);
+    return Boolean(path && existsSync(path) && statSync(path).isFile());
   }
 
   listNotes(paperId?: string): PaperNote[] {
@@ -579,10 +670,14 @@ export class PaperLibrary {
 
   deleteNote(id: string): { deleted: true; noteId: string } {
     this.ensureV2();
-    const existing = this.getNote(id);
-    if (!existing) throw new Error(`unknown note id: ${id}`);
-    writeJsonlFilter(this.path('annotations.jsonl'), (n: AnnotationRecord) => n.id !== id);
-    return { deleted: true, noteId: id };
+    return withDomainWriteLock(this.workspaceRoot, () => {
+      const existing = this.getNote(id);
+      if (!existing) throw new Error(`unknown note id: ${id}`);
+      writeJsonlFilter(this.path('annotations.jsonl'), (n: AnnotationRecord) => n.id !== id);
+      const dir = join(this.rootDir, 'documents', existing.paperId, 'attachments', existing.id);
+      if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+      return { deleted: true, noteId: id };
+    });
   }
 
   upsertLink(input: LinkInput): PaperSurfaceLink {
@@ -746,6 +841,8 @@ interface AnnotationRecord {
   body: string;
   kind: PaperNote['kind'];
   pinned: boolean;
+  attachment?: AnnotationAttachment;
+  mutationId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -771,7 +868,7 @@ interface IntegrationRecord {
 }
 
 function annotationRecord(note: PaperNote): AnnotationRecord {
-  return {
+  const row: AnnotationRecord = {
     id: note.id,
     documentId: note.paperId,
     body: note.body,
@@ -779,6 +876,33 @@ function annotationRecord(note: PaperNote): AnnotationRecord {
     pinned: note.pinned,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
+  };
+  if (note.attachment) row.attachment = note.attachment;
+  if (note.mutationId) row.mutationId = note.mutationId;
+  return row;
+}
+
+function parseAttachment(raw: unknown): AnnotationAttachment | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const a = raw as Record<string, unknown>;
+  const contentType = a.contentType;
+  if (
+    contentType !== 'application/pdf'
+    && contentType !== 'text/plain'
+    && contentType !== 'text/markdown'
+    && contentType !== 'image/png'
+    && contentType !== 'image/jpeg'
+    && contentType !== 'image/webp'
+  ) return undefined;
+  if (typeof a.filename !== 'string' || typeof a.storedName !== 'string' || typeof a.sha256 !== 'string') {
+    return undefined;
+  }
+  return {
+    filename: a.filename,
+    storedName: a.storedName,
+    contentType,
+    bytes: Number(a.bytes) || 0,
+    sha256: a.sha256,
   };
 }
 
@@ -789,6 +913,8 @@ function recordToNote(row: AnnotationRecord & { paperId?: string }): PaperNote {
     body: row.body,
     kind: row.kind,
     pinned: row.pinned,
+    attachment: parseAttachment(row.attachment),
+    mutationId: row.mutationId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
