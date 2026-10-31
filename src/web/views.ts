@@ -549,7 +549,21 @@ document.addEventListener('click', function (e) {
       return res.blob();
     }).then(function (blob) {
       if (previewError) previewError.hidden = true;
-      tab.location.href = URL.createObjectURL(blob);
+      if (tab.closed) return;
+      var objectUrl = URL.createObjectURL(blob);
+      var monitor = setInterval(function () {
+        if (tab.closed) {
+          clearInterval(monitor);
+          URL.revokeObjectURL(objectUrl);
+        }
+      }, 1000);
+      try {
+        tab.location.href = objectUrl;
+      } catch (err) {
+        clearInterval(monitor);
+        URL.revokeObjectURL(objectUrl);
+        throw err;
+      }
     }).catch(function (err) {
       tab.close();
       if (previewError) { previewError.hidden = false; previewError.textContent = err.message === '文件缺失' ? '文件缺失' : '预览失败，请重试或下载文件'; }

@@ -55,13 +55,30 @@ describe('PDF annotation preview errors', () => {
   it('opens the successfully fetched PDF bytes in a new tab', async () => {
     const page = await browser.newPage();
     try {
+      await page.addInitScript(() => {
+        const revoke = URL.revokeObjectURL.bind(URL);
+        (window as unknown as { revoked: string[] }).revoked = [];
+        URL.revokeObjectURL = (url: string) => {
+          (window as unknown as { revoked: string[] }).revoked.push(url);
+          revoke(url);
+        };
+      });
       await page.goto(url);
-      const popupPromise = page.waitForEvent('popup');
-      await page.locator('[data-annotation-preview]').click();
-      const popup = await popupPromise;
-      await popup.waitForURL('blob:**');
-      const bytes = await page.evaluate(async (url) => [...new Uint8Array(await (await fetch(url)).arrayBuffer())], popup.url());
-      expect(Buffer.from(bytes).equals(samplePdf())).toBe(true);
+      for (let i = 0; i < 2; i++) {
+        const popupPromise = page.waitForEvent('popup');
+        await page.locator('[data-annotation-preview]').click();
+        const popup = await popupPromise;
+        await popup.waitForURL('blob:**');
+        const bytes = await page.evaluate(async (url) => [...new Uint8Array(await (await fetch(url)).arrayBuffer())], popup.url());
+        expect(Buffer.from(bytes).equals(samplePdf())).toBe(true);
+        const objectUrl = popup.url();
+        await popup.close();
+        await page.waitForFunction((url) => (window as unknown as { revoked: string[] }).revoked.includes(url), objectUrl);
+        const stillExists = await page.evaluate(async (url) => {
+          try { await fetch(url); return true; } catch { return false; }
+        }, objectUrl);
+        expect(stillExists).toBe(false);
+      }
     } finally {
       await page.close();
     }
