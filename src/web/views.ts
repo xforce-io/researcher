@@ -544,13 +544,15 @@ document.addEventListener('click', function (e) {
       return;
     }
     tab.opener = null;
-    fetch(preview.href, { method: 'HEAD' }).then(function (res) {
+    fetch(preview.href).then(function (res) {
       if (!res.ok) throw new Error(res.status === 409 ? '文件缺失' : '预览失败，请重试或下载文件');
+      return res.blob();
+    }).then(function (blob) {
       if (previewError) previewError.hidden = true;
-      tab.location.href = preview.href;
+      tab.location.href = URL.createObjectURL(blob);
     }).catch(function (err) {
       tab.close();
-      if (previewError) { previewError.hidden = false; previewError.textContent = err.message || '预览失败'; }
+      if (previewError) { previewError.hidden = false; previewError.textContent = err.message === '文件缺失' ? '文件缺失' : '预览失败，请重试或下载文件'; }
     });
     return;
   }

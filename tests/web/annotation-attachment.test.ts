@@ -82,10 +82,6 @@ describe('annotation attachments HTTP/CLI', () => {
     expect(preview.status).toBe(200);
     expect(preview.headers.get('content-disposition')).toMatch(/^inline;/);
     expect(Buffer.from(await preview.arrayBuffer()).equals(pdf)).toBe(true);
-    const head = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file?preview=1`, { method: 'HEAD' });
-    expect(head.status).toBe(200);
-    expect(head.headers.get('content-length')).toBe(String(pdf.length));
-    expect((await head.arrayBuffer()).byteLength).toBe(0);
     const html = await (await fetch(`${base}/library/documents/${paperId}`)).text();
     expect(html).toContain('clip.pdf');
     expect(html).toContain(`/annotations/${id}/file?preview=1`);
@@ -148,8 +144,8 @@ describe('annotation attachments HTTP/CLI', () => {
     const missing = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file`);
     expect(missing.status).toBe(409);
     expect(await missing.json()).toEqual(expect.objectContaining({ code: 'attachment_missing' }));
-    const previewHead = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file?preview=1`, { method: 'HEAD' });
-    expect(previewHead.status).toBe(409);
+    const missingPreview = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file?preview=1`);
+    expect(missingPreview.status).toBe(409);
     const missingPage = await (await fetch(`${base}/library/documents/${noteId}`)).text();
     expect(missingPage).toContain('>下载</a>');
     expect(missingPage).toContain('data-annotation-file');

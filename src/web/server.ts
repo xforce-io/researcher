@@ -1025,7 +1025,7 @@ async function handleAnnotations(
     return;
   }
   const fileMatch = rest.match(/^annotations\/([^/]+)\/file$/);
-  if (fileMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+  if (fileMatch && req.method === 'GET') {
     const annotationId = decodeURIComponent(fileMatch[1]);
     const existing = lib.getNote(annotationId);
     if (!existing || existing.paperId !== documentId) {
@@ -1046,14 +1046,13 @@ async function handleAnnotations(
       sendJsonErr(res, 415, 'unsupported_type', 'preview is only available for PDF');
       return;
     }
-    const body = req.method === 'GET' ? readFileSync(path) : undefined;
-    const size = body?.length ?? statSync(path).size;
+    const body = readFileSync(path);
     res.writeHead(200, {
       'content-type': existing.attachment.contentType,
       'content-disposition': contentDisposition(existing.attachment.filename, preview),
       'x-content-type-options': 'nosniff',
       'content-security-policy': "default-src 'none'; sandbox",
-      'content-length': String(size),
+      'content-length': String(body.length),
     });
     res.end(body);
     return;
