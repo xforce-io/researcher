@@ -977,9 +977,9 @@ function missingAttachmentIds(lib: PaperLibrary, notes: PaperNote[]): string[] {
   return notes.filter((n) => n.attachment && !lib.attachmentExists(n)).map((n) => n.id);
 }
 
-function contentDisposition(filename: string): string {
+function contentDisposition(filename: string, inline = false): string {
   const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  return `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 async function handleAnnotations(
@@ -1025,7 +1025,7 @@ async function handleAnnotations(
     return;
   }
   const fileMatch = rest.match(/^annotations\/([^/]+)\/file$/);
-  if (fileMatch && req.method === 'GET') {
+  if (fileMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const annotationId = decodeURIComponent(fileMatch[1]);
     const existing = lib.getNote(annotationId);
     if (!existing || existing.paperId !== documentId) {
@@ -1041,11 +1041,19 @@ async function handleAnnotations(
       sendJsonErr(res, 409, 'attachment_missing', 'attachment file is missing');
       return;
     }
-    const body = readFileSync(path);
+    const preview = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('preview') === '1';
+    if (preview && existing.attachment.contentType !== 'application/pdf') {
+      sendJsonErr(res, 415, 'unsupported_type', 'preview is only available for PDF');
+      return;
+    }
+    const body = req.method === 'GET' ? readFileSync(path) : undefined;
+    const size = body?.length ?? statSync(path).size;
     res.writeHead(200, {
       'content-type': existing.attachment.contentType,
-      'content-disposition': contentDisposition(existing.attachment.filename),
-      'content-length': String(body.length),
+      'content-disposition': contentDisposition(existing.attachment.filename, preview),
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      'content-length': String(size),
     });
     res.end(body);
     return;

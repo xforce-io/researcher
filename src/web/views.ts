@@ -533,6 +533,27 @@ const JSON_FORM_JS = `
 document.addEventListener('click', function (e) {
   var t = e.target;
   if (t && t.nodeType === 3) t = t.parentElement;
+  var preview = t && t.closest && t.closest('[data-annotation-preview]');
+  if (preview) {
+    e.preventDefault();
+    var previewItem = preview.closest('.paper-note');
+    var previewError = previewItem && previewItem.querySelector('[data-file-missing]');
+    var tab = window.open('', '_blank');
+    if (!tab) {
+      if (previewError) { previewError.hidden = false; previewError.textContent = '无法打开预览，请允许弹出窗口或下载文件'; }
+      return;
+    }
+    tab.opener = null;
+    fetch(preview.href, { method: 'HEAD' }).then(function (res) {
+      if (!res.ok) throw new Error(res.status === 409 ? '文件缺失' : '预览失败，请重试或下载文件');
+      if (previewError) previewError.hidden = true;
+      tab.location.href = preview.href;
+    }).catch(function (err) {
+      tab.close();
+      if (previewError) { previewError.hidden = false; previewError.textContent = err.message || '预览失败'; }
+    });
+    return;
+  }
   var a = t && t.closest && t.closest('[data-annotation-file]');
   if (!a) return;
   e.preventDefault();
@@ -1475,6 +1496,9 @@ function renderDocumentNotes(
     const download = att
       ? `<a class="secondary note-action-btn" href="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}/file" data-annotation-file data-filename="${escapeHtml(att.filename)}">下载</a>`
       : '';
+    const preview = att?.contentType === 'application/pdf'
+      ? `<a class="secondary note-action-btn" href="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}/file?preview=1" target="_blank" rel="noopener noreferrer" data-annotation-preview>预览</a>`
+      : '';
     const body = att
       ? `<div class="paper-note-attachment">` +
           `<span class="note-kind">附件</span>` +
@@ -1492,6 +1516,7 @@ function renderDocumentNotes(
       `</div>` +
       body +
       `<div class="paper-note-actions">` +
+        preview +
         download +
         `<form action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" method="post" data-json-action="/library/documents/${encodeURIComponent(documentId)}/annotations/${encodeURIComponent(n.id)}" data-json-method="PATCH">` +
           `<input type="hidden" name="pinned" value="${n.pinned ? '0' : '1'}">` +

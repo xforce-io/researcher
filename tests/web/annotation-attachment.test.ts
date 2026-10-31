@@ -75,11 +75,32 @@ describe('annotation attachments HTTP/CLI', () => {
     const file = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file`);
     expect(file.status).toBe(200);
     expect(file.headers.get('content-type')).toContain('application/pdf');
+    expect(file.headers.get('content-disposition')).toMatch(/^attachment;/);
     const got = Buffer.from(await file.arrayBuffer());
     expect(got.equals(pdf)).toBe(true);
+    const preview = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file?preview=1`);
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('content-disposition')).toMatch(/^inline;/);
+    expect(Buffer.from(await preview.arrayBuffer()).equals(pdf)).toBe(true);
+    const head = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file?preview=1`, { method: 'HEAD' });
+    expect(head.status).toBe(200);
+    expect(head.headers.get('content-length')).toBe(String(pdf.length));
+    expect((await head.arrayBuffer()).byteLength).toBe(0);
     const html = await (await fetch(`${base}/library/documents/${paperId}`)).text();
     expect(html).toContain('clip.pdf');
+    expect(html).toContain(`/annotations/${id}/file?preview=1`);
     expect(html).toContain('添加附件');
+  });
+
+  it('does not offer or serve inline preview for a non-PDF attachment', async () => {
+    const created = await attach(paperId, Buffer.from('hello'), 'note.txt', 'text/plain', 'text-preview');
+    const { id } = await created.json() as { id: string };
+    const html = await (await fetch(`${base}/library/documents/${paperId}`)).text();
+    expect(html).not.toContain(`/annotations/${id}/file?preview=1`);
+    const file = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file?preview=1`);
+    expect(file.status).toBe(415);
+    const download = await fetch(`${base}/library/documents/${paperId}/annotations/${id}/file`);
+    expect(await download.text()).toBe('hello');
   });
 
   it('keeps JSON text POST working and rejects exe without writing files', async () => {
@@ -127,6 +148,8 @@ describe('annotation attachments HTTP/CLI', () => {
     const missing = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file`);
     expect(missing.status).toBe(409);
     expect(await missing.json()).toEqual(expect.objectContaining({ code: 'attachment_missing' }));
+    const previewHead = await fetch(`${base}/library/documents/${noteId}/annotations/${id}/file?preview=1`, { method: 'HEAD' });
+    expect(previewHead.status).toBe(409);
     const missingPage = await (await fetch(`${base}/library/documents/${noteId}`)).text();
     expect(missingPage).toContain('>下载</a>');
     expect(missingPage).toContain('data-annotation-file');
